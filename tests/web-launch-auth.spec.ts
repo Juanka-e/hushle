@@ -48,7 +48,7 @@ test.describe("registered web launch flow", () => {
       )
       .toBe(true);
     await page.getByRole("button", { name: /^Oyna$/i }).click();
-    await page.getByRole("button", { name: /Yeni Oda Olustur/i }).click();
+    await page.getByRole("button", { name: /Yeni Oda Oluştur|Create New Room/i }).click();
     await expect(page).toHaveURL(/\/room\/[A-Z0-9]{6}$/, { timeout: 15_000 });
     await expect
       .poll(() =>
