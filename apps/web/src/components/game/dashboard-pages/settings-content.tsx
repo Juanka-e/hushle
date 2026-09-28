@@ -22,6 +22,7 @@ import {
   writeDashboardSettings,
 } from "@/lib/dashboard-settings";
 import type { UserInventoryResponse } from "@/types/economy";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 interface LinkedAccountProvider {
   id: "google";
@@ -33,6 +34,7 @@ interface LinkedAccountProvider {
 
 export function SettingsContent() {
   const { data: session } = useSession();
+  const { t } = useI18n();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null);
@@ -128,14 +130,14 @@ export function SettingsContent() {
     const error = params.get("error");
     if (error === "OAuthAccountNotLinked") {
       setAccountLinkMessage(
-        "Bu e-posta başka bir hesapta kullanılıyor. Önce o hesaba giriş yapıp Google'ı buradan bağla."
+        t("settings.linkConflict")
       );
     } else if (error) {
-      setAccountLinkMessage("Hesap bağlantısı tamamlanamadı. Lütfen tekrar dene.");
+      setAccountLinkMessage(t("settings.linkFailed"));
     } else if (params.get("linked") === "1") {
-      setAccountLinkMessage("Google hesabı bağlandı.");
+      setAccountLinkMessage(t("settings.googleLinked"));
     }
-  }, []);
+  }, [t]);
 
   const handleOAuthAccount = async (provider: LinkedAccountProvider) => {
     setAccountLinkLoading(true);
@@ -154,7 +156,7 @@ export function SettingsContent() {
         | { error?: string }
         | null;
       if (!response.ok) {
-        setAccountLinkMessage(payload?.error || "Hesap bağlantısı kaldırılamadı.");
+        setAccountLinkMessage(payload?.error || t("settings.unlinkFailed"));
         return;
       }
       setLinkedProviders((current) =>
@@ -164,9 +166,9 @@ export function SettingsContent() {
             : item
         )
       );
-      setAccountLinkMessage(`${provider.label} bağlantısı kaldırıldı.`);
+      setAccountLinkMessage(t("settings.unlinked", { provider: provider.label }));
     } catch {
-      setAccountLinkMessage("Hesap bağlantısı servisine ulaşılamadı.");
+      setAccountLinkMessage(t("settings.linkServiceFailed"));
     } finally {
       setAccountLinkLoading(false);
     }
@@ -191,7 +193,7 @@ export function SettingsContent() {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        setSaveError(payload?.error || "Profil güncellenemedi.");
+        setSaveError(payload?.error || t("settings.profileUpdateFailed"));
         return;
       }
 
@@ -210,7 +212,7 @@ export function SettingsContent() {
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2000);
     } catch {
-      setSaveError("Profil güncellenemedi.");
+      setSaveError(t("settings.profileUpdateFailed"));
     } finally {
       setSaving(false);
     }
@@ -232,8 +234,8 @@ export function SettingsContent() {
       } | null;
       setEmailChangeMessage(
         response.ok
-          ? payload?.message || "Doğrulama bağlantısı gönderildi."
-          : payload?.error || "E-posta değişikliği başlatılamadı."
+          ? payload?.message || t("settings.verificationLinkSent")
+          : payload?.error || t("settings.emailChangeFailed")
       );
       if (response.ok) {
         setPendingEmail(payload?.pendingEmail || newEmail.trim());
@@ -241,7 +243,7 @@ export function SettingsContent() {
         setCurrentPassword("");
       }
     } catch {
-      setEmailChangeMessage("E-posta değişikliği servisine ulaşılamadı.");
+      setEmailChangeMessage(t("settings.emailChangeServiceFailed"));
     } finally {
       setEmailChangeLoading(false);
     }
@@ -261,15 +263,15 @@ export function SettingsContent() {
       } | null;
       setEmailChangeMessage(
         response.ok
-          ? "Bekleyen e-posta değişikliği iptal edildi."
-          : payload?.error || "İstek iptal edilemedi."
+          ? t("settings.emailChangeCancelled")
+          : payload?.error || t("settings.cancelFailed")
       );
       if (response.ok) {
         setPendingEmail(null);
         setCurrentPassword("");
       }
     } catch {
-      setEmailChangeMessage("İptal servisine ulaşılamadı.");
+      setEmailChangeMessage(t("settings.cancelServiceFailed"));
     } finally {
       setEmailChangeLoading(false);
     }
@@ -289,14 +291,14 @@ export function SettingsContent() {
       } | null;
       setVerificationMessage(
         response.ok
-          ? payload?.message || "Doğrulama bağlantısı gönderim kuyruğuna alındı."
-          : payload?.error || "Doğrulama bağlantısı gönderilemedi."
+          ? payload?.message || t("auth.verificationQueued")
+          : payload?.error || t("settings.verificationSendFailed")
       );
       if (payload?.status === "already_verified") {
         setEmailVerifiedAt(new Date().toISOString());
       }
     } catch {
-      setVerificationMessage("Doğrulama servisine ulaşılamadı.");
+      setVerificationMessage(t("auth.verificationUnavailable"));
     } finally {
       setSendingVerification(false);
     }
@@ -304,25 +306,25 @@ export function SettingsContent() {
 
   return (
     <DashboardPageShell
-      eyebrow="Tercihler"
-      title="Ayarlar"
-      description="Profil alanları hesapta saklanır. Ses ve oynanış tercihleri şimdilik bu cihazda tutuluyor."
+      eyebrow={t("settings.preferences")}
+      title={t("settings.title")}
+      description={t("settings.description")}
     >
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="space-y-6">
           <DashboardSection
-            title="Profil Ayarları"
-            description="Hesap adı ile oyunda görünen adı ayrı tutuyoruz."
+            title={t("settings.profile")}
+            description={t("settings.profileHelp")}
             action={<User size={18} className="text-blue-500" />}
           >
             <div className="space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/60">
                 <div className="mb-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                  Kullanıcı Adı
+                  {t("settings.username")}
                 </div>
                 <div className="text-sm font-black text-slate-800 dark:text-slate-100">@{username}</div>
                 <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Giriş yaparken kullandığın hesap adı. Sabit kalır.
+                  {t("settings.usernameHelp")}
                 </div>
               </div>
 
@@ -331,7 +333,7 @@ export function SettingsContent() {
                   className="mb-1.5 block text-xs font-bold uppercase text-slate-500 dark:text-slate-400"
                   htmlFor="displayName"
                 >
-                  Görünen Ad
+                  {t("settings.displayName")}
                 </label>
                 <input
                   id="displayName"
@@ -342,7 +344,7 @@ export function SettingsContent() {
                   maxLength={60}
                 />
                 <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Lobide ve oyunda diğer oyuncuların gördüğü ad. İstediğin zaman değiştirebilirsin.
+                  {t("settings.displayNameHelp")}
                 </div>
               </div>
 
@@ -351,7 +353,7 @@ export function SettingsContent() {
                   className="mb-1.5 block text-xs font-bold uppercase text-slate-500 dark:text-slate-400"
                   htmlFor="email"
                 >
-                  Email
+                  {t("auth.email")}
                 </label>
                 <input
                   id="email"
@@ -365,13 +367,13 @@ export function SettingsContent() {
                 <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {email
                     ? emailVerifiedAt
-                      ? "E-posta doğrulandı."
+                      ? t("settings.emailVerified")
                       : emailVerificationMode === "off"
-                        ? "E-posta doğrulaması şu anda kapalı."
+                        ? t("settings.verificationOff")
                         : emailProviderReady
-                          ? "Hesap güvenliği için e-posta adresini doğrulayabilirsin."
-                          : "Doğrulama servisi şu anda hazır değil."
-                    : "Bu hesapta henüz e-posta tanımlı değil."}
+                          ? t("settings.verificationHelp")
+                          : t("settings.verificationNotReady")
+                    : t("settings.noEmail")}
                 </div>
                 {email &&
                 !emailVerifiedAt &&
@@ -385,8 +387,8 @@ export function SettingsContent() {
                     >
                       <MailCheck size={15} />
                       {sendingVerification
-                        ? "Gönderiliyor..."
-                        : "E-postamı doğrula"}
+                        ? t("auth.sending")
+                        : t("settings.verifyEmail")}
                     </button>
                     {verificationMessage ? (
                       <p className="mt-2 text-xs leading-5 text-teal-800 dark:text-teal-200">
@@ -398,19 +400,19 @@ export function SettingsContent() {
                 {hasPassword ? <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950/40">
                   <div>
                     <div className="text-sm font-black text-slate-800 dark:text-slate-100">
-                      E-posta adresini değiştir
+                      {t("settings.changeEmail")}
                     </div>
                     <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      Mevcut adresin, yeni adres doğrulanana kadar değişmez. Doğrulama tamamlanınca güvenlik için açık oturumların kapatılır.
+                      {t("settings.changeEmailHelp")}
                     </p>
                   </div>
                   {pendingEmail ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
                       <p className="text-xs font-bold text-amber-900 dark:text-amber-200">
-                        Doğrulama bekleniyor: {pendingEmail}
+                        {t("settings.pendingEmail", { email: pendingEmail })}
                       </p>
                       <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-300/80">
-                        İptal etmek için mevcut parolanı aşağıya gir.
+                        {t("settings.cancelEmailHelp")}
                       </p>
                     </div>
                   ) : (
@@ -418,7 +420,7 @@ export function SettingsContent() {
                       type="email"
                       value={newEmail}
                       onChange={(event) => setNewEmail(event.target.value)}
-                      placeholder="Yeni e-posta adresi"
+                      placeholder={t("settings.newEmail")}
                       autoComplete="email"
                       maxLength={191}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-700 outline-none transition-all focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -428,7 +430,7 @@ export function SettingsContent() {
                     type="password"
                     value={currentPassword}
                     onChange={(event) => setCurrentPassword(event.target.value)}
-                    placeholder="Mevcut parola"
+                    placeholder={t("settings.currentPassword")}
                     autoComplete="current-password"
                     maxLength={256}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-700 outline-none transition-all focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -452,10 +454,10 @@ export function SettingsContent() {
                     }`}
                   >
                     {emailChangeLoading
-                      ? "İşleniyor..."
+                      ? t("settings.processing")
                       : pendingEmail
-                        ? "Bekleyen değişikliği iptal et"
-                        : "Yeni adresi doğrula"}
+                        ? t("settings.cancelPending")
+                        : t("settings.verifyNewEmail")}
                   </button>
                   {emailChangeMessage ? (
                     <p className="text-xs leading-5 text-slate-600 dark:text-slate-300">
@@ -470,7 +472,7 @@ export function SettingsContent() {
                   className="mb-1.5 block text-xs font-bold uppercase text-slate-500 dark:text-slate-400"
                   htmlFor="bio"
                 >
-                  Biyografi
+                  {t("settings.biography")}
                 </label>
                 <textarea
                   id="bio"
@@ -496,7 +498,7 @@ export function SettingsContent() {
                   type="button"
                 >
                   <Save size={14} />
-                  {saved ? "Kaydedildi" : saving ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
+                  {saved ? t("settings.saved") : saving ? t("settings.saving") : t("settings.saveChanges")}
                 </button>
               </div>
             </div>
@@ -505,8 +507,8 @@ export function SettingsContent() {
 
         <div className="space-y-6">
           <DashboardSection
-            title="Oyun Ayarları"
-            description="Ses tercihleri bu cihazda saklanır."
+            title={t("settings.game")}
+            description={t("settings.gameHelp")}
             action={<Gamepad2 size={18} className="text-orange-500" />}
           >
             <div className="space-y-5">
@@ -514,7 +516,7 @@ export function SettingsContent() {
                 <div className="flex items-center gap-3">
                   <Volume2 size={18} className="text-slate-400" />
                   <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                    Ses Efektleri
+                    {t("settings.soundEffects")}
                   </span>
                 </div>
                 <ToggleSwitch
@@ -526,7 +528,7 @@ export function SettingsContent() {
                 <div className="flex items-center gap-3">
                   <Music size={18} className="text-slate-400" />
                   <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                    Arka Plan Müziği
+                    {t("settings.backgroundMusic")}
                   </span>
                 </div>
                 <ToggleSwitch
@@ -538,8 +540,8 @@ export function SettingsContent() {
           </DashboardSection>
 
           {linkedProviders.length > 0 ? <DashboardSection
-            title="Bağlı Hesaplar"
-            description="Giriş yöntemlerini güvenli biçimde yönet. Aynı e-posta hesapları otomatik birleştirilmez."
+            title={t("settings.linkedAccounts")}
+            description={t("settings.linkedAccountsHelp")}
             action={<Link2 size={18} className="text-teal-600" />}
           >
             <div className="space-y-3">
@@ -557,7 +559,7 @@ export function SettingsContent() {
                           {provider.label}
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {provider.linked ? "Bağlı ve girişe hazır" : "Bağlı değil"}
+                          {provider.linked ? t("settings.linkedReady") : t("settings.notLinked")}
                         </div>
                       </div>
                     </div>
@@ -574,16 +576,16 @@ export function SettingsContent() {
                       }`}
                     >
                       {accountLinkLoading
-                        ? "İşleniyor..."
+                        ? t("settings.processing")
                         : provider.linked
-                          ? "Bağlantıyı kaldır"
-                          : "Hesabı bağla"}
+                          ? t("settings.unlink")
+                          : t("settings.link")}
                     </button>
                   </div>
               ))}
               {!hasPassword ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
-                  Bu, tek giriş yöntemin. Bağlantıyı kaldırmak için önce aşağıdaki hesap bölümünden parola oluştur.
+                  {t("settings.onlyLoginHelp")}
                 </div>
               ) : null}
               {accountLinkMessage ? (
@@ -595,8 +597,8 @@ export function SettingsContent() {
           </DashboardSection> : null}
 
           <DashboardSection
-            title="Hesap"
-            description="Hesap seviyesi işlemler ve giriş kontrolleri."
+            title={t("settings.account")}
+            description={t("settings.accountHelp")}
             action={<UserCog size={18} className="text-red-500" />}
           >
             <div className="space-y-3">
@@ -608,7 +610,7 @@ export function SettingsContent() {
                 type="button"
               >
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  {hasPassword ? "Parolayı Sıfırla" : "Parola Oluştur"}
+                  {hasPassword ? t("settings.resetPassword") : t("settings.createPassword")}
                 </span>
                 <ChevronRight size={18} className="text-slate-400 group-hover:text-blue-500" />
               </button>
@@ -617,7 +619,7 @@ export function SettingsContent() {
                 className="group flex w-full items-center justify-between rounded-xl p-3 text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                 type="button"
               >
-                <span className="text-sm font-bold">Çıkış Yap</span>
+                <span className="text-sm font-bold">{t("settings.logout")}</span>
                 <LogOut size={18} />
               </button>
             </div>

@@ -15,6 +15,8 @@ import type {
   StoreItemType,
   UserInventoryResponse,
 } from "@/types/economy";
+import { useI18n } from "@/components/providers/i18n-provider";
+import { toIntlLocale } from "@/lib/i18n/config";
 
 const rarityColor: Record<StoreItemRarity, string> = {
   common: "bg-slate-500",
@@ -37,14 +39,6 @@ const rarityGlow: Record<StoreItemRarity, string> = {
   legendary: "shadow-[0_0_15px_rgba(234,179,8,0.3)]",
 };
 
-const tabs: { id: "all" | StoreItemType; label: string }[] = [
-  { id: "all", label: "Tümü" },
-  { id: "avatar", label: "Avatarlar" },
-  { id: "frame", label: "Çerçeveler" },
-  { id: "card_back", label: "Kart Arkaları" },
-  { id: "card_face", label: "Kart Önleri" },
-];
-
 const COSMETIC_GRID_BATCH_SIZE = 24;
 
 function isItemEquipped(item: InventoryItemView, equippedSlots: EquippedSlots): boolean {
@@ -62,6 +56,14 @@ function isItemEquipped(item: InventoryItemView, equippedSlots: EquippedSlots): 
 
 export function InventoryContent() {
   const { data: session } = useSession();
+  const { locale, t } = useI18n();
+  const tabs: { id: "all" | StoreItemType; label: string }[] = [
+    { id: "all", label: t("inventory.all") },
+    { id: "avatar", label: t("inventory.avatars") },
+    { id: "frame", label: t("inventory.frames") },
+    { id: "card_back", label: t("inventory.cardBacks") },
+    { id: "card_face", label: t("inventory.cardFaces") },
+  ];
   const [activeType, setActiveType] = useState<"all" | StoreItemType>("all");
   const [items, setItems] = useState<InventoryItemView[]>([]);
   const [previewItem, setPreviewItem] = useState<InventoryItemView | null>(null);
@@ -178,15 +180,15 @@ export function InventoryContent() {
 
   return (
     <DashboardPageShell
-      eyebrow="Koleksiyon"
-      title="Envanter"
-      description="Sahip olduğun kozmetikleri, aktif slotları ve hızlı önizlemeyi tek yerde gör."
+      eyebrow={t("inventory.collection")}
+      title={t("inventory.title")}
+      description={t("inventory.description")}
       action={<CoinBadge value={coinBalance} className="rounded-2xl px-4 py-3" valueClassName="text-xl" />}
     >
       <div className="space-y-6">
         <DashboardSection
-          title="Sahip Olduğun Kozmetikler"
-          description="Kategori değiştir, ürünleri incele ve panelden çıkmadan kullan."
+          title={t("inventory.owned")}
+          description={t("inventory.ownedHelp")}
           action={
             <div className="flex flex-wrap gap-2">
               {tabs.map((tab) => (
@@ -214,8 +216,8 @@ export function InventoryContent() {
             <div className="flex-1 overflow-y-auto pb-2">
               {filteredItems.length === 0 ? (
                 <DashboardEmptyState
-                  title="Bu kategoride henüz ürün yok"
-                  description="Bu kategoride kozmetik kazandığında burada görünür, kullanabilir ve hızlı önizleme yapabilirsin."
+                  title={t("inventory.noItems")}
+                  description={t("inventory.noItemsHelp")}
                   icon={<PackageOpen className="h-5 w-5" />}
                 />
               ) : (
@@ -236,7 +238,7 @@ export function InventoryContent() {
                           onClick={() => setPreviewItem(item)}
                           className="absolute left-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200/80 bg-white/90 text-slate-700 shadow-sm transition hover:bg-white dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200 dark:hover:bg-slate-900"
                           type="button"
-                          aria-label={`${item.name} önizleme`}
+                          aria-label={t("inventory.previewLabel", { name: item.name })}
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </button>
@@ -245,7 +247,7 @@ export function InventoryContent() {
                       <div className="flex-1">
                         <h3 className="text-sm font-black text-slate-900 dark:text-white">{item.name}</h3>
                         <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                          {formatCosmeticTypeLabel(item.type)} • {new Date(item.acquiredAt).toLocaleDateString("tr-TR")}
+                          {formatCosmeticTypeLabel(item.type, locale)} • {new Date(item.acquiredAt).toLocaleDateString(toIntlLocale(locale))}
                         </p>
                       </div>
                       <div className="mt-4 flex gap-2">
@@ -260,10 +262,10 @@ export function InventoryContent() {
                           type="button"
                         >
                           {equipBusyId === item.shopItemId
-                            ? (item.equipped ? "C\u0131kar\u0131l\u0131yor..." : "Ku\u015fan\u0131l\u0131yor...")
+                            ? (item.equipped ? t("inventory.unequipping") : t("inventory.equipping"))
                             : item.equipped
-                              ? "Kullan\u0131mda"
-                              : "Ku\u015fan"}
+                              ? t("inventory.inUse")
+                              : t("inventory.equip")}
                         </button>
                       </div>
                     </div>
@@ -276,10 +278,10 @@ export function InventoryContent() {
                         onClick={() => setVisibleItemCount((current) => current + COSMETIC_GRID_BATCH_SIZE)}
                         className="rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-[0.16em] text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-900"
                       >
-                        Daha fazla göster
+                        {t("inventory.showMore")}
                       </button>
                       <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        {visibleItems.length} / {filteredItems.length} ürün gösteriliyor
+                        {t("inventory.showing", { visible: visibleItems.length, total: filteredItems.length })}
                       </span>
                     </div>
                   ) : null}
@@ -303,6 +305,7 @@ function InventoryPreviewCard({
   selectedItem: InventoryItemView;
   className?: string;
 }) {
+  const { locale, t } = useI18n();
   return (
       <div className={`grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] ${className ?? ""}`}>
         <div className="rounded-[28px] border border-slate-200/80 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.6),_transparent_60%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(226,232,240,0.9))] p-5 dark:border-slate-800/70 dark:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_60%),linear-gradient(180deg,rgba(17,24,39,0.96),rgba(2,6,23,0.96))]">
@@ -310,11 +313,11 @@ function InventoryPreviewCard({
         </div>
         <div className="flex flex-col rounded-[28px] border border-white/60 bg-white/72 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-950/45">
           <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-            Envanter Önizleme
+            {t("inventory.preview")}
           </div>
           <h4 className="mt-3 text-3xl font-black tracking-tight text-slate-900 dark:text-white">{selectedItem.name}</h4>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-            {formatCosmeticTypeLabel(selectedItem.type)} • {selectedItem.rarity}
+            {formatCosmeticTypeLabel(selectedItem.type, locale)} • {selectedItem.rarity}
           </p>
           <div
             className={`mt-5 inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
@@ -325,16 +328,16 @@ function InventoryPreviewCard({
                   : "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/30 dark:bg-blue-950/20 dark:text-blue-300"
             }`}
           >
-            {selectedItem.equipped ? "Aktif Slot" : "Kullanmaya Hazır"}
+            {selectedItem.equipped ? t("inventory.activeSlot") : t("inventory.readyToUse")}
           </div>
           <div className="mt-6 space-y-3 rounded-[24px] border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800/70 dark:bg-slate-950/50">
             <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Kazanım Tarihi</div>
-              <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">{new Date(selectedItem.acquiredAt).toLocaleDateString("tr-TR")}</div>
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{t("inventory.acquiredAt")}</div>
+              <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">{new Date(selectedItem.acquiredAt).toLocaleDateString(toIntlLocale(locale))}</div>
             </div>
             <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Durum</div>
-              <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">{selectedItem.equipped ? "Şu anda kullanımda" : "Envanterde hazır"}</div>
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{t("inventory.status")}</div>
+              <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">{selectedItem.equipped ? t("inventory.currentlyInUse") : t("inventory.ready")}</div>
             </div>
           </div>
         </div>

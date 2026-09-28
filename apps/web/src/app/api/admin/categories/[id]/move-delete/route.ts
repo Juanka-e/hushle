@@ -55,11 +55,11 @@ export async function POST(
         const [sourceCategory, targetCategory, allCategories, childCategories, sourceLinks] = await Promise.all([
             prisma.category.findUnique({
                 where: { id: sourceCategoryId },
-                select: { id: true, name: true, parentId: true },
+                select: { id: true, name: true, parentId: true, locale: true },
             }),
             prisma.category.findUnique({
                 where: { id: targetCategoryId },
-                select: { id: true, name: true, parentId: true },
+                select: { id: true, name: true, parentId: true, locale: true },
             }),
             prisma.category.findMany({
                 select: { id: true, name: true, parentId: true },
@@ -78,6 +78,13 @@ export async function POST(
             return NextResponse.json(
                 { error: "Kategori bulunamadi." },
                 { status: 404, headers: buildRateLimitHeaders(rateLimit) }
+            );
+        }
+
+        if (sourceCategory.locale !== targetCategory.locale) {
+            return NextResponse.json(
+                { error: "Kategoriler yalnızca aynı kelime dilindeki bir kategoriye taşınabilir." },
+                { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 

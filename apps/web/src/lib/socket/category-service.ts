@@ -1,10 +1,14 @@
 import { getOrSetJsonCache } from "@hushle/platform-cache";
 import {
-    APPLICATION_CACHE_KEYS,
+    getVisibleCategoriesCacheKey,
     invalidateAdminDashboardStatsCache,
     invalidateVisibleCategoriesCache,
 } from "@/lib/cache/application-cache";
 import { prisma } from "@/lib/prisma";
+import {
+    DEFAULT_GAME_CONTENT_LOCALE,
+    type GameContentLocale,
+} from "@hushle/domain-game";
 
 interface CategoryWithChildren {
     id: number;
@@ -17,13 +21,15 @@ interface CategoryWithChildren {
 
 const CACHE_TTL_MS = 60_000;
 
-export async function getVisibleCategories(): Promise<CategoryWithChildren[]> {
+export async function getVisibleCategories(
+    locale: GameContentLocale = DEFAULT_GAME_CONTENT_LOCALE
+): Promise<CategoryWithChildren[]> {
     const result = await getOrSetJsonCache<CategoryWithChildren[]>({
-        key: APPLICATION_CACHE_KEYS.visibleCategories,
+        key: getVisibleCategoriesCacheKey(locale),
         ttlMs: CACHE_TTL_MS,
         loader: async () => {
             const allCategories = await prisma.category.findMany({
-                where: { isVisible: true },
+                where: { isVisible: true, locale },
                 orderBy: { sortOrder: "asc" },
                 select: {
                     id: true,

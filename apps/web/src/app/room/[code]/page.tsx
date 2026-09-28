@@ -13,6 +13,8 @@ import { DashboardOverlay } from "@/components/game/dashboard-overlay";
 import { Moon, Sun, Megaphone, Book, Menu, LayoutDashboard, Lock, Pencil, Save, UserRound, ArrowRight, LoaderCircle } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useBranding } from "@/components/providers/branding-provider";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
+import { useI18n } from "@/components/providers/i18n-provider";
 import { clearActiveRoomPresenceTab, writeActiveRoomPresence } from "@/lib/client/active-room-presence";
 import type { ResolvedCardFaceTheme } from "@/lib/cosmetics/card-face";
 import type { ResolvedCardBackTheme } from "@/lib/cosmetics/card-back";
@@ -34,6 +36,10 @@ import type {
     CategoryItem,
     PendingAdminHandoffState,
 } from "@/types/game";
+import {
+    DEFAULT_GAME_CONTENT_LOCALE,
+    type GameContentLocale,
+} from "@hushle/domain-game";
 
 // Sub-components
 import { TransitionScreen } from "./_components/transition-screen";
@@ -80,6 +86,7 @@ export default function RoomPage() {
     const roomCode = params.code as string;
     const { data: session } = useSession();
     const branding = useBranding();
+    const { t } = useI18n();
     const activeRoomPresenceKey = session?.user?.id ? `tabu_active_room_presence:${session.user.id}` : null;
     const roomPresenceTabIdRef = useRef("");
 
@@ -109,6 +116,7 @@ export default function RoomPage() {
         sure: 60,
         mod: "tur" as "tur" | "skor",
         deger: 2,
+        wordLocale: DEFAULT_GAME_CONTENT_LOCALE as GameContentLocale,
     });
     const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
     const [selectedDifficulties, setSelectedDifficulties] = useState<number[]>([]);
@@ -451,9 +459,16 @@ export default function RoomPage() {
                 socket.on("kategoriAyarlariGuncellendi", (data: {
                     seciliKategoriler: number[];
                     seciliZorluklar: number[];
+                    wordLocale?: GameContentLocale;
                 }) => {
                     setSelectedCategories(data.seciliKategoriler);
                     setSelectedDifficulties(data.seciliZorluklar);
+                    if (data.wordLocale) {
+                        setSettings((current) => ({
+                            ...current,
+                            wordLocale: data.wordLocale ?? current.wordLocale,
+                        }));
+                    }
                 });
 
                 socket.on("oyunBasladi", () => {
@@ -828,13 +843,27 @@ export default function RoomPage() {
                 isHost={isHost as boolean}
                 startReadiness={startReadiness}
                 pendingAdminHandoff={pendingAdminHandoff}
-                onUpdateSettings={setSettings}
+                onUpdateSettings={(nextSettings) => {
+                    const localeChanged = nextSettings.wordLocale !== settings.wordLocale;
+                    setSettings(nextSettings);
+                    if (localeChanged) {
+                        setSelectedCategories([]);
+                        emit("kategoriAyarlariGuncelle", {
+                            seciliKategoriler: [],
+                            seciliZorluklar: selectedDifficulties.length > 0
+                                ? selectedDifficulties
+                                : [1, 2, 3],
+                            wordLocale: nextSettings.wordLocale,
+                        });
+                    }
+                }}
                 onInitialSet={(cats, diffs) => {
                     setSelectedCategories(cats);
                     setSelectedDifficulties(diffs);
                     emit("kategoriAyarlariGuncelle", {
                         seciliKategoriler: cats,
                         seciliZorluklar: diffs,
+                        wordLocale: settings.wordLocale,
                     });
                 }}
                 onUpdateCategories={(cats) => {
@@ -842,6 +871,7 @@ export default function RoomPage() {
                     emit("kategoriAyarlariGuncelle", {
                         seciliKategoriler: cats,
                         seciliZorluklar: selectedDifficulties.length > 0 ? selectedDifficulties : [1, 2, 3],
+                        wordLocale: settings.wordLocale,
                     });
                 }}
                 onUpdateDifficulties={(diffs) => {
@@ -849,6 +879,7 @@ export default function RoomPage() {
                     emit("kategoriAyarlariGuncelle", {
                         seciliKategoriler: selectedCategories.length > 0 ? selectedCategories : allCategoryIds,
                         seciliZorluklar: diffs,
+                        wordLocale: settings.wordLocale,
                     });
                 }}
                 onShuffleTeams={() => emit("takimlariKaristir")}
@@ -887,7 +918,7 @@ export default function RoomPage() {
                         <LoaderCircle className="h-6 w-6 animate-spin" />
                     </div>
                     <div className="mt-4 text-xs font-bold uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
-                        Aktif Oda Kontrolu
+                        {t("room.activeRoomCheck")}
                     </div>
                     <div className="mt-2 text-sm font-medium text-gray-600 dark:text-gray-300">
                         Hangi odaya devam etmen gerektigini dogruluyoruz.
@@ -907,19 +938,18 @@ export default function RoomPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                             <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-700/80 dark:text-amber-300/80">
-                                Aktif Oda Bulundu
+                                {t("room.activeRoomFound")}
                             </div>
                             <div className="mt-2 text-xl font-black text-slate-900 dark:text-white">
-                                {activeRoomGuard.roomCode} odasina geri donmelisin.
+                                {t("room.mustReturnRoom", { code: activeRoomGuard.roomCode })}
                             </div>
                             <div className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-                                Acmaya calistigin sayfa <span className="font-bold">{normalizedRoomCode}</span>. Hesabin ise su an{" "}
-                                <span className="font-bold">{activeRoomGuard.roomCode}</span> odasina bagli gorunuyor.
+                                {t("room.roomConflictDetail", { requested: normalizedRoomCode, active: activeRoomGuard.roomCode })}
                             </div>
                             <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
                                 {activeRoomGuard.requiresHostReturn
-                                    ? "Bu odada yonetici geri donusu bekleniyor. Once kendi odana donup devir riskini kapatman gerekir."
-                                    : "Yanlis room URL'i veya eski sekme acik kalmis olabilir. Once mevcut odana don, sonra gerekirse yeni oda ac."}
+                                    ? t("room.roomConflictHostHelp")
+                                    : t("room.roomConflictHelp")}
                             </div>
                             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                                 <button
@@ -928,14 +958,14 @@ export default function RoomPage() {
                                     className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-amber-400"
                                 >
                                     <ArrowRight className="h-4 w-4" />
-                                    Aktif Odaya Don
+                                    {t("room.returnActiveRoom")}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => router.replace("/dashboard")}
                                     className="rounded-2xl border border-gray-200 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-gray-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                                 >
-                                    Dashboard&apos;a Git
+                                    {t("room.goDashboard")}
                                 </button>
                             </div>
                         </div>
@@ -964,7 +994,7 @@ export default function RoomPage() {
                     <>
                         <button
                             type="button"
-                            aria-label="Takım A panelini aç"
+                            aria-label={t("room.openTeamPanel", { team: "A" })}
                             data-testid="mobile-team-a-toggle"
                             onClick={() => setSidebarAOpen((prev) => !prev)}
                             className={`fixed left-0 top-1/2 z-[90] -translate-y-1/2 rounded-r-xl bg-red-600 p-2.5 text-white shadow-lg transition-transform ${
@@ -975,7 +1005,7 @@ export default function RoomPage() {
                         </button>
                         <button
                             type="button"
-                            aria-label="Takım B panelini aç"
+                            aria-label={t("room.openTeamPanel", { team: "B" })}
                             data-testid="mobile-team-b-toggle"
                             onClick={() => setSidebarBOpen((prev) => !prev)}
                             className={`fixed right-0 top-1/2 z-[90] -translate-y-1/2 rounded-l-xl bg-blue-600 p-2.5 text-white shadow-lg transition-transform ${
@@ -1001,6 +1031,7 @@ export default function RoomPage() {
                             ? () => emit(ROOM_SWITCH_TEAM_EVENT)
                             : undefined
                     }
+                    onMoveNarrator={isHost && view === GameView.LOBBY ? (playerId, direction) => emit("narrator_order", { playerId, direction }) : undefined}
                     onKickPlayer={isHost ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
                     onTransferHost={isHost ? (playerId) => emit("yoneticiligiDevret", { targetPlayerId: playerId }) : undefined}
                 />
@@ -1115,7 +1146,7 @@ export default function RoomPage() {
                                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800"
                                     >
                                         <Pencil size={16} />
-                                        Görünen Ad
+                                        {t("room.displayName")}
                                     </button>
                                     <button
                                         type="button"
@@ -1126,7 +1157,7 @@ export default function RoomPage() {
                                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800"
                                     >
                                         <Megaphone size={16} />
-                                        Duyurular
+                                        {t("home.announcements")}
                                     </button>
                                     <button
                                         type="button"
@@ -1137,7 +1168,7 @@ export default function RoomPage() {
                                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800"
                                     >
                                         <Book size={16} />
-                                        Kurallar
+                                        {t("room.rules")}
                                     </button>
                                     <button
                                         type="button"
@@ -1148,8 +1179,11 @@ export default function RoomPage() {
                                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800"
                                     >
                                         {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-                                        Tema
+                                        {t("room.theme")}
                                     </button>
+                                    <div className="px-3 py-2">
+                                        <LanguageSwitcher />
+                                    </div>
                                 </div>
                             ) : null}
 
@@ -1158,12 +1192,12 @@ export default function RoomPage() {
                                     <div className="space-y-3">
                                         <div className="space-y-1">
                                             <div className="text-xs font-bold uppercase tracking-[0.18em] text-gray-400">
-                                                Görünen Adı Değiştir
+                                                {t("room.editDisplayName")}
                                             </div>
                                             <div className="text-xs text-gray-500 dark:text-gray-400">
                                                 {isAuthenticatedRoomUser
-                                                    ? "Boş bırakırsan hesap adına geri döner. Lobby ve oyunda bu ad görünür."
-                                                    : "Guest oyuncular yalnız bu lobby için ad değiştirir."}
+                                                    ? t("room.registeredNameHelp")
+                                                    : t("room.guestNameHelp")}
                                             </div>
                                         </div>
                                         <input
@@ -1174,7 +1208,7 @@ export default function RoomPage() {
                                             className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-800 outline-none focus:border-transparent focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-100"
                                         />
                                         <div className="text-[11px] text-gray-400 dark:text-gray-500">
-                                            Oyun başlayınca isim kilitlenir. Yalnız kendi görünen adını değiştirebilirsin.
+                                            {t("room.nameLockHelp")}
                                         </div>
                                         {identityError ? (
                                             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
@@ -1238,6 +1272,7 @@ export default function RoomPage() {
                                 <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
                             </span>
                         </button> : null}
+                        {!isMobile ? <LanguageSwitcher compact /> : null}
                     </div>
                     </div>
 
@@ -1283,6 +1318,7 @@ export default function RoomPage() {
                             ? () => emit(ROOM_SWITCH_TEAM_EVENT)
                             : undefined
                     }
+                    onMoveNarrator={isHost && view === GameView.LOBBY ? (playerId, direction) => emit("narrator_order", { playerId, direction }) : undefined}
                     onKickPlayer={isHost ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
                     onTransferHost={isHost ? (playerId) => emit("yoneticiligiDevret", { targetPlayerId: playerId }) : undefined}
                 />

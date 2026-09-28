@@ -35,6 +35,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
+import {
+    DEFAULT_GAME_CONTENT_LOCALE,
+    GAME_CONTENT_LOCALES,
+    GAME_CONTENT_LOCALE_DEFINITIONS,
+    type GameContentLocale,
+} from "@hushle/domain-game";
 
 interface Category {
     id: number;
@@ -43,6 +49,7 @@ interface Category {
     color: string | null;
     sortOrder: number;
     isVisible: boolean;
+    locale: GameContentLocale;
     children: Category[];
     _count?: { wordCategories: number };
 }
@@ -281,6 +288,9 @@ function SortableCategory({
 
 export default function AdminCategoriesPage() {
     const [categories, setCategories] = useState<Category[]>([]);
+    const [selectedLocale, setSelectedLocale] = useState<GameContentLocale>(
+        DEFAULT_GAME_CONTENT_LOCALE
+    );
     const [expanded, setExpanded] = useState<Set<number>>(new Set());
     const [loading, setLoading] = useState(true);
     const [pageError, setPageError] = useState("");
@@ -323,7 +333,7 @@ export default function AdminCategoriesPage() {
             setLoading(true);
         }
         try {
-            const response = await fetch("/api/admin/categories", { cache: "no-store" });
+            const response = await fetch(`/api/admin/categories?locale=${selectedLocale}`, { cache: "no-store" });
             const payload = await response.json().catch(() => null);
             if (!response.ok) {
                 setPageError((payload as { error?: string } | null)?.error ?? "Kategori listesi yüklenemedi.");
@@ -341,7 +351,7 @@ export default function AdminCategoriesPage() {
                 setLoading(false);
             }
         }
-    }, []);
+    }, [selectedLocale]);
 
     useEffect(() => {
         void fetchCategories();
@@ -462,7 +472,7 @@ export default function AdminCategoriesPage() {
             const response = await fetch("/api/admin/categories/reorder", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ updates }),
+                body: JSON.stringify({ locale: selectedLocale, updates }),
             });
 
             if (!response.ok) {
@@ -488,7 +498,7 @@ export default function AdminCategoriesPage() {
             reorderInFlightRef.current = false;
             setReorderSaving(false);
         }
-    }, [fetchCategories]);
+    }, [fetchCategories, selectedLocale]);
 
     const handleDragEnd = useCallback(async (event: DragEndEvent) => {
         const { active, over } = event;
@@ -555,6 +565,7 @@ export default function AdminCategoriesPage() {
                         color: formColor.trim() || null,
                         parentId: formParentId,
                         isVisible: formVisible,
+                        locale: selectedLocale,
                     }),
                 }
             );
@@ -573,7 +584,7 @@ export default function AdminCategoriesPage() {
         } finally {
             setFormSaving(false);
         }
-    }, [editing, fetchCategories, formColor, formName, formParentId, formVisible]);
+    }, [editing, fetchCategories, formColor, formName, formParentId, formVisible, selectedLocale]);
 
     const handleDelete = useCallback(async () => {
         if (!deleteCandidate) {
@@ -671,13 +682,27 @@ export default function AdminCategoriesPage() {
                         </div>
                     ) : null}
                 </div>
-                <button
-                    onClick={() => openCreate(null)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors active:scale-95 hover:bg-amber-600 sm:w-auto"
-                >
-                    <Plus size={18} />
-                    Yeni kategori
-                </button>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <select
+                        value={selectedLocale}
+                        onChange={(event) => setSelectedLocale(event.target.value as GameContentLocale)}
+                        className="rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-bold"
+                        aria-label="Kelime paketi dili"
+                    >
+                        {GAME_CONTENT_LOCALES.map((locale) => (
+                            <option key={locale} value={locale}>
+                                {GAME_CONTENT_LOCALE_DEFINITIONS[locale].adminLabel}
+                            </option>
+                        ))}
+                    </select>
+                    <button
+                        onClick={() => openCreate(null)}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-colors active:scale-95 hover:bg-amber-600 sm:w-auto"
+                    >
+                        <Plus size={18} />
+                        Yeni kategori
+                    </button>
+                </div>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.9fr)]">

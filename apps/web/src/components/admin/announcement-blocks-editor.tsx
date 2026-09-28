@@ -29,22 +29,22 @@ const blockTypeOptions: Array<{
     icon: typeof Text;
 }> = [
     { type: "paragraph", label: "Paragraf", icon: Text },
-    { type: "heading", label: "Baslik", icon: Heading2 },
-    { type: "quote", label: "Alinti", icon: Quote },
+    { type: "heading", label: "Başlık", icon: Heading2 },
+    { type: "quote", label: "Alıntı", icon: Quote },
     { type: "bullet_list", label: "Madde Listesi", icon: List },
-    { type: "ordered_list", label: "Sirali Liste", icon: ListOrdered },
-    { type: "divider", label: "Ayirici", icon: Minus },
+    { type: "ordered_list", label: "Sıralı Liste", icon: ListOrdered },
+    { type: "divider", label: "Ayırıcı", icon: Minus },
 ];
 
 function createBlock(type: AnnouncementBlockType): AnnouncementBlock {
     switch (type) {
         case "heading":
-            return { type, level: 2, text: "Baslik" };
+            return { type, level: 2, text: "Başlık" };
         case "quote":
-            return { type, text: "Kisa bir alinti veya vurgu yazisi." };
+            return { type, text: "Kısa bir alıntı veya vurgu yazısı." };
         case "bullet_list":
         case "ordered_list":
-            return { type, items: ["Ilk madde"] };
+            return { type, items: ["İlk madde"] };
         case "divider":
             return { type };
         default:
@@ -130,7 +130,7 @@ export function AnnouncementBlocksEditor({
                                     onClick={() => moveBlock(index, -1)}
                                     disabled={index === 0}
                                     className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-slate-900 disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-                                    title="Yukari tasi"
+                                    title="Yukarı taşı"
                                 >
                                     <ChevronUp size={16} />
                                 </button>
@@ -139,7 +139,7 @@ export function AnnouncementBlocksEditor({
                                     onClick={() => moveBlock(index, 1)}
                                     disabled={index === value.length - 1}
                                     className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-slate-900 disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-                                    title="Asagi tasi"
+                                    title="Aşağı taşı"
                                 >
                                     <ChevronDown size={16} />
                                 </button>
@@ -147,7 +147,7 @@ export function AnnouncementBlocksEditor({
                                     type="button"
                                     onClick={() => removeBlock(index)}
                                     className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-                                    title="Blogu sil"
+                                    title="Bloğu sil"
                                 >
                                     <Trash2 size={16} />
                                 </button>
@@ -157,7 +157,7 @@ export function AnnouncementBlocksEditor({
                         {block.type === "heading" && (
                             <div className="mb-3">
                                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
-                                    Baslik seviyesi
+                                    Başlık seviyesi
                                 </label>
                                 <select
                                     value={block.level}
@@ -190,8 +190,8 @@ export function AnnouncementBlocksEditor({
                                     rows={block.type === "heading" ? 2 : block.type === "quote" ? 3 : 5}
                                     placeholder={
                                         block.type === "quote"
-                                            ? "Kisa bir alinti veya vurgu metni yazin."
-                                            : "Duyuru icerigini yazin."
+                                            ? "Kısa bir alıntı veya vurgu metni yazın."
+                                            : "Duyuru içeriğini yazın."
                                     }
                                     className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950"
                                 />
@@ -219,18 +219,18 @@ export function AnnouncementBlocksEditor({
                                         })
                                     }
                                     rows={5}
-                                    placeholder="Her satira bir madde yazin."
+                                    placeholder="Her satıra bir madde yazın."
                                     className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950"
                                 />
                                 <div className="text-right text-xs text-gray-400 dark:text-slate-500">
-                                    Madde basi en fazla {ANNOUNCEMENT_LIST_ITEM_MAX_LENGTH} karakter.
+                                    Madde başı en fazla {ANNOUNCEMENT_LIST_ITEM_MAX_LENGTH} karakter.
                                 </div>
                             </div>
                         )}
 
                         {block.type === "divider" && (
                             <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-                                Bu blok duyuru icine gorsel bir ayirici ekler.
+                                Bu blok duyuru içine görsel bir ayırıcı ekler.
                             </div>
                         )}
                     </div>

@@ -5,30 +5,33 @@ import { requireAdminSession } from "@/lib/admin/require-admin";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import {
     buildRateLimitHeaders,
-    consumeRequestRateLimit,
+    consumeDistributedRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import {
-    announcementBlocksSchema,
     announcementBlocksToHtml,
     toAnnouncementInputJson,
 } from "@/lib/announcements/content";
 import {
+    ANNOUNCEMENT_MEDIA_URL_MAX_LENGTH,
     sanitizeAnnouncementMedia,
     toAnnouncementMediaType,
 } from "@/lib/security/announcements";
+import {
+    announcementTranslationsSchema,
+    announcementTypeSchema,
+} from "@/lib/announcements/localization";
 
 export const dynamic = "force-dynamic";
 
 const updateAnnouncementSchema = z.object({
-    title: z.string().trim().min(1).max(255).optional(),
-    contentBlocks: announcementBlocksSchema.optional(),
-    type: z.enum(["guncelleme", "duyuru"]).optional(),
+    translations: announcementTranslationsSchema.optional(),
+    type: announcementTypeSchema.optional(),
     isVisible: z.boolean().optional(),
     isPinned: z.boolean().optional(),
     version: z.string().trim().max(50).nullable().optional(),
     tags: z.string().trim().max(500).nullable().optional(),
-    mediaUrl: z.string().trim().nullable().optional(),
+    mediaUrl: z.string().trim().max(ANNOUNCEMENT_MEDIA_URL_MAX_LENGTH).nullable().optional(),
     mediaType: z.enum(["image", "youtube"]).nullable().optional(),
 });
 
@@ -41,7 +44,7 @@ export async function PUT(
         return adminSession;
     }
 
-    const rateLimit = consumeRequestRateLimit({
+    const rateLimit = await consumeDistributedRequestRateLimit({
         bucket: "admin-announcement-update",
         key: `admin:${adminSession.id}:${getRequestIp(request)}`,
         windowMs: 60_000,
@@ -65,16 +68,17 @@ export async function PUT(
 
         const data: Record<string, unknown> = {};
 
-        if (parsedBody.title !== undefined) data.title = parsedBody.title;
         if (parsedBody.type !== undefined) data.type = parsedBody.type;
         if (parsedBody.isVisible !== undefined) data.isVisible = parsedBody.isVisible;
         if (parsedBody.isPinned !== undefined) data.isPinned = parsedBody.isPinned;
         if (parsedBody.version !== undefined) data.version = parsedBody.version || null;
         if (parsedBody.tags !== undefined) data.tags = parsedBody.tags || null;
 
-        if (parsedBody.contentBlocks !== undefined) {
-            data.contentBlocks = toAnnouncementInputJson(parsedBody.contentBlocks);
-            data.content = announcementBlocksToHtml(parsedBody.contentBlocks);
+        if (parsedBody.translations !== undefined) {
+            const turkish = parsedBody.translations.tr;
+            data.title = turkish.title;
+            data.contentBlocks = toAnnouncementInputJson(turkish.contentBlocks);
+            data.content = announcementBlocksToHtml(turkish.contentBlocks);
         }
 
         if (parsedBody.mediaUrl !== undefined || parsedBody.mediaType !== undefined) {
@@ -82,9 +86,60 @@ export async function PUT(
             data.mediaType = sanitizedMedia.mediaType;
         }
 
-        const announcement = await prisma.announcement.update({
-            where: { id: Number.parseInt(id, 10) },
-            data,
+        const announcementId = Number.parseInt(id, 10);
+        const announcement = await prisma.$transaction(async (transaction) => {
+            const updated = await transaction.announcement.update({
+                where: { id: announcementId },
+                data,
+            });
+
+            if (parsedBody.translations) {
+                const turkish = parsedBody.translations.tr;
+                await transaction.announcementTranslation.upsert({
+                    where: {
+                        announcementId_locale: { announcementId, locale: "tr" },
+                    },
+                    create: {
+                        announcementId,
+                        locale: "tr",
+                        title: turkish.title,
+                        content: announcementBlocksToHtml(turkish.contentBlocks),
+                        contentBlocks: toAnnouncementInputJson(turkish.contentBlocks),
+                    },
+                    update: {
+                        title: turkish.title,
+                        content: announcementBlocksToHtml(turkish.contentBlocks),
+                        contentBlocks: toAnnouncementInputJson(turkish.contentBlocks),
+                    },
+                });
+
+                const english = parsedBody.translations.en;
+                if (english) {
+                    await transaction.announcementTranslation.upsert({
+                        where: {
+                            announcementId_locale: { announcementId, locale: "en" },
+                        },
+                        create: {
+                            announcementId,
+                            locale: "en",
+                            title: english.title,
+                            content: announcementBlocksToHtml(english.contentBlocks),
+                            contentBlocks: toAnnouncementInputJson(english.contentBlocks),
+                        },
+                        update: {
+                            title: english.title,
+                            content: announcementBlocksToHtml(english.contentBlocks),
+                            contentBlocks: toAnnouncementInputJson(english.contentBlocks),
+                        },
+                    });
+                } else {
+                    await transaction.announcementTranslation.deleteMany({
+                        where: { announcementId, locale: "en" },
+                    });
+                }
+            }
+
+            return updated;
         });
 
         await writeAuditLog({
@@ -126,7 +181,7 @@ export async function DELETE(
         return adminSession;
     }
 
-    const rateLimit = consumeRequestRateLimit({
+    const rateLimit = await consumeDistributedRequestRateLimit({
         bucket: "admin-announcement-delete",
         key: `admin:${adminSession.id}:${getRequestIp(request)}`,
         windowMs: 60_000,

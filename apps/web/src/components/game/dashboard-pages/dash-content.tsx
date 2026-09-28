@@ -14,6 +14,8 @@ import { DashboardEmptyState, DashboardPageShell, DashboardSection } from "@/com
 import { CoinBadge } from "@/components/ui/coin-badge";
 import type { DashboardDataResponse } from "@/types/economy";
 import { WALLET_UPDATED_EVENT } from "@/lib/wallet-events";
+import { useI18n } from "@/components/providers/i18n-provider";
+import { toIntlLocale } from "@/lib/i18n/config";
 
 const statCardStyles = {
   blue: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
@@ -35,6 +37,7 @@ interface StatCardConfig {
 
 export function DashContent() {
   const { data: session } = useSession();
+  const { locale, t } = useI18n();
   const [data, setData] = useState<DashboardDataResponse | null>(null);
 
   useEffect(() => {
@@ -73,44 +76,44 @@ export function DashContent() {
 
   const stats: StatCardConfig[] = [
     {
-      label: "Maçlar",
+      label: t("dashboard.matches"),
       value: data?.totalMatches.toLocaleString() ?? "0",
       icon: Gamepad2,
       tone: "blue",
-      subLabel: `${recentMatchCount} son sonuç`,
+      subLabel: t("dashboard.recentResults", { count: recentMatchCount }),
       trend: "neutral",
     },
     {
-      label: "Galibiyet",
+      label: t("dashboard.wins"),
       value: data?.totalWins.toLocaleString() ?? "0",
       icon: Trophy,
       tone: "emerald",
-      subLabel: `%${data?.winRate ?? 0} kazanma oranı`,
+      subLabel: t("dashboard.winRate", { rate: data?.winRate ?? 0 }),
       trend: (data?.winRate ?? 0) >= 50 ? "up" : "neutral",
     },
     {
-      label: "Coin",
+      label: t("dashboard.coin"),
       value: data?.coinBalance.toLocaleString() ?? "0",
       icon: Coins,
       tone: "amber",
-      subLabel: `Toplam ${data?.totalCoinEarned ?? 0} kazanıldı`,
+      subLabel: t("dashboard.totalEarned", { count: data?.totalCoinEarned ?? 0 }),
       trend: (data?.coinBalance ?? 0) > 0 ? "up" : "neutral",
     },
     {
-      label: "Form",
+      label: t("dashboard.form"),
       value: `${recentWins}/${recentMatchCount}`,
       icon: Target,
       tone: "violet",
-      subLabel: "son maç kazanımı",
+      subLabel: t("dashboard.recentWins"),
       trend: recentMatchCount > 0 && recentWins < Math.ceil(recentMatchCount / 2) ? "down" : "up",
     },
   ];
 
   return (
     <DashboardPageShell
-      eyebrow="Performans Özeti"
-      title="Genel Bakış"
-      description="Maç geçmişi, coin bakiyesi ve son performans akışı burada toplanır."
+      eyebrow={t("dashboard.summary")}
+      title={t("dashboard.overview")}
+      description={t("dashboard.overviewHelp")}
       action={<CoinBadge value={data?.coinBalance ?? 0} className="rounded-2xl px-4 py-3" valueClassName="text-xl" />}
     >
       <div className="space-y-6">
@@ -150,18 +153,18 @@ export function DashContent() {
         </div>
 
         <DashboardSection
-          title="Son Hareketler"
-          description="Son odalar, skorlar ve coin değişimleri."
+          title={t("dashboard.recentActivity")}
+          description={t("dashboard.recentActivityHelp")}
           action={
             <span className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-              Son {recentMatchCount} maç
+              {t("dashboard.recentMatches", { count: recentMatchCount })}
             </span>
           }
         >
           {!data?.recentMatches || data.recentMatches.length === 0 ? (
             <DashboardEmptyState
-              title="Henüz son maç kaydı yok"
-              description="Bir maç tamamladığında son odaların, skorların ve ödüllerin burada görünür."
+              title={t("dashboard.noMatches")}
+              description={t("dashboard.noMatchesHelp")}
               icon={<Gamepad2 className="h-5 w-5" />}
             />
           ) : (
@@ -183,10 +186,10 @@ export function DashContent() {
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-black text-slate-900 dark:text-white">
-                        Room {match.roomCode}
+                        {t("dashboard.room", { code: match.roomCode })}
                       </div>
                       <div className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                        {new Date(match.createdAt).toLocaleDateString("tr-TR")}
+                        {new Date(match.createdAt).toLocaleDateString(toIntlLocale(locale))}
                       </div>
                     </div>
                   </div>

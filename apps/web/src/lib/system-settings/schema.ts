@@ -82,8 +82,8 @@ const economySettingsSchema = z.object({
 
 const capacitySettingsSchema = z
     .object({
-        roomMaxPlayers: z.number().int().min(4).max(20).default(12),
-        teamMaxPlayers: z.number().int().min(2).max(10).default(6),
+        roomMaxPlayers: z.number().int().min(4).max(20).default(10),
+        teamMaxPlayers: z.number().int().min(2).max(10).default(5),
         maxActiveRooms: z.number().int().min(1).max(100_000).default(500),
         maxOnlinePlayers: z.number().int().min(2).max(1_000_000).default(5_000),
         warningThresholdPercent: z.number().int().min(10).max(95).default(75),

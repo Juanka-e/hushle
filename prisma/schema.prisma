@@ -1357,12 +1357,15 @@ model GuestProgress {
 
 model Word {
   id         Int    @id @default(autoincrement())
-  wordText   String @unique @map("word_text") @db.VarChar(255)
+  wordText   String @map("word_text") @db.VarChar(255)
+  locale     String @default("tr") @db.VarChar(10)
   difficulty Int    @db.TinyInt
 
   tabooWords     TabooWord[]
   wordCategories WordCategory[]
 
+  @@unique([locale, wordText])
+  @@index([locale, difficulty])
   @@map("words")
 }
 
@@ -1383,12 +1386,14 @@ model Category {
   color     String? @db.VarChar(7)
   sortOrder Int     @default(0) @map("sort_order")
   isVisible Boolean @default(true) @map("is_visible")
+  locale    String  @default("tr") @db.VarChar(10)
 
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[] @relation("CategoryTree")
 
   wordCategories WordCategory[]
 
+  @@index([locale, isVisible, sortOrder])
   @@map("categories")
 }
 
@@ -1417,5 +1422,22 @@ model Announcement {
   mediaType String?  @map("media_type") @db.VarChar(20)
   createdAt DateTime @default(now()) @map("created_at")
 
+  translations AnnouncementTranslation[]
+
   @@map("announcements")
+}
+
+model AnnouncementTranslation {
+  id             Int    @id @default(autoincrement())
+  announcementId Int    @map("announcement_id")
+  locale         String @db.VarChar(10)
+  title          String @db.VarChar(255)
+  content        String @db.Text
+  contentBlocks  Json?  @map("content_blocks")
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, locale])
+  @@index([locale, announcementId])
+  @@map("announcement_translations")
 }

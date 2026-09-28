@@ -18,6 +18,7 @@ import type {
   UserInventoryResponse,
 } from "@/types/economy";
 import type { DashboardTab } from "./dashboard-nav";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 interface ProfileSidebarProps {
   onTabChange: (tab: DashboardTab) => void;
@@ -67,6 +68,7 @@ function buildDiscoveryRail(items: CatalogStoreItemView[]): CatalogStoreItemView
 
 export function DashboardProfileSidebar({ onTabChange, mode = "sidebar" }: ProfileSidebarProps) {
   const { data: session } = useSession();
+  const { t } = useI18n();
   const [profile, setProfile] = useState<SidebarState | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [discoveryItems, setDiscoveryItems] = useState<CatalogStoreItemView[]>([]);
@@ -190,14 +192,14 @@ export function DashboardProfileSidebar({ onTabChange, mode = "sidebar" }: Profi
 
           <h2 className="text-xl font-black text-slate-800 dark:text-white">{name}</h2>
           <p className="mb-6 text-xs font-black uppercase tracking-[0.2em] text-blue-500 dark:text-blue-400">
-            {profile?.totalMatches ?? 0} maç oynandı
+            {t("profile.matchesPlayed", { count: profile?.totalMatches ?? 0 })}
           </p>
 
           <div className="mb-6 w-full rounded-[24px] border border-slate-200/60 bg-slate-100/60 p-4 dark:border-slate-800/70 dark:bg-slate-900/70">
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-[20px] border border-slate-200/50 bg-white/80 p-3 dark:border-slate-800/70 dark:bg-slate-950/70">
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                  Kazanma
+                  {t("profile.winRate")}
                 </div>
                 <div className="text-lg font-black text-slate-800 dark:text-white">{profile?.winRate ?? 0}%</div>
               </div>
@@ -226,8 +228,8 @@ export function DashboardProfileSidebar({ onTabChange, mode = "sidebar" }: Profi
 
       <div className="mt-auto border-t border-slate-200/60 bg-slate-50/60 p-6 dark:border-slate-800/70 dark:bg-slate-950/45">
         <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>Panel Erişimi</span>
-          <span className="font-semibold text-slate-700 dark:text-slate-300">Oyun içi + tam sayfa</span>
+          <span>{t("profile.panelAccess")}</span>
+          <span className="font-semibold text-slate-700 dark:text-slate-300">{t("profile.accessModes")}</span>
         </div>
       </div>
     </aside>
@@ -243,15 +245,16 @@ function QuickEquipPanel({
   onOpenInventory: () => void;
   compact?: boolean;
 }) {
+  const { locale, t } = useI18n();
   return (
     <div className={`w-full text-left ${compact ? "" : "mb-8"}`}>
       <div className={`flex items-center justify-between gap-3 ${compact ? "mb-3" : "mb-4"}`}>
       <h3 className="text-xs font-black uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-        Hızlı Kuşan
+        {t("profile.quickEquip")}
       </h3>
       {compact ? (
         <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
-          Envanterden aninda degistir
+          {t("profile.quickEquipHelp")}
         </span>
       ) : null}
       </div>
@@ -261,7 +264,7 @@ function QuickEquipPanel({
             key={item.inventoryItemId}
             onClick={onOpenInventory}
             className={`ring-indigo-400 flex items-center justify-center overflow-hidden rounded-[22px] border border-white/70 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.58),_transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(226,232,240,0.9))] p-1 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.45)] transition-all hover:-translate-y-0.5 hover:ring-2 dark:border-slate-700/70 dark:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.1),_transparent_55%),linear-gradient(180deg,rgba(30,41,59,0.88),rgba(15,23,42,0.95))] ${compact ? "aspect-square min-h-[68px]" : "h-[92px]"}`}
-            title={`${item.name} • ${formatCosmeticTypeLabel(item.type)}`}
+            title={`${item.name} • ${formatCosmeticTypeLabel(item.type, locale)}`}
             type="button"
           >
             <CosmeticThumbnail item={item} />
@@ -271,7 +274,7 @@ function QuickEquipPanel({
           onClick={onOpenInventory}
           className={`flex items-center justify-center rounded-[22px] border-2 border-dashed border-slate-300 bg-slate-100/80 text-slate-500 transition-colors hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800 ${compact ? "aspect-square min-h-[68px]" : "h-[92px]"}`}
           type="button"
-          aria-label="Envanteri aç"
+          aria-label={t("profile.openInventory")}
         >
           <Plus size={18} />
         </button>
@@ -360,6 +363,7 @@ function DiscoveryStripPanel({
   secondaryItems: CatalogStoreItemView[];
   onOpenShop: () => void;
 }) {
+  const { locale, t } = useI18n();
   const stripItems = [leadItem, ...secondaryItems].filter(Boolean) as CatalogStoreItemView[];
 
   return (
@@ -368,10 +372,10 @@ function DiscoveryStripPanel({
         <div>
           <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
             <Sparkles size={12} />
-            Önerilenler
+            {t("profile.recommended")}
           </h3>
           <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-            Sahip olmadığın öne çıkan ürünler burada sabit vitrinde görünür.
+            {t("profile.recommendedHelp")}
           </p>
         </div>
         <button
@@ -379,7 +383,7 @@ function DiscoveryStripPanel({
           onClick={onOpenShop}
           className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-600 transition hover:border-slate-300 hover:bg-white dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-900"
         >
-          Mağaza
+          {t("profile.store")}
           <ArrowUpRight size={11} />
         </button>
       </div>
@@ -390,7 +394,7 @@ function DiscoveryStripPanel({
           onClick={onOpenShop}
           className="w-full rounded-2xl border border-dashed border-slate-300/70 bg-white/40 px-4 py-4 text-left text-xs font-medium text-slate-500 transition hover:bg-white/60 dark:border-slate-700/70 dark:bg-slate-900/30 dark:text-slate-400 dark:hover:bg-slate-900/50"
         >
-          Şu anda gösterilecek ürün bulunmuyor. Yeni koleksiyonlar geldiğinde burada görünür.
+          {t("profile.noDiscovery")}
         </button>
       ) : (
         <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200/70 bg-gradient-to-b from-white/85 to-slate-100/75 p-3 shadow-inner dark:border-slate-700/60 dark:from-slate-900/70 dark:to-slate-950/70">
@@ -409,7 +413,7 @@ function DiscoveryStripPanel({
                   {item.name}
                 </div>
                 <div className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                  {formatCosmeticTypeLabel(item.type)}
+                  {formatCosmeticTypeLabel(item.type, locale)}
                 </div>
                 <div className="mt-2 flex items-center gap-1 text-[11px] font-black text-amber-500">
                   {item.pricing.finalPriceCoin.toLocaleString()}

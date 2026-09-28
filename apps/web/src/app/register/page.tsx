@@ -17,6 +17,8 @@ import {
 } from "@hushle/auth-policy";
 import { toast } from "sonner";
 import { useBranding } from "@/components/providers/branding-provider";
+import { useI18n } from "@/components/providers/i18n-provider";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -41,6 +43,7 @@ export default function RegisterPage() {
     const [loading, setLoading] = useState(false);
     const router = useRouter();
     const branding = useBranding();
+    const { locale, t } = useI18n();
     const passwordPolicy = useMemo(
         () =>
             evaluatePasswordPolicy(password, {
@@ -54,10 +57,10 @@ export default function RegisterPage() {
         ? Math.max(1, passwordPolicy.score)
         : 0;
     const strengthLabel = passwordPolicy.accepted
-        ? "Güçlü parola"
+        ? t("auth.strongPassword")
         : password
-          ? (passwordPolicy.issues[0] ?? "Parolayı güçlendirin.")
-          : `En az ${PASSWORD_MIN_LENGTH} karakter kullanın.`;
+          ? (locale === "tr" ? passwordPolicy.issues[0] : null) ?? t("auth.strengthenPassword")
+          : t("auth.minPassword", { count: PASSWORD_MIN_LENGTH });
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -83,20 +86,20 @@ export default function RegisterPage() {
             };
 
             if (!res.ok) {
-                setError(data.error || "Kayit basarisiz.");
+                setError(data.error || t("auth.registerFailed"));
             } else {
                 if (data.verificationRequired) {
                     toast.success(
-                        "Doğrulama bağlantısı e-posta adresine gönderildi."
+                        t("auth.verificationSent")
                     );
                     router.push("/verify-email?sent=1&required=1");
                 } else {
-                    toast.success("Kayıt başarılı! Giriş yapabilirsiniz.");
+                    toast.success(t("auth.registrationComplete"));
                     router.push("/login");
                 }
             }
         } catch {
-            setError("Bir hata oluştu.");
+            setError(t("auth.genericError"));
         } finally {
             setLoading(false);
         }
@@ -104,6 +107,7 @@ export default function RegisterPage() {
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 dark:bg-slate-900 [@media(max-height:500px)]:items-start [@media(max-height:500px)]:p-2">
+            <div className="fixed right-4 top-4"><LanguageSwitcher /></div>
             <Card className="w-full max-w-sm shadow-xl">
                 <CardHeader className="space-y-4 [@media(max-height:500px)]:py-3">
                     <div className="flex flex-col items-center gap-3 text-center">
@@ -126,10 +130,10 @@ export default function RegisterPage() {
                         <div className="space-y-1">
                             <CardTitle className="flex items-center justify-center gap-2 text-2xl font-bold">
                                 <UserPlus className="h-5 w-5 text-primary" />
-                                Kayıt Ol
+                                {t("auth.registerTitle")}
                             </CardTitle>
                             {!branding.logoUrl ? (
-                                <CardDescription>Yeni hesabını oluştur.</CardDescription>
+                                <CardDescription>{t("auth.registerDescription")}</CardDescription>
                             ) : null}
                         </div>
                     </div>
@@ -141,7 +145,7 @@ export default function RegisterPage() {
                     >
                         <Input
                             type="text"
-                            placeholder="Kullanıcı adı"
+                            placeholder={t("auth.username")}
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             required
@@ -151,7 +155,7 @@ export default function RegisterPage() {
                         />
                         <Input
                             type="email"
-                            placeholder="E-posta"
+                            placeholder={t("auth.email")}
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
@@ -162,7 +166,7 @@ export default function RegisterPage() {
                             <div className="relative">
                                 <Input
                                     type={showPassword ? "text" : "password"}
-                                    placeholder="Parola"
+                                    placeholder={t("auth.password")}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
@@ -178,8 +182,8 @@ export default function RegisterPage() {
                                     className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
                                     aria-label={
                                         showPassword
-                                            ? "Parolayı gizle"
-                                            : "Parolayı göster"
+                                            ? t("auth.hidePassword")
+                                            : t("auth.showPassword")
                                     }
                                 >
                                     {showPassword ? (
@@ -236,15 +240,15 @@ export default function RegisterPage() {
                             onFocus={() => prewarmCaptchaForAction("register")}
                             onPointerEnter={() => prewarmCaptchaForAction("register")}
                         >
-                            {loading ? "Kayıt oluşturuluyor..." : "Kayıt Ol"}
+                            {loading ? t("auth.registering") : t("auth.registerTitle")}
                         </Button>
                     </form>
                 </CardContent>
                 <CardFooter className="flex justify-center [@media(max-height:500px)]:hidden">
                     <p className="text-sm text-muted-foreground">
-                        Zaten hesabın var mı?{" "}
+                        {t("auth.hasAccount")} {" "}
                         <Link href="/login" className="text-primary hover:underline">
-                            Giriş Yap
+                            {t("auth.loginTitle")}
                         </Link>
                     </p>
                 </CardFooter>

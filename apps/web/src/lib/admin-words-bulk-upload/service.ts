@@ -1,6 +1,15 @@
 import { prisma } from "@/lib/prisma";
+import {
+    DEFAULT_GAME_CONTENT_LOCALE,
+    getGameContentLocaleDefinition,
+    type GameContentLocale,
+} from "@hushle/domain-game";
 
 export type BulkUploadMode = "fixed_categories" | "csv_categories";
+export const MAX_BULK_WORD_UPLOAD_FILE_BYTES = 2 * 1024 * 1024;
+export const MAX_BULK_WORD_UPLOAD_ROWS = 1_000;
+export const MAX_BULK_TABOO_WORDS_PER_ROW = 12;
+const MAX_WORD_FIELD_LENGTH = 255;
 
 export interface BulkUploadResults {
     success: number;
@@ -15,8 +24,13 @@ interface CategoryRecord {
     parentId: number | null;
 }
 
-export function normalizeLabel(value: string): string {
-    return value.trim().toLocaleLowerCase("tr-TR");
+export function normalizeLabel(
+    value: string,
+    locale: GameContentLocale = DEFAULT_GAME_CONTENT_LOCALE
+): string {
+    return value
+        .trim()
+        .toLocaleLowerCase(getGameContentLocaleDefinition(locale).intlLocale);
 }
 
 export function parsePositiveInteger(value: string): number | null {
@@ -30,7 +44,8 @@ export function parseRow(line: string): string[] {
 
 export async function resolveFixedCategoryIds(
     categoryIdValue: string,
-    subcategoryIdValue: string
+    subcategoryIdValue: string,
+    locale: GameContentLocale = DEFAULT_GAME_CONTENT_LOCALE
 ): Promise<number[] | { error: string }> {
     const selectedCategoryIds = [categoryIdValue, subcategoryIdValue]
         .map(parsePositiveInteger)
@@ -42,7 +57,7 @@ export async function resolveFixedCategoryIds(
     }
 
     const categories = await prisma.category.findMany({
-        where: { id: { in: uniqueCategoryIds } },
+        where: { id: { in: uniqueCategoryIds }, locale },
         select: { id: true, parentId: true },
     });
 
@@ -65,13 +80,16 @@ export async function resolveFixedCategoryIds(
     return categoryIdValue ? [parsePositiveInteger(categoryIdValue)!] : [];
 }
 
-export function buildCategoryIndex(categories: CategoryRecord[]) {
+export function buildCategoryIndex(
+    categories: CategoryRecord[],
+    locale: GameContentLocale = DEFAULT_GAME_CONTENT_LOCALE
+) {
     const byRootName = new Map<string, CategoryRecord>();
     const byParentAndChildName = new Map<string, CategoryRecord>();
 
     for (const category of categories) {
         if (category.parentId === null) {
-            byRootName.set(normalizeLabel(category.name), category);
+            byRootName.set(normalizeLabel(category.name, locale), category);
             continue;
         }
 
@@ -81,7 +99,7 @@ export function buildCategoryIndex(categories: CategoryRecord[]) {
         }
 
         byParentAndChildName.set(
-            `${normalizeLabel(parent.name)}::${normalizeLabel(category.name)}`,
+            `${normalizeLabel(parent.name, locale)}::${normalizeLabel(category.name, locale)}`,
             category
         );
     }
@@ -92,7 +110,8 @@ export function buildCategoryIndex(categories: CategoryRecord[]) {
 export function extractCsvCategoryIds(
     rowIndex: number,
     cols: string[],
-    categoryIndex: ReturnType<typeof buildCategoryIndex>
+    categoryIndex: ReturnType<typeof buildCategoryIndex>,
+    locale: GameContentLocale = DEFAULT_GAME_CONTENT_LOCALE
 ): { categoryIds: number[]; tabooOffset: number } | { error: string } {
     const categoryName = cols[2] ?? "";
     const subcategoryName = cols[3] ?? "";
@@ -101,7 +120,7 @@ export function extractCsvCategoryIds(
         return { error: `Satir ${rowIndex}: CSV modunda kategori zorunlu.` };
     }
 
-    const rootCategory = categoryIndex.byRootName.get(normalizeLabel(categoryName));
+    const rootCategory = categoryIndex.byRootName.get(normalizeLabel(categoryName, locale));
     if (!rootCategory) {
         return { error: `Satir ${rowIndex}: "${categoryName}" kategorisi bulunamadi.` };
     }
@@ -111,7 +130,7 @@ export function extractCsvCategoryIds(
     }
 
     const subcategory = categoryIndex.byParentAndChildName.get(
-        `${normalizeLabel(rootCategory.name)}::${normalizeLabel(subcategoryName)}`
+        `${normalizeLabel(rootCategory.name, locale)}::${normalizeLabel(subcategoryName, locale)}`
     );
     if (!subcategory) {
         return {
@@ -127,17 +146,36 @@ export async function processBulkWordUpload(options: {
     mode: BulkUploadMode;
     categoryIdValue?: string;
     subcategoryIdValue?: string;
+    locale?: GameContentLocale;
 }) {
-    const { text, mode, categoryIdValue = "", subcategoryIdValue = "" } = options;
+    const {
+        text,
+        mode,
+        categoryIdValue = "",
+        subcategoryIdValue = "",
+        locale = DEFAULT_GAME_CONTENT_LOCALE,
+    } = options;
 
     const lines = text.split("\n").filter((line) => line.trim());
     if (lines.length === 0) {
         return { error: "CSV dosyasi bos." } as const;
     }
 
+    const firstLine = lines[0].toLocaleLowerCase(
+        getGameContentLocaleDefinition(locale).intlLocale
+    ).trim();
+    const startIndex = firstLine.startsWith("word") || firstLine.startsWith("kelime")
+        ? 1
+        : 0;
+    if (lines.length - startIndex > MAX_BULK_WORD_UPLOAD_ROWS) {
+        return {
+            error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satiri icerebilir.`,
+        } as const;
+    }
+
     let fixedCategoryIds: number[] = [];
     if (mode === "fixed_categories") {
-        const resolved = await resolveFixedCategoryIds(categoryIdValue, subcategoryIdValue);
+        const resolved = await resolveFixedCategoryIds(categoryIdValue, subcategoryIdValue, locale);
         if (!Array.isArray(resolved)) {
             return { error: resolved.error } as const;
         }
@@ -147,15 +185,10 @@ export async function processBulkWordUpload(options: {
     let categoryIndex: ReturnType<typeof buildCategoryIndex> | null = null;
     if (mode === "csv_categories") {
         const categories = await prisma.category.findMany({
+            where: { locale },
             select: { id: true, name: true, parentId: true },
         });
-        categoryIndex = buildCategoryIndex(categories);
-    }
-
-    let startIndex = 0;
-    const firstLine = lines[0].toLocaleLowerCase("tr-TR").trim();
-    if (firstLine.startsWith("word") || firstLine.startsWith("kelime")) {
-        startIndex = 1;
+        categoryIndex = buildCategoryIndex(categories, locale);
     }
 
     const results: BulkUploadResults = {
@@ -186,7 +219,7 @@ export async function processBulkWordUpload(options: {
         let tabooOffset = 2;
 
         if (mode === "csv_categories") {
-            const resolved = extractCsvCategoryIds(rowNumber, cols, categoryIndex!);
+            const resolved = extractCsvCategoryIds(rowNumber, cols, categoryIndex!, locale);
             if ("error" in resolved) {
                 results.errors.push(resolved.error);
                 continue;
@@ -202,6 +235,11 @@ export async function processBulkWordUpload(options: {
             continue;
         }
 
+        if (wordText.length > MAX_WORD_FIELD_LENGTH) {
+            results.errors.push(`Satir ${rowNumber}: Kelime en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`);
+            continue;
+        }
+
         if (Number.isNaN(difficulty) || difficulty < 1 || difficulty > 3) {
             results.errors.push(`Satir ${rowNumber}: Zorluk 1-3 arasinda olmali.`);
             continue;
@@ -212,8 +250,18 @@ export async function processBulkWordUpload(options: {
             continue;
         }
 
+        if (tabooWords.length > MAX_BULK_TABOO_WORDS_PER_ROW) {
+            results.errors.push(`Satir ${rowNumber}: En fazla ${MAX_BULK_TABOO_WORDS_PER_ROW} yasakli kelime eklenebilir.`);
+            continue;
+        }
+
+        if (tabooWords.some((tabooWord) => tabooWord.length > MAX_WORD_FIELD_LENGTH)) {
+            results.errors.push(`Satir ${rowNumber}: Yasakli kelimeler en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`);
+            continue;
+        }
+
         const existing = await prisma.word.findUnique({
-            where: { wordText },
+            where: { locale_wordText: { locale, wordText } },
         });
         if (existing) {
             results.skipped += 1;
@@ -225,6 +273,7 @@ export async function processBulkWordUpload(options: {
             await prisma.word.create({
                 data: {
                     wordText,
+                    locale,
                     difficulty,
                     tabooWords: {
                         create: tabooWords.map((tabooWordText) => ({ tabooWordText })),

@@ -2,6 +2,10 @@ import {
     getRedisKey,
     invalidateJsonCache,
 } from "@hushle/platform-cache";
+import {
+    GAME_CONTENT_LOCALES,
+    type GameContentLocale,
+} from "@hushle/domain-game";
 
 export const APPLICATION_CACHE_KEYS = {
     adminDashboardStaticStats: getRedisKey(
@@ -40,6 +44,10 @@ export const APPLICATION_CACHE_KEYS = {
         "v1"
     ),
 } as const;
+
+export function getVisibleCategoriesCacheKey(locale: GameContentLocale): string {
+    return getRedisKey("cache", "visible-categories", "v2", locale);
+}
 
 export async function invalidateAdminDashboardStatsCache(): Promise<void> {
     await invalidateJsonCache(
@@ -101,5 +109,10 @@ export async function invalidateUserDashboardMatchSummaryCache(
 }
 
 export async function invalidateVisibleCategoriesCache(): Promise<void> {
-    await invalidateJsonCache(APPLICATION_CACHE_KEYS.visibleCategories);
+    await Promise.all([
+        invalidateJsonCache(APPLICATION_CACHE_KEYS.visibleCategories),
+        ...GAME_CONTENT_LOCALES.map((locale) =>
+            invalidateJsonCache(getVisibleCategoriesCacheKey(locale))
+        ),
+    ]);
 }

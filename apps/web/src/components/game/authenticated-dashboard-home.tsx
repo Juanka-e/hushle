@@ -27,6 +27,8 @@ import { AnnouncementsModal } from "@/components/game/announcements-modal";
 import { DashboardLayout } from "@/components/game/dashboard-overlay";
 import type { DashboardTab } from "@/components/game/dashboard-nav";
 import { useBranding } from "@/components/providers/branding-provider";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
+import { useI18n } from "@/components/providers/i18n-provider";
 import { getFreshActiveRoomCodeFromPresence } from "@/lib/client/active-room-presence";
 import {
   getCaptchaTokenForAction,
@@ -66,6 +68,7 @@ export function AuthenticatedDashboardHome({
   const router = useRouter();
   const { data: session } = useSession();
   const branding = useBranding();
+  const { t } = useI18n();
   const sessionUsername = session?.user?.name || "";
 
   async function getServerActiveRoomContext(): Promise<ActiveRoomContext | null> {
@@ -142,7 +145,7 @@ export function AuthenticatedDashboardHome({
     }
 
     if (serverActiveRoomCode) {
-      setError(`Zaten ${serverActiveRoomCode} odasindasin. Yeni oda acmadan once mevcut odana geri don.`);
+      setError(t("home.activeRoomConflict", { code: serverActiveRoomCode }));
       return;
     }
 
@@ -152,17 +155,17 @@ export function AuthenticatedDashboardHome({
         window.localStorage
       );
       if (activeRoomCodeFromPresence) {
-        setError(`Zaten ${activeRoomCodeFromPresence} odasindasin. Yeni oda acmadan once mevcut odana geri don.`);
+        setError(t("home.activeRoomConflict", { code: activeRoomCodeFromPresence }));
         return;
       }
     }
 
     if (!currentUsername) {
-      setError("Lutfen bir kullanici adi girin.");
+      setError(t("home.usernameRequired"));
       return;
     }
     if (!isCreate && !roomCode.trim()) {
-      setError("Lutfen bir oda kodu girin.");
+      setError(t("home.roomCodeRequired"));
       return;
     }
 
@@ -214,12 +217,12 @@ export function AuthenticatedDashboardHome({
       socket.on("connect_error", (error) => {
         setError(
           getSocketProtocolErrorMessage(error) ??
-            "Sunucuya baglanilamadi. Lutfen tekrar dene."
+            t("home.connectionFailed")
         );
         setIsConnecting(false);
       });
     } catch {
-      setError("Guvenlik dogrulamasi baslatilamadi. Lutfen tekrar deneyin.");
+      setError(t("home.securityFailed"));
       setIsConnecting(false);
     }
   };
@@ -239,15 +242,15 @@ export function AuthenticatedDashboardHome({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-700/80 dark:text-amber-300/80">
-                  Aktif Odan Var
+                  {t("home.activeRoomTitle")}
                 </div>
                 <div className="mt-1 text-sm font-semibold">
-                  {activeRoomContext.roomCode} odasina geri donebilirsin.
+                  {t("home.activeRoomReturn", { code: activeRoomContext.roomCode })}
                 </div>
                 <div className="mt-1 text-xs text-amber-800/80 dark:text-amber-200/80">
                   {activeRoomContext.requiresHostReturn
-                    ? "Bu odada yonetici geri donusu bekleniyor. Giris yapman devir riskini azaltir."
-                    : "Yeni oda acmadan once mevcut odana geri donmen bekleniyor."}
+                    ? t("home.activeRoomHostHelp")
+                    : t("home.activeRoomHelp")}
                 </div>
                 <Button
                   type="button"
@@ -255,14 +258,14 @@ export function AuthenticatedDashboardHome({
                   className="mt-3 h-10 rounded-xl bg-amber-600 px-4 font-bold text-white hover:bg-amber-700"
                 >
                   <ArrowRight className="mr-2 h-4 w-4" />
-                  Odaya Don
+                  {t("home.returnRoom")}
                 </Button>
               </div>
             </div>
           </div>
         ) : activeRoomLoading ? (
           <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-4 text-center text-sm text-slate-500 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-300">
-            Aktif oda durumu kontrol ediliyor...
+            {t("home.checkingRoom")}
           </div>
         ) : null}
 
@@ -271,8 +274,8 @@ export function AuthenticatedDashboardHome({
             <Gamepad2 className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h2 className="text-2xl font-black tracking-tight text-foreground">Oyna</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Yeni oda olustur veya mevcut odaya katil</p>
+            <h2 className="text-2xl font-black tracking-tight text-foreground">{t("home.playTitle")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("home.playDescription")}</p>
           </div>
         </div>
 
@@ -286,26 +289,26 @@ export function AuthenticatedDashboardHome({
           {isConnecting ? (
             <div className="flex items-center gap-2">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Baglaniyor...
+              {t("home.connecting")}
             </div>
           ) : (
             <div className="flex items-center gap-2">
               <Plus className="h-5 w-5" />
-              Yeni Oda Olustur
+              {t("home.createRoom")}
             </div>
           )}
         </Button>
 
         <div className="flex items-center gap-3">
           <Separator className="flex-1" />
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">veya</span>
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{t("home.or")}</span>
           <Separator className="flex-1" />
         </div>
 
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <Sparkles className="h-4 w-4 text-muted-foreground" />
-            Oda Kodunu Gir
+            {t("home.enterRoomCode")}
           </div>
           <div className="flex gap-2">
             <Input
@@ -330,7 +333,7 @@ export function AuthenticatedDashboardHome({
               className="h-12 rounded-xl px-6 font-bold"
             >
               <LogIn className="mr-1 h-5 w-5" />
-              Katil
+              {t("home.join")}
             </Button>
           </div>
         </div>
@@ -376,6 +379,7 @@ export function AuthenticatedDashboardHome({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1 rounded-full border border-white/60 bg-white/75 px-1.5 py-1 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/70">
+            <LanguageSwitcher compact />
             <Button variant="ghost" size="icon" onClick={() => setShowAnnouncements(true)} className="h-8 w-8 rounded-full sm:h-8 sm:w-8">
               <Megaphone className="h-4 w-4" />
             </Button>

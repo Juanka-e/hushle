@@ -13,29 +13,29 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
 test("home page renders primary lobby actions", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: /Yeni Oda Olustur/i })).toBeVisible();
-  await expect(page.getByPlaceholder(/Adinizi girin/i)).toBeVisible();
-  await expect(page.getByPlaceholder(/ABC123|Orn: ABC123/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Duyurulari ac/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Temayi degistir/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Yeni Oda Oluştur" })).toBeVisible();
+  await expect(page.getByPlaceholder("Adınızı girin...")).toBeVisible();
+  await expect(page.getByPlaceholder("Örn: ABC123")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Duyuruları aç" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Temayı değiştir" })).toBeVisible();
 });
 
 test("home page validates guest identity before room actions", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: /Yeni Oda Olustur/i })).toBeDisabled();
-  await page.getByPlaceholder(/Adinizi girin/i).fill("Launch Guest");
-  await expect(page.getByRole("button", { name: /Yeni Oda Olustur/i })).toBeEnabled();
-  await expect(page.getByRole("button", { name: /^Katil$/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Yeni Oda Oluştur" })).toBeDisabled();
+  await page.getByPlaceholder("Adınızı girin...").fill("Launch Guest");
+  await expect(page.getByRole("button", { name: "Yeni Oda Oluştur" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Katıl", exact: true })).toBeDisabled();
 });
 
 test("announcements modal opens and closes accessibly", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: /Duyurulari ac/i }).click();
-  await expect(page.getByRole("heading", { name: /Yenilikler/i })).toBeVisible();
-  await page.getByRole("button", { name: /Duyurulari kapat/i }).click();
-  await expect(page.getByRole("heading", { name: /Yenilikler/i })).toBeHidden();
+  await page.getByRole("button", { name: "Duyuruları aç" }).click();
+  await expect(page.getByRole("heading", { name: "Yenilikler" })).toBeVisible();
+  await page.getByRole("button", { name: "Kapat" }).click();
+  await expect(page.getByRole("heading", { name: "Yenilikler" })).toBeHidden();
 });
 
 test("login page renders credentials form", async ({ page }) => {

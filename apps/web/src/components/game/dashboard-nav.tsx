@@ -2,6 +2,7 @@
 
 import { LayoutDashboard, Backpack, ShoppingBag, Settings, HelpCircle, Bell, Play, Gamepad2 } from "lucide-react";
 import { useBranding } from "@/components/providers/branding-provider";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 export type DashboardTab = "play" | "dash" | "inventory" | "shop" | "settings";
 
@@ -16,11 +17,11 @@ interface DashboardNavProps {
   onHelpClick?: () => void;
 }
 
-const navItems: { id: DashboardTab; icon: typeof LayoutDashboard; label: string }[] = [
-  { id: "dash", icon: LayoutDashboard, label: "Genel" },
-  { id: "inventory", icon: Backpack, label: "Envanter" },
-  { id: "shop", icon: ShoppingBag, label: "Mağaza" },
-  { id: "settings", icon: Settings, label: "Ayarlar" },
+const navItems = [
+  { id: "dash" as const, icon: LayoutDashboard, labelKey: "nav.overview" as const },
+  { id: "inventory" as const, icon: Backpack, labelKey: "nav.inventory" as const },
+  { id: "shop" as const, icon: ShoppingBag, labelKey: "nav.shop" as const },
+  { id: "settings" as const, icon: Settings, labelKey: "nav.settings" as const },
 ];
 
 export function DashboardNav({
@@ -34,6 +35,7 @@ export function DashboardNav({
   onHelpClick,
 }: DashboardNavProps) {
   const branding = useBranding();
+  const { t } = useI18n();
   const compactLabel = branding.siteShortName.trim().toUpperCase() || "TABU";
 
   return (
@@ -49,7 +51,7 @@ export function DashboardNav({
             }`}
           >
             <Play size={20} className="ml-0.5" />
-            <span className="text-[10px] font-black uppercase tracking-[0.22em]">Oyna</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.22em]">{t("nav.play")}</span>
           </button>
         ) : (
           <div className="flex min-h-[72px] w-full items-center justify-center overflow-hidden rounded-[24px] border border-white/50 bg-white/85 px-3 text-center shadow-lg dark:border-slate-700/60 dark:bg-slate-900/80">
@@ -75,7 +77,7 @@ export function DashboardNav({
               }`}
             >
               <Icon size={22} className="transition-transform group-hover:scale-110" />
-              <span className="text-[10px] font-black uppercase tracking-[0.14em]">{item.label}</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.14em]">{t(item.labelKey)}</span>
             </button>
           );
         })}
@@ -95,7 +97,7 @@ export function DashboardNav({
                   {notificationUnreadCount > 9 ? "9+" : notificationUnreadCount}
                 </span>
               ) : null}
-              <span className="text-[10px] font-black uppercase tracking-[0.14em]">Bildirim</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.14em]">{t("nav.notifications")}</span>
             </button>
           ) : null}
           <button
@@ -104,7 +106,7 @@ export function DashboardNav({
             className="flex w-full flex-col items-center justify-center gap-1 rounded-[22px] px-2 py-3 text-slate-400 transition-all hover:bg-slate-100/70 hover:text-slate-800 dark:text-slate-500 dark:hover:bg-slate-900/80 dark:hover:text-slate-200"
           >
             <HelpCircle size={20} />
-              <span className="text-[10px] font-black uppercase tracking-[0.14em]">Destek</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.14em]">{t("nav.support")}</span>
           </button>
         </div>
       ) : null}
@@ -118,8 +120,9 @@ export function DashboardNavMobile({
   showPlayTab,
 }: DashboardNavProps) {
   const branding = useBranding();
+  const { t } = useI18n();
   const allItems = showPlayTab
-    ? [{ id: "play" as DashboardTab, icon: Play, label: "Oyna" }, ...navItems]
+    ? [{ id: "play" as const, icon: Play, labelKey: "nav.play" as const }, ...navItems]
     : navItems;
 
   return (
@@ -137,7 +140,7 @@ export function DashboardNavMobile({
         </div>
 
         <div className="rounded-full border border-white/60 bg-white/75 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/80 dark:text-slate-400">
-          {showPlayTab ? "Lobi" : "Panel"}
+          {showPlayTab ? t("nav.lobby") : t("nav.panel")}
         </div>
       </div>
 
@@ -156,7 +159,7 @@ export function DashboardNavMobile({
               }`}
             >
               <Icon size={18} />
-              <span className="text-[10px] font-black uppercase tracking-[0.14em]">{item.label}</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.14em]">{t(item.labelKey)}</span>
             </button>
           );
         })}

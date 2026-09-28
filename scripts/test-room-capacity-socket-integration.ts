@@ -133,6 +133,25 @@ async function run(): Promise<void> {
         }
         assert.equal("creatorId" in fourth.lobby, false);
 
+        const hostPlayer = fourth.lobby.oyuncular.find(player => player.ad === "CapacityGuestA")!;
+        const teammate = fourth.lobby.oyuncular.find(player => player.takim === hostPlayer.takim && player.playerId !== hostPlayer.playerId)!;
+        let unauthorizedUpdates = 0;
+        const countUpdate = () => { unauthorizedUpdates++; };
+        creator.socket.on("lobiGuncelle", countUpdate);
+        joiner.socket.emit("narrator_order", { playerId: teammate.playerId, direction: "up" });
+        await new Promise(resolve => setTimeout(resolve, 400));
+        creator.socket.off("lobiGuncelle", countUpdate);
+        assert.equal(unauthorizedUpdates, 0, "non-host cannot reorder narrators");
+
+        const reordered = new Promise<LobbyPayload>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("Narrator order update timed out")), timeoutMs);
+            creator.socket.once("lobiGuncelle", lobby => { clearTimeout(timer); resolve(lobby); });
+        });
+        creator.socket.emit("narrator_order", { playerId: teammate.playerId, direction: "up" });
+        const updated = await reordered;
+        assert.equal(updated.oyuncular.filter(player => player.takim === hostPlayer.takim)[0].playerId, teammate.playerId);
+        assert.deepEqual(updated.oyuncular.map(player => player.playerId).sort(), fourth.lobby.oyuncular.map(player => player.playerId).sort());
+
         console.log("room capacity socket integration test passed");
     } finally {
         for (const socket of sockets) {

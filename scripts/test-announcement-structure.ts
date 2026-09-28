@@ -20,8 +20,12 @@ assert.equal(html.includes("onclick"), false);
 assert.equal(html.includes("<h2>Sistem guncellemesi</h2>"), true);
 
 const preview = announcementBlocksToPreview(sampleBlocks);
-assert.equal(preview.includes("Madde bir"), true);
-assert.equal(preview.includes("•"), true);
+assert.equal(preview, "Sistem guncellemesi");
+const listPreview = announcementBlocksToPreview([
+    { type: "bullet_list", items: ["Madde bir", "Madde iki"] },
+]);
+assert.equal(listPreview.includes("Madde bir"), true);
+assert.equal(listPreview.includes("•"), true);
 
 const normalizedFromLegacy = normalizeAnnouncementBlocks(
     null,

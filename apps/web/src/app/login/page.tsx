@@ -7,6 +7,8 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { LogIn } from "lucide-react";
 import { useBranding } from "@/components/providers/branding-provider";
+import { useI18n } from "@/components/providers/i18n-provider";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -31,15 +33,16 @@ export default function LoginPage() {
     const [googleEnabled, setGoogleEnabled] = useState(false);
     const router = useRouter();
     const branding = useBranding();
+    const { t } = useI18n();
 
     useEffect(() => {
         const authError = new URLSearchParams(window.location.search).get("error");
         if (authError === "OAuthAccountNotLinked") {
             setError(
-                "Bu e-posta mevcut bir hesaba ait. Kullanıcı adı ve parolanla giriş yapıp Ayarlar > Bağlı Hesaplar bölümünden Google'ı bağla."
+                t("auth.oauthLinked")
             );
         } else if (authError) {
-            setError("Google ile giriş tamamlanamadı. Lütfen tekrar dene.");
+            setError(t("auth.oauthFailed"));
         }
 
         void fetch("/api/auth/providers", { cache: "no-store" })
@@ -48,7 +51,7 @@ export default function LoginPage() {
                 setGoogleEnabled(Boolean(providers?.google))
             )
             .catch(() => setGoogleEnabled(false));
-    }, []);
+    }, [t]);
 
     const getCallbackUrl = () =>
         resolveSafeCallbackUrl(
@@ -74,7 +77,7 @@ export default function LoginPage() {
             });
 
             if (response?.error) {
-                setError("Giriş başarısız. Kullanıcı adı veya parola hatalı.");
+                setError(t("auth.loginFailed"));
             } else {
                 const verificationResponse = await fetch(
                     "/api/auth/email-verification/status",
@@ -93,7 +96,7 @@ export default function LoginPage() {
                 router.refresh();
             }
         } catch {
-            setError("Bir hata oluştu.");
+            setError(t("auth.genericError"));
         } finally {
             setLoading(false);
         }
@@ -101,6 +104,7 @@ export default function LoginPage() {
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4 dark:bg-slate-900">
+            <div className="fixed right-4 top-4"><LanguageSwitcher /></div>
             <Card className="w-full max-w-sm shadow-xl">
                 <CardHeader className="space-y-4">
                     <div className="flex flex-col items-center gap-3 text-center">
@@ -123,10 +127,10 @@ export default function LoginPage() {
                         <div className="space-y-1">
                             <CardTitle className="flex items-center justify-center gap-2 text-2xl font-bold">
                                 <LogIn className="h-5 w-5 text-primary" />
-                                Giriş Yap
+                                {t("auth.loginTitle")}
                             </CardTitle>
                             {!branding.logoUrl ? (
-                                <CardDescription>Hesabına giriş yap.</CardDescription>
+                                <CardDescription>{t("auth.loginDescription")}</CardDescription>
                             ) : null}
                         </div>
                     </div>
@@ -135,14 +139,14 @@ export default function LoginPage() {
                     <form onSubmit={handleLogin} className="space-y-4">
                         <Input
                             type="text"
-                            placeholder="Kullanıcı Adı"
+                            placeholder={t("auth.username")}
                             value={username}
                             onChange={(event) => setUsername(event.target.value)}
                             required
                         />
                         <Input
                             type="password"
-                            placeholder="Parola"
+                            placeholder={t("auth.password")}
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
                             required
@@ -152,7 +156,7 @@ export default function LoginPage() {
                                 href="/forgot-password"
                                 className="text-xs font-bold text-primary hover:underline"
                             >
-                                Parolanı mı unuttun?
+                                {t("auth.forgotPassword")}
                             </Link>
                         </div>
                         {error ? (
@@ -165,14 +169,14 @@ export default function LoginPage() {
                             onFocus={() => prewarmCaptchaForAction("login")}
                             onPointerEnter={() => prewarmCaptchaForAction("login")}
                         >
-                            {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
+                            {loading ? t("auth.loggingIn") : t("auth.loginTitle")}
                         </Button>
                     </form>
                     {googleEnabled ? (
                         <div className="mt-5 space-y-4">
                             <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
                                 <span className="h-px flex-1 bg-border" />
-                                veya
+                                {t("auth.or")}
                                 <span className="h-px flex-1 bg-border" />
                             </div>
                             <Button
@@ -187,16 +191,16 @@ export default function LoginPage() {
                                 }
                             >
                                 <span className="text-base font-black">G</span>
-                                Google ile devam et
+                                {t("auth.continueGoogle")}
                             </Button>
                         </div>
                     ) : null}
                 </CardContent>
                 <CardFooter className="flex justify-center">
                     <p className="text-sm text-muted-foreground">
-                        Hesabın yok mu?{" "}
+                        {t("auth.noAccount")} {" "}
                         <Link href="/register" className="text-primary hover:underline">
-                            Kayıt Ol
+                            {t("auth.registerTitle")}
                         </Link>
                     </p>
                 </CardFooter>

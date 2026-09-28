@@ -32,12 +32,12 @@ test("home actions remain usable within the viewport", async ({ page }) => {
   await page.goto("/");
 
   await expectNoHorizontalOverflow(page);
-  await expectInsideViewport(page, page.getByRole("button", { name: /Giris Yap/i }));
-  await expectInsideViewport(page, page.getByRole("button", { name: /Kayit Ol/i }));
-  await expectInsideViewport(page, page.getByRole("button", { name: /Duyurulari ac/i }));
-  await expectInsideViewport(page, page.getByRole("button", { name: /Temayi degistir/i }));
-  await expectInsideViewport(page, page.getByPlaceholder(/Adinizi girin/i));
-  await expectInsideViewport(page, page.getByRole("button", { name: /Yeni Oda Olustur/i }));
+  await expectInsideViewport(page, page.getByRole("button", { name: "Giriş Yap" }));
+  await expectInsideViewport(page, page.getByRole("button", { name: "Kayıt Ol" }));
+  await expectInsideViewport(page, page.getByRole("button", { name: "Duyuruları aç" }));
+  await expectInsideViewport(page, page.getByRole("button", { name: "Temayı değiştir" }));
+  await expectInsideViewport(page, page.getByPlaceholder("Adınızı girin..."));
+  await expectInsideViewport(page, page.getByRole("button", { name: "Yeni Oda Oluştur" }));
 });
 
 test("account forms remain usable within the viewport", async ({ page }) => {
@@ -79,13 +79,14 @@ test("announcements remain dismissible within the viewport", async ({ page }) =>
     })
   );
   await page.goto("/");
-  await page.getByRole("button", { name: /Duyurulari ac/i }).click();
+  await page.getByRole("button", { name: "Duyuruları aç" }).click();
 
   await expectNoHorizontalOverflow(page);
-  await expectInsideViewport(page, page.getByRole("button", { name: /Duyurulari kapat/i }));
-  await expectInsideViewport(page, page.getByRole("button", { name: /^Guncellemeler$/i }));
-  await expectInsideViewport(page, page.getByRole("button", { name: /^Duyurular$/i }));
+  await expectInsideViewport(page, page.getByRole("button", { name: "Kapat" }));
+  await expectInsideViewport(page, page.getByRole("button", { name: "Güncellemeler" }));
+  await expectInsideViewport(page, page.getByRole("button", { name: "Duyurular", exact: true }));
+  await expectInsideViewport(page, page.getByRole("button", { name: "S.S.S." }));
 
-  await page.getByRole("button", { name: /Duyurulari kapat/i }).click();
-  await expect(page.getByRole("heading", { name: /Yenilikler/i })).toBeHidden();
+  await page.getByRole("button", { name: "Kapat" }).click();
+  await expect(page.getByRole("heading", { name: "Yenilikler" })).toBeHidden();
 });

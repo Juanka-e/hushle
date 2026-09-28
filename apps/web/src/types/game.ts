@@ -2,6 +2,7 @@
 
 import type { ResolvedCardBackTheme } from "@/lib/cosmetics/card-back";
 import type { ResolvedCardFaceTheme } from "@/lib/cosmetics/card-face";
+import type { GameContentLocale } from "@hushle/domain-game";
 
 export enum GameView {
     LOGIN = "LOGIN",
@@ -54,6 +55,7 @@ export interface RoomSettings {
     sure: number;
     mod: "tur" | "skor";
     deger: number;
+    wordLocale: GameContentLocale;
 }
 
 export interface RoomData {

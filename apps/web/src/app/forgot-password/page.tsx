@@ -9,8 +9,10 @@ import {
     getCaptchaTokenForAction,
     prewarmCaptchaForAction,
 } from "@/lib/security/captcha-client";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 export default function ForgotPasswordPage() {
+    const { t } = useI18n();
     const [identifier, setIdentifier] = useState("");
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
@@ -37,15 +39,15 @@ export default function ForgotPasswordPage() {
                 message?: string;
             } | null;
             if (!response.ok) {
-                setError(payload?.error || "İstek gönderilemedi.");
+                setError(payload?.error || t("auth.requestFailed"));
                 return;
             }
             setMessage(
                 payload?.message ||
-                    "Bilgiler eşleşiyorsa bağlantı gönderilecek."
+                    t("auth.resetRequestSent")
             );
         } catch {
-            setError("Parola sıfırlama servisine ulaşılamadı.");
+            setError(t("auth.resetUnavailable"));
         } finally {
             setLoading(false);
         }
@@ -59,14 +61,13 @@ export default function ForgotPasswordPage() {
                     <KeyRound className="h-7 w-7" />
                 </div>
                 <div className="text-xs font-black uppercase tracking-[0.24em] text-teal-300">
-                    Hesap Güvenliği
+                    {t("auth.accountSecurity")}
                 </div>
                 <h1 className="mt-3 text-3xl font-black tracking-tight">
-                    Parolanı sıfırla
+                    {t("auth.resetPassword")}
                 </h1>
                 <p className="mt-3 text-sm leading-6 text-slate-300">
-                    Kullanıcı adını veya hesabındaki e-posta adresini gir.
-                    Hesap eşleşirse sana süreli bir bağlantı göndereceğiz.
+                    {t("auth.resetRequestHelp")}
                 </p>
                 <form onSubmit={submit} className="mt-7 space-y-4">
                     <div className="relative">
@@ -76,7 +77,7 @@ export default function ForgotPasswordPage() {
                             onChange={(event) =>
                                 setIdentifier(event.target.value)
                             }
-                            placeholder="Kullanıcı adı veya e-posta"
+                            placeholder={t("auth.usernameOrEmail")}
                             autoComplete="username"
                             className="border-white/10 bg-black/20 pl-10 text-white"
                             maxLength={191}
@@ -100,14 +101,14 @@ export default function ForgotPasswordPage() {
                         onFocus={() => prewarmCaptchaForAction("password_reset")}
                         onPointerEnter={() => prewarmCaptchaForAction("password_reset")}
                     >
-                        {loading ? "Gönderiliyor..." : "Bağlantı iste"}
+                        {loading ? t("auth.sending") : t("auth.requestLink")}
                     </Button>
                 </form>
                 <Link
                     href="/login"
                     className="mt-6 inline-flex text-sm font-bold text-slate-300 hover:text-white"
                 >
-                    Giriş ekranına dön
+                    {t("auth.backToLogin")}
                 </Link>
             </section>
         </main>

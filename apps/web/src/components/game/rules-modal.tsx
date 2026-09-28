@@ -1,274 +1,141 @@
 "use client";
 
 import {
-    X,
     Book,
-    Info,
-    Users,
-    User,
     Eye,
+    Feather,
+    Flame,
     Gamepad2,
     Hash,
-    Trophy,
+    Info,
     Sparkles,
-    Feather,
     Target,
-    Flame,
+    Trophy,
+    User,
+    Users,
+    X,
 } from "lucide-react";
+import { useI18n } from "@/components/providers/i18n-provider";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
 
 interface RulesModalProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
+const roles: Array<{
+    icon: typeof User;
+    title: TranslationKey;
+    help: TranslationKey;
+    color: string;
+}> = [
+    { icon: User, title: "rules.narrator", help: "rules.narratorHelp", color: "text-orange-600 bg-orange-100 dark:bg-orange-900/30" },
+    { icon: Users, title: "rules.guessers", help: "rules.guessersHelp", color: "text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30" },
+    { icon: Eye, title: "rules.inspector", help: "rules.inspectorHelp", color: "text-red-600 bg-red-100 dark:bg-red-900/30" },
+];
+
 export function RulesModal({ isOpen, onClose }: RulesModalProps) {
+    const { t } = useI18n();
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-gray-100 dark:border-slate-700 flex flex-col max-h-[85vh]">
-                {/* Modal Header */}
-                <div className="p-5 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-800 sticky top-0 z-10">
-                    <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-                        <Book className="text-purple-500" size={24} /> OYUN
-                        REHBERİ
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-800">
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+                    <h3 className="flex items-center gap-2 text-xl font-black text-slate-800 dark:text-white">
+                        <Book className="text-purple-500" size={24} /> {t("rules.title")}
                     </h3>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full text-gray-500 transition-colors"
-                    >
+                    <button type="button" onClick={onClose} aria-label={t("common.close")} className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700">
                         <X size={20} />
                     </button>
                 </div>
 
-                {/* Modal Content */}
-                <div className="p-6 overflow-y-auto space-y-8">
-                    {/* 1. Oyun Amacı */}
+                <div className="space-y-8 overflow-y-auto p-6">
                     <section>
-                        <div className="flex items-center gap-2 mb-3">
-                            <Info className="text-blue-500" size={20} />
-                            <h4 className="font-bold text-slate-800 dark:text-white text-lg">
-                                Oyunun Amacı
-                            </h4>
-                        </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed ml-7">
-                            Takım arkadaşlarına kartın en üstündeki{" "}
-                            <span className="font-bold text-blue-600 dark:text-blue-400">
-                                hedef kelimeyi
-                            </span>{" "}
-                            anlatmaya çalış. Yasaklı kelimeleri kullanmadan en
-                            çok kelimeyi anlatan takım oyunu kazanır.
-                        </p>
+                        <SectionTitle icon={Info} title={t("rules.purposeTitle")} color="text-blue-500" />
+                        <p className="ml-7 text-sm leading-relaxed text-gray-600 dark:text-gray-300">{t("rules.purpose")}</p>
                     </section>
+                    <Divider />
 
-                    <hr className="border-gray-100 dark:border-slate-700" />
-
-                    {/* 2. Roller */}
                     <section>
-                        <div className="flex items-center gap-2 mb-4">
-                            <Users className="text-purple-500" size={20} />
-                            <h4 className="font-bold text-slate-800 dark:text-white text-lg">
-                                Oyuncu Rolleri
-                            </h4>
-                        </div>
-                        <div className="grid gap-3 ml-7">
-                            <div className="flex gap-3 items-start">
-                                <div className="bg-orange-100 dark:bg-orange-900/30 text-orange-600 p-1.5 rounded-lg mt-0.5">
-                                    <User size={16} />
+                        <SectionTitle icon={Users} title={t("rules.rolesTitle")} color="text-purple-500" />
+                        <div className="ml-7 grid gap-3">
+                            {roles.map(({ icon: Icon, title, help, color }) => (
+                                <div key={title} className="flex items-start gap-3">
+                                    <div className={`mt-0.5 rounded-lg p-1.5 ${color}`}><Icon size={16} /></div>
+                                    <div>
+                                        <h5 className="text-sm font-bold text-slate-800 dark:text-white">{t(title)}</h5>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{t(help)}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h5 className="font-bold text-sm text-slate-800 dark:text-white">
-                                        Anlatan
-                                    </h5>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        Kelimeyi takımına tarif eden kişidir.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex gap-3 items-start">
-                                <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 p-1.5 rounded-lg mt-0.5">
-                                    <Users size={16} />
-                                </div>
-                                <div>
-                                    <h5 className="font-bold text-sm text-slate-800 dark:text-white">
-                                        Tahmin Edenler
-                                    </h5>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        Anlatanın takım arkadaşlarıdır. Hedef
-                                        kelimeyi bulmaya çalışırlar.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex gap-3 items-start">
-                                <div className="bg-red-100 dark:bg-red-900/30 text-red-600 p-1.5 rounded-lg mt-0.5">
-                                    <Eye size={16} />
-                                </div>
-                                <div>
-                                    <h5 className="font-bold text-sm text-slate-800 dark:text-white">
-                                        Gözetmen
-                                    </h5>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        Rakip takımdan bir oyuncudur. Anlatanın
-                                        yasaklı kelime kullanıp kullanmadığını
-                                        kontrol eder.
-                                    </p>
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </section>
+                    <Divider />
 
-                    <hr className="border-gray-100 dark:border-slate-700" />
-
-                    {/* 3. Oyun Modları */}
                     <section>
-                        <div className="flex items-center gap-2 mb-4">
-                            <Gamepad2 className="text-indigo-500" size={20} />
-                            <h4 className="font-bold text-slate-800 dark:text-white text-lg">
-                                Oyun Modları
-                            </h4>
+                        <SectionTitle icon={Gamepad2} title={t("rules.modesTitle")} color="text-indigo-500" />
+                        <div className="ml-7 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <RuleCard icon={Hash} title={t("rules.rounds")} help={t("rules.roundsHelp")} color="text-blue-500" />
+                            <RuleCard icon={Trophy} title={t("rules.target")} help={t("rules.targetHelp")} color="text-amber-500" />
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 ml-7">
-                            <div className="bg-gray-50 dark:bg-slate-700/50 p-3 rounded-xl border border-gray-100 dark:border-slate-700">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Hash
-                                        size={16}
-                                        className="text-blue-500"
-                                    />
-                                    <span className="font-bold text-sm dark:text-white">
-                                        Tur Sayısı
-                                    </span>
-                                </div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 leading-snug">
-                                    Belirlenen tur sayısı (Örn: 3 Tur)
-                                    bittiğinde en yüksek puana sahip takım
-                                    kazanır.
-                                </p>
-                            </div>
-                            <div className="bg-gray-50 dark:bg-slate-700/50 p-3 rounded-xl border border-gray-100 dark:border-slate-700">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Trophy
-                                        size={16}
-                                        className="text-amber-500"
-                                    />
-                                    <span className="font-bold text-sm dark:text-white">
-                                        Hedef Skor
-                                    </span>
-                                </div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 leading-snug">
-                                    Belirlenen puana (Örn: 50 Puan) ilk ulaşan
-                                    takım kazanır.
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Altın Skor */}
-                        <div className="mt-4 ml-7 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/50 p-3 rounded-xl flex gap-3">
-                            <Sparkles
-                                className="text-amber-500 flex-shrink-0"
-                                size={20}
-                            />
+                        <div className="ml-7 mt-4 flex gap-3 rounded-xl border border-amber-100 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20">
+                            <Sparkles className="shrink-0 text-amber-500" size={20} />
                             <div>
-                                <h5 className="font-bold text-sm text-amber-700 dark:text-amber-400">
-                                    Altın Skor Kuralı
-                                </h5>
-                                <p className="text-xs text-amber-600/80 dark:text-amber-500/80 mt-1">
-                                    Eğer tur usulü oyunun sonunda puanlar
-                                    eşitse, oyun &quot;Altın Skor&quot; moduna
-                                    geçer. Sıradaki kartı bilen ilk takım oyunu
-                                    anında kazanır!
-                                </p>
+                                <h5 className="text-sm font-bold text-amber-700 dark:text-amber-400">{t("rules.golden")}</h5>
+                                <p className="mt-1 text-xs text-amber-600/80 dark:text-amber-500/80">{t("rules.goldenHelp")}</p>
                             </div>
                         </div>
                     </section>
+                    <Divider />
 
-                    <hr className="border-gray-100 dark:border-slate-700" />
-
-                    {/* 4. Zorluk Seviyeleri */}
                     <section>
-                        <div className="flex items-center gap-2 mb-4">
-                            <Target className="text-rose-500" size={20} />
-                            <h4 className="font-bold text-slate-800 dark:text-white text-lg">
-                                Kart Zorlukları
-                            </h4>
-                        </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 ml-7 mb-3">
-                            Kartın sağ üst köşesindeki semboller kelimenin
-                            zorluğunu belirtir:
-                        </p>
-                        <div className="flex flex-wrap gap-4 ml-7">
-                            <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg border border-blue-100 dark:border-blue-800">
-                                <Feather
-                                    size={16}
-                                    className="text-blue-500"
-                                />
-                                <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
-                                    Kolay
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2 bg-purple-50 dark:bg-purple-900/20 px-3 py-1.5 rounded-lg border border-purple-100 dark:border-purple-800">
-                                <Target
-                                    size={16}
-                                    className="text-purple-500"
-                                />
-                                <span className="text-xs font-bold text-purple-700 dark:text-purple-300">
-                                    Orta
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-lg border border-red-100 dark:border-red-800">
-                                <Flame size={16} className="text-red-500" />
-                                <span className="text-xs font-bold text-red-700 dark:text-red-300">
-                                    Zor
-                                </span>
-                            </div>
+                        <SectionTitle icon={Target} title={t("rules.difficultyTitle")} color="text-rose-500" />
+                        <p className="mb-3 ml-7 text-sm text-gray-600 dark:text-gray-300">{t("rules.difficultyHelp")}</p>
+                        <div className="ml-7 flex flex-wrap gap-3">
+                            <Difficulty icon={Feather} label={t("room.easy")} classes="border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300" />
+                            <Difficulty icon={Target} label={t("room.medium")} classes="border-purple-100 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-900/20 dark:text-purple-300" />
+                            <Difficulty icon={Flame} label={t("room.hard")} classes="border-red-100 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300" />
                         </div>
                     </section>
+                    <Divider />
 
-                    <hr className="border-gray-100 dark:border-slate-700" />
-
-                    {/* 5. Puanlama Tablosu */}
                     <section>
-                        <h4 className="font-bold text-slate-800 dark:text-white text-lg mb-4 text-center">
-                            Puanlama Tablosu
-                        </h4>
+                        <h4 className="mb-4 text-center text-lg font-bold text-slate-800 dark:text-white">{t("rules.scoring")}</h4>
                         <div className="grid grid-cols-3 gap-2 text-center">
-                            <div className="bg-gray-50 dark:bg-slate-700/50 p-3 rounded-xl border border-gray-100 dark:border-slate-700">
-                                <div className="text-green-500 font-black text-2xl">
-                                    +1
-                                </div>
-                                <div className="text-[10px] text-gray-400 font-bold uppercase mt-1">
-                                    Doğru
-                                </div>
-                            </div>
-                            <div className="bg-gray-50 dark:bg-slate-700/50 p-3 rounded-xl border border-gray-100 dark:border-slate-700">
-                                <div className="text-red-500 font-black text-2xl">
-                                    -1
-                                </div>
-                                <div className="text-[10px] text-gray-400 font-bold uppercase mt-1">
-                                    Tabu / Hata
-                                </div>
-                            </div>
-                            <div className="bg-gray-50 dark:bg-slate-700/50 p-3 rounded-xl border border-gray-100 dark:border-slate-700">
-                                <div className="text-amber-500 font-black text-2xl">
-                                    0
-                                </div>
-                                <div className="text-[10px] text-gray-400 font-bold uppercase mt-1">
-                                    Pas
-                                </div>
-                            </div>
+                            <Score value="+1" label={t("game.correct")} color="text-green-500" />
+                            <Score value="-1" label={t("rules.error")} color="text-red-500" />
+                            <Score value="0" label={t("game.pass")} color="text-amber-500" />
                         </div>
                     </section>
                 </div>
 
-                {/* Footer */}
-                <div className="p-5 border-t border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
-                    <button
-                        onClick={onClose}
-                        className="w-full py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold hover:opacity-90 transition-opacity"
-                    >
-                        Her Şey Anlaşıldı, Oyuna Dön
+                <div className="border-t border-gray-100 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+                    <button type="button" onClick={onClose} className="w-full rounded-xl bg-slate-900 py-3 font-bold text-white transition-opacity hover:opacity-90 dark:bg-white dark:text-slate-900">
+                        {t("rules.back")}
                     </button>
                 </div>
             </div>
         </div>
     );
+}
+
+function SectionTitle({ icon: Icon, title, color }: { icon: typeof Info; title: string; color: string }) {
+    return <div className="mb-3 flex items-center gap-2"><Icon className={color} size={20} /><h4 className="text-lg font-bold text-slate-800 dark:text-white">{title}</h4></div>;
+}
+
+function Divider() {
+    return <hr className="border-gray-100 dark:border-slate-700" />;
+}
+
+function RuleCard({ icon: Icon, title, help, color }: { icon: typeof Info; title: string; help: string; color: string }) {
+    return <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-slate-700 dark:bg-slate-700/50"><div className="mb-2 flex items-center gap-2"><Icon size={16} className={color} /><span className="text-sm font-bold dark:text-white">{title}</span></div><p className="text-xs leading-snug text-gray-500 dark:text-gray-400">{help}</p></div>;
+}
+
+function Difficulty({ icon: Icon, label, classes }: { icon: typeof Info; label: string; classes: string }) {
+    return <div className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${classes}`}><Icon size={16} /><span className="text-xs font-bold">{label}</span></div>;
+}
+
+function Score({ value, label, color }: { value: string; label: string; color: string }) {
+    return <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-slate-700 dark:bg-slate-700/50"><div className={`text-2xl font-black ${color}`}>{value}</div><div className="mt-1 text-[10px] font-bold uppercase text-gray-400">{label}</div></div>;
 }

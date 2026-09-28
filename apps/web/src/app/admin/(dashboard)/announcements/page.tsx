@@ -30,7 +30,12 @@ interface AnnouncementRecord {
     title: string;
     contentBlocks: AnnouncementBlocks;
     contentPreview: string;
-    type: "guncelleme" | "duyuru";
+    translations: Partial<Record<"tr" | "en", {
+        title: string;
+        contentBlocks: AnnouncementBlocks;
+        contentPreview: string;
+    }>>;
+    type: "guncelleme" | "duyuru" | "sss";
     isVisible: boolean;
     isPinned: boolean;
     createdAt: string;
@@ -41,9 +46,11 @@ interface AnnouncementRecord {
 }
 
 interface AnnouncementFormState {
-    title: string;
-    contentBlocks: AnnouncementBlocks;
-    type: "guncelleme" | "duyuru";
+    translations: Record<"tr" | "en", {
+        title: string;
+        contentBlocks: AnnouncementBlocks;
+    }>;
+    type: "guncelleme" | "duyuru" | "sss";
     isVisible: boolean;
     isPinned: boolean;
     version: string;
@@ -53,8 +60,10 @@ interface AnnouncementFormState {
 }
 
 const defaultFormState: AnnouncementFormState = {
-    title: "",
-    contentBlocks: createEmptyAnnouncementBlocks(),
+    translations: {
+        tr: { title: "", contentBlocks: createEmptyAnnouncementBlocks() },
+        en: { title: "", contentBlocks: createEmptyAnnouncementBlocks() },
+    },
     type: "guncelleme" as const,
     isVisible: true,
     isPinned: false,
@@ -72,6 +81,8 @@ export default function AdminAnnouncementsPage() {
     const [formState, setFormState] = useState<AnnouncementFormState>(defaultFormState);
     const [formSaving, setFormSaving] = useState(false);
     const [formError, setFormError] = useState("");
+    const [editingLocale, setEditingLocale] = useState<"tr" | "en">("tr");
+    const [englishEnabled, setEnglishEnabled] = useState(false);
     const [deleting, setDeleting] = useState<number | null>(null);
     const [togglingPin, setTogglingPin] = useState<number | null>(null);
 
@@ -109,14 +120,26 @@ export default function AdminAnnouncementsPage() {
         setEditing(null);
         setFormState(defaultFormState);
         setFormError("");
+        setEditingLocale("tr");
+        setEnglishEnabled(false);
         setFormOpen(true);
     };
 
     const openEdit = (announcement: AnnouncementRecord) => {
-        setEditing(announcement);
-        setFormState({
+        const turkish = announcement.translations.tr ?? {
             title: announcement.title,
             contentBlocks: announcement.contentBlocks,
+        };
+        const english = announcement.translations.en;
+        setEditing(announcement);
+        setFormState({
+            translations: {
+                tr: { title: turkish.title, contentBlocks: turkish.contentBlocks },
+                en: {
+                    title: english?.title ?? "",
+                    contentBlocks: english?.contentBlocks ?? createEmptyAnnouncementBlocks(),
+                },
+            },
             type: announcement.type,
             isVisible: announcement.isVisible,
             isPinned: announcement.isPinned,
@@ -125,19 +148,34 @@ export default function AdminAnnouncementsPage() {
             mediaUrl: announcement.mediaUrl ?? "",
             mediaType: announcement.mediaType ?? null,
         });
+        setEditingLocale("tr");
+        setEnglishEnabled(Boolean(english));
         setFormError("");
         setFormOpen(true);
     };
 
     const handleSave = async () => {
-        if (!formState.title.trim()) {
-            setFormError("Baslik bos olamaz.");
+        if (!formState.translations.tr.title.trim()) {
+            setFormError("Türkçe başlık boş olamaz.");
             return;
         }
 
-        const parsedBlocks = announcementBlocksSchema.safeParse(formState.contentBlocks);
-        if (!parsedBlocks.success) {
-            setFormError(parsedBlocks.error.issues[0]?.message ?? "Icerik bloglari gecersiz.");
+        const parsedTurkishBlocks = announcementBlocksSchema.safeParse(
+            formState.translations.tr.contentBlocks
+        );
+        if (!parsedTurkishBlocks.success) {
+            setFormError(parsedTurkishBlocks.error.issues[0]?.message ?? "Türkçe içerik blokları geçersiz.");
+            return;
+        }
+        const parsedEnglishBlocks = englishEnabled
+            ? announcementBlocksSchema.safeParse(formState.translations.en.contentBlocks)
+            : null;
+        if (englishEnabled && !formState.translations.en.title.trim()) {
+            setFormError("İngilizce içerik etkinse İngilizce başlık zorunludur.");
+            return;
+        }
+        if (parsedEnglishBlocks && !parsedEnglishBlocks.success) {
+            setFormError(parsedEnglishBlocks.error.issues[0]?.message ?? "İngilizce içerik blokları geçersiz.");
             return;
         }
 
@@ -151,8 +189,18 @@ export default function AdminAnnouncementsPage() {
                     method: editing ? "PUT" : "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        title: formState.title.trim(),
-                        contentBlocks: parsedBlocks.data,
+                        translations: {
+                            tr: {
+                                title: formState.translations.tr.title.trim(),
+                                contentBlocks: parsedTurkishBlocks.data,
+                            },
+                            en: englishEnabled && parsedEnglishBlocks?.success
+                                ? {
+                                      title: formState.translations.en.title.trim(),
+                                      contentBlocks: parsedEnglishBlocks.data,
+                                  }
+                                : null,
+                        },
                         type: formState.type,
                         isVisible: formState.isVisible,
                         isPinned: formState.isPinned,
@@ -239,6 +287,22 @@ export default function AdminAnnouncementsPage() {
         }
     };
 
+    const activeTranslation = formState.translations[editingLocale];
+    const updateActiveTranslation = (
+        patch: Partial<(typeof formState.translations)["tr"]>
+    ) => {
+        setFormState((current) => ({
+            ...current,
+            translations: {
+                ...current.translations,
+                [editingLocale]: {
+                    ...current.translations[editingLocale],
+                    ...patch,
+                },
+            },
+        }));
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between gap-4">
@@ -307,7 +371,7 @@ export default function AdminAnnouncementsPage() {
                                                 </span>
                                             )}
                                             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                                                {announcement.title}
+                                                {announcement.translations.tr?.title ?? announcement.title}
                                             </h3>
                                             {announcement.version && (
                                                 <span className="rounded bg-gray-100 px-2 py-1 font-mono text-[10px] text-gray-600 dark:bg-slate-700 dark:text-slate-300">
@@ -420,17 +484,55 @@ export default function AdminAnnouncementsPage() {
                                     </div>
                                 )}
 
+                                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 dark:border-slate-700 dark:bg-slate-900/60">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="flex gap-2" role="tablist" aria-label="Duyuru dili">
+                                            <button
+                                                type="button"
+                                                role="tab"
+                                                aria-selected={editingLocale === "tr"}
+                                                onClick={() => setEditingLocale("tr")}
+                                                className={`rounded-xl px-4 py-2 text-sm font-bold ${editingLocale === "tr" ? "bg-blue-600 text-white" : "bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}
+                                            >
+                                                Türkçe <span className="ml-1 text-[10px] opacity-75">ZORUNLU</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                role="tab"
+                                                aria-selected={editingLocale === "en"}
+                                                disabled={!englishEnabled}
+                                                onClick={() => setEditingLocale("en")}
+                                                className={`rounded-xl px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 ${editingLocale === "en" ? "bg-blue-600 text-white" : "bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}
+                                            >
+                                                English
+                                            </button>
+                                        </div>
+                                        <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={englishEnabled}
+                                                onChange={(event) => {
+                                                    setEnglishEnabled(event.target.checked);
+                                                    if (!event.target.checked) setEditingLocale("tr");
+                                                }}
+                                            />
+                                            İngilizce çeviri ekle
+                                        </label>
+                                    </div>
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                        İngilizce çeviri yoksa oyuncuya güvenli biçimde Türkçe içerik gösterilir.
+                                    </p>
+                                </div>
+
                                 <div className="grid gap-4 md:grid-cols-2">
                                     <div className="md:col-span-2">
                                         <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                            Baslik
+                                            {editingLocale === "tr" ? "Türkçe başlık" : "English title"}
                                         </label>
                                         <input
                                             type="text"
-                                            value={formState.title}
-                                            onChange={(event) =>
-                                                setFormState((current) => ({ ...current, title: event.target.value }))
-                                            }
+                                            value={activeTranslation.title}
+                                            onChange={(event) => updateActiveTranslation({ title: event.target.value })}
                                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950"
                                         />
                                     </div>
@@ -443,13 +545,14 @@ export default function AdminAnnouncementsPage() {
                                             onChange={(event) =>
                                                 setFormState((current) => ({
                                                     ...current,
-                                                    type: event.target.value as "guncelleme" | "duyuru",
+                                                    type: event.target.value as "guncelleme" | "duyuru" | "sss",
                                                 }))
                                             }
                                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950"
                                         >
                                             <option value="guncelleme">Guncelleme</option>
                                             <option value="duyuru">Duyuru</option>
+                                            <option value="sss">S.S.S.</option>
                                         </select>
                                     </div>
                                     <div>
@@ -541,13 +644,11 @@ export default function AdminAnnouncementsPage() {
 
                                 <div>
                                     <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                        Icerik bloklari
+                                        {editingLocale === "tr" ? "Türkçe içerik blokları" : "English content blocks"}
                                     </label>
                                     <AnnouncementBlocksEditor
-                                        value={formState.contentBlocks}
-                                        onChange={(contentBlocks) =>
-                                            setFormState((current) => ({ ...current, contentBlocks }))
-                                        }
+                                        value={activeTranslation.contentBlocks}
+                                        onChange={(contentBlocks) => updateActiveTranslation({ contentBlocks })}
                                     />
                                 </div>
                             </div>
@@ -559,8 +660,8 @@ export default function AdminAnnouncementsPage() {
                                     </h3>
                                     <div className="mt-3 rounded-2xl border border-gray-100 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/70">
                                         <AnnouncementPreviewCard
-                                            title={formState.title.trim() || "Duyuru başlığı"}
-                                            contentBlocks={formState.contentBlocks}
+                                            title={activeTranslation.title.trim() || (editingLocale === "tr" ? "Duyuru başlığı" : "Announcement title")}
+                                            contentBlocks={activeTranslation.contentBlocks}
                                             createdAt={editing?.createdAt ?? new Date().toISOString()}
                                             isPinned={formState.isPinned}
                                             isNew={!editing}

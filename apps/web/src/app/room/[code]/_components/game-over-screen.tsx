@@ -2,6 +2,7 @@
 
 import { Trophy, Home } from "lucide-react";
 import type { GameOverData } from "@/types/game";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 interface GameOverScreenProps {
     gameOverData: GameOverData;
@@ -9,6 +10,7 @@ interface GameOverScreenProps {
 }
 
 export function GameOverScreen({ gameOverData, onReturnToLobby }: GameOverScreenProps) {
+    const { t } = useI18n();
     const winnerColor =
         gameOverData.kazananTakim === "A"
             ? "text-red-600"
@@ -18,8 +20,8 @@ export function GameOverScreen({ gameOverData, onReturnToLobby }: GameOverScreen
 
     const winnerName =
         gameOverData.kazananTakim === "Berabere"
-            ? "BERABERE"
-            : `TAKIM ${gameOverData.kazananTakim}`;
+            ? t("gameOver.draw")
+            : t("gameOver.team", { team: gameOverData.kazananTakim });
 
     return (
         <div className="flex-1 flex items-center justify-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
@@ -28,7 +30,7 @@ export function GameOverScreen({ gameOverData, onReturnToLobby }: GameOverScreen
                     <Trophy size={64} strokeWidth={1} />
                 </div>
                 <h3 className="text-xl font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    KAZANAN
+                    {t("gameOver.winner")}
                 </h3>
                 <h1 className={`text-4xl font-black uppercase tracking-tight mb-8 ${winnerColor}`}>
                     {winnerName}
@@ -39,14 +41,14 @@ export function GameOverScreen({ gameOverData, onReturnToLobby }: GameOverScreen
                         <div className="text-3xl font-bold text-red-600">
                             {gameOverData.skor.A}
                         </div>
-                        <div className="text-xs font-bold opacity-60">TAKIM A</div>
+                        <div className="text-xs font-bold opacity-60">{t("gameOver.team", { team: "A" })}</div>
                     </div>
                     <div className="text-3xl font-light text-gray-300">vs</div>
                     <div className="text-center">
                         <div className="text-3xl font-bold text-blue-600">
                             {gameOverData.skor.B}
                         </div>
-                        <div className="text-xs font-bold opacity-60">TAKIM B</div>
+                        <div className="text-xs font-bold opacity-60">{t("gameOver.team", { team: "B" })}</div>
                     </div>
                 </div>
 
@@ -54,7 +56,7 @@ export function GameOverScreen({ gameOverData, onReturnToLobby }: GameOverScreen
                     onClick={onReturnToLobby}
                     className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold flex items-center justify-center gap-2 transition-transform hover:scale-105 shadow-lg"
                 >
-                    <Home size={20} /> Lobiye Dön
+                    <Home size={20} /> {t("gameOver.returnLobby")}
                 </button>
             </div>
         </div>

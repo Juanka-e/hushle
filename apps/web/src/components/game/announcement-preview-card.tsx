@@ -3,6 +3,8 @@
 import { Clock3, Pin, Star, Tag } from "lucide-react";
 import { AnnouncementBlocksView } from "@/components/game/announcement-blocks-view";
 import type { AnnouncementBlocks } from "@/lib/announcements/content";
+import { useI18n } from "@/components/providers/i18n-provider";
+import { toIntlLocale } from "@/lib/i18n/config";
 
 interface AnnouncementPreviewCardProps {
     title: string;
@@ -37,6 +39,7 @@ export function AnnouncementPreviewCard({
     clipped = true,
     className,
 }: AnnouncementPreviewCardProps) {
+    const { locale, t } = useI18n();
     const tagList = tags
         ? tags.split(",").map((tag) => tag.trim()).filter(Boolean)
         : [];
@@ -44,7 +47,7 @@ export function AnnouncementPreviewCard({
     return (
         <div
             className={cx(
-                "overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800",
+                "overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 text-slate-900 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100",
                 className
             )}
         >
@@ -54,13 +57,13 @@ export function AnnouncementPreviewCard({
                         {isPinned ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-400 px-2 py-1 text-[10px] font-black text-white">
                                 <Pin size={10} fill="currentColor" />
-                                SABİT
+                                {t("announcements.pinned").toUpperCase()}
                             </span>
                         ) : null}
                         {isNew ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-blue-500 px-2 py-1 text-[10px] font-black text-white">
                                 <Star size={10} fill="currentColor" />
-                                YENİ
+                                {t("announcements.new").toUpperCase()}
                             </span>
                         ) : null}
                         {version ? (
@@ -70,7 +73,7 @@ export function AnnouncementPreviewCard({
                         ) : null}
                         {mediaUrl ? (
                             <span className="rounded bg-gray-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-slate-700 dark:text-slate-300">
-                                {mediaType === "youtube" ? "Video" : "Görsel"}
+                                {mediaType === "youtube" ? t("common.video") : t("common.image")}
                             </span>
                         ) : null}
                         {tagList.map((tag) => (
@@ -106,7 +109,7 @@ export function AnnouncementPreviewCard({
 
                 <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-500 dark:bg-slate-700 dark:text-slate-300">
                     <Clock3 size={12} />
-                    {new Date(createdAt).toLocaleDateString("tr-TR", {
+                    {new Date(createdAt).toLocaleDateString(toIntlLocale(locale), {
                         year: "numeric",
                         month: "short",
                         day: "numeric",

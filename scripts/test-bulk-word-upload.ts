@@ -1,7 +1,25 @@
 import { prisma } from "../apps/web/src/lib/prisma";
-import { processBulkWordUpload } from "../apps/web/src/lib/admin-words-bulk-upload/service";
+import {
+    MAX_BULK_WORD_UPLOAD_ROWS,
+    processBulkWordUpload,
+} from "../apps/web/src/lib/admin-words-bulk-upload/service";
 
 async function main() {
+    const oversizedResult = await processBulkWordUpload({
+        text: Array.from(
+            { length: MAX_BULK_WORD_UPLOAD_ROWS + 1 },
+            (_, index) => `limit-test-${index},1,yasak`
+        ).join("\n"),
+        mode: "fixed_categories",
+    });
+    if (
+        !("error" in oversizedResult) ||
+        typeof oversizedResult.error !== "string" ||
+        !oversizedResult.error.includes("1000")
+    ) {
+        throw new Error("Bulk row limit was not enforced.");
+    }
+
     const rootName = `Test Bulk Kategori ${Date.now()}`;
     const childName = "Alt Paket";
     const fixedRootName = `Test Bulk Sabit ${Date.now()}`;
@@ -80,7 +98,12 @@ async function main() {
     }
 
     const insertedCsvWord = await prisma.word.findUnique({
-        where: { wordText: csvModeText.split("\n")[2].split(",")[0] },
+        where: {
+            locale_wordText: {
+                locale: "tr",
+                wordText: csvModeText.split("\n")[2].split(",")[0],
+            },
+        },
         include: {
             wordCategories: true,
             tabooWords: true,
@@ -88,7 +111,9 @@ async function main() {
     });
 
     const insertedFixedWord = await prisma.word.findUnique({
-        where: { wordText: fixedModeWord },
+        where: {
+            locale_wordText: { locale: "tr", wordText: fixedModeWord },
+        },
         include: {
             wordCategories: true,
             tabooWords: true,

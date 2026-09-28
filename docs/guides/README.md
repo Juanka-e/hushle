@@ -136,3 +136,7 @@ Bu klasor tekrar kullanilacak operasyonel rehberleri toplar.
 30. `ses-feedback-webhook.md`
 - SES/SNS signature, topic ve source identity doğrulamasını tanımlar
 - permanent bounce/complaint suppression ile production kabul sınırını ayırır
+
+31. `i18n-announcements-and-word-packs.md`
+- Türkçe/İngilizce arayüz tercihi ile oda kelime dilinin ayrı sınırlarını tanımlar
+- güvenli çift dilli duyuru/SSS modelini ve locale izole kelime paketlerini açıklar

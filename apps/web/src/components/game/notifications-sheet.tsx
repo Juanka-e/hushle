@@ -6,14 +6,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { NotificationListResponse, NotificationType, NotificationView } from "@/types/notifications";
 import { dispatchNotificationsUpdated } from "@/lib/notification-events";
-
-const notificationLabels: Record<NotificationType, string> = {
-    system: "Sistem",
-    support_reply: "Destek cevabı",
-    support_status: "Destek durumu",
-    economy: "Ekonomi",
-    moderation: "Moderasyon",
-};
+import { useI18n } from "@/components/providers/i18n-provider";
+import { toIntlLocale } from "@/lib/i18n/config";
 
 const notificationBadgeClass: Record<NotificationType, string> = {
     system: "bg-sky-100 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300",
@@ -23,8 +17,8 @@ const notificationBadgeClass: Record<NotificationType, string> = {
     moderation: "bg-rose-100 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300",
 };
 
-function formatDateTime(value: string): string {
-    return new Date(value).toLocaleString("tr-TR", {
+function formatDateTime(value: string, locale: string): string {
+    return new Date(value).toLocaleString(locale, {
         dateStyle: "short",
         timeStyle: "short",
     });
@@ -45,6 +39,14 @@ export function NotificationsSheet({
     onClose,
     onOpenSupport,
 }: NotificationsSheetProps) {
+    const { locale, t } = useI18n();
+    const notificationLabels: Record<NotificationType, string> = {
+        system: t("notifications.system"),
+        support_reply: t("notifications.supportReply"),
+        support_status: t("notifications.supportStatus"),
+        economy: t("notifications.economy"),
+        moderation: t("notifications.moderation"),
+    };
     const [notifications, setNotifications] = useState<NotificationView[]>([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -88,7 +90,7 @@ export function NotificationsSheet({
 
                 if (!response.ok) {
                     if (!options?.silent) {
-                        toast.error("Bildirimler yüklenemedi.");
+                        toast.error(t("notifications.loadFailed"));
                     }
                     return;
                 }
@@ -98,7 +100,7 @@ export function NotificationsSheet({
                 onUnreadCountChange(payload.unreadCount);
             } catch {
                 if (!options?.silent) {
-                    toast.error("Bildirimler yüklenemedi.");
+                    toast.error(t("notifications.loadFailed"));
                 }
             } finally {
                 if (!options?.silent) {
@@ -106,7 +108,7 @@ export function NotificationsSheet({
                 }
             }
         },
-        [filter, onUnreadCountChange]
+        [filter, onUnreadCountChange, t]
     );
 
     useEffect(() => {
@@ -154,7 +156,7 @@ export function NotificationsSheet({
                 });
 
                 if (!response.ok) {
-                    toast.error("Bildirim güncellenemedi.");
+                    toast.error(t("notifications.updateFailed"));
                     return false;
                 }
 
@@ -169,13 +171,13 @@ export function NotificationsSheet({
                 dispatchNotificationsUpdated();
                 return true;
             } catch {
-                toast.error("Bildirim güncellenemedi.");
+                toast.error(t("notifications.updateFailed"));
                 return false;
             } finally {
                 setBusyNotificationIds((current) => current.filter((id) => id !== notification.id));
             }
         },
-        [busyNotificationIds, onUnreadCountChange]
+        [busyNotificationIds, onUnreadCountChange, t]
     );
 
     const markAllRead = useCallback(async () => {
@@ -186,7 +188,7 @@ export function NotificationsSheet({
             });
 
             if (!response.ok) {
-                toast.error("Bildirimler güncellenemedi.");
+                toast.error(t("notifications.updatesFailed"));
                 return;
             }
 
@@ -199,13 +201,13 @@ export function NotificationsSheet({
             );
             onUnreadCountChange(0);
             dispatchNotificationsUpdated();
-            toast.success("Tüm bildirimler okundu olarak işaretlendi.");
+            toast.success(t("notifications.allReadSuccess"));
         } catch {
-            toast.error("Bildirimler güncellenemedi.");
+            toast.error(t("notifications.updatesFailed"));
         } finally {
             setSaving(false);
         }
-    }, [onUnreadCountChange]);
+    }, [onUnreadCountChange, t]);
 
     const archiveOne = useCallback(
         async (notification: NotificationView) => {
@@ -220,7 +222,7 @@ export function NotificationsSheet({
                 });
 
                 if (!response.ok) {
-                    toast.error("Bildirim kaldırılamadı.");
+                    toast.error(t("notifications.removeFailed"));
                     return;
                 }
 
@@ -230,12 +232,12 @@ export function NotificationsSheet({
                 }
                 dispatchNotificationsUpdated();
             } catch {
-                toast.error("Bildirim kaldırılamadı.");
+                toast.error(t("notifications.removeFailed"));
             } finally {
                 setBusyNotificationIds((current) => current.filter((id) => id !== notification.id));
             }
         },
-        [busyNotificationIds, onUnreadCountChange]
+        [busyNotificationIds, onUnreadCountChange, t]
     );
 
     const archiveAll = useCallback(async () => {
@@ -246,20 +248,20 @@ export function NotificationsSheet({
             });
 
             if (!response.ok) {
-                toast.error("Bildirimler kaldırılamadı.");
+                toast.error(t("notifications.removesFailed"));
                 return;
             }
 
             setNotifications([]);
             onUnreadCountChange(0);
             dispatchNotificationsUpdated();
-            toast.success("Bildirim kutusu temizlendi.");
+            toast.success(t("notifications.cleared"));
         } catch {
-            toast.error("Bildirimler kaldırılamadı.");
+            toast.error(t("notifications.removesFailed"));
         } finally {
             setSaving(false);
         }
-    }, [onUnreadCountChange]);
+    }, [onUnreadCountChange, t]);
 
     const visibleNotifications = useMemo(
         () => (filter === "unread" ? notifications.filter((notification) => !notification.isRead) : notifications),
@@ -297,13 +299,13 @@ export function NotificationsSheet({
                             </div>
                             <div>
                                 <div className="text-[11px] font-black uppercase tracking-[0.24em] text-sky-600 dark:text-sky-300">
-                                    Bildirim merkezi
+                                    {t("notifications.center")}
                                 </div>
                                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                                    Bildirimler
+                                    {t("notifications.title")}
                                 </h2>
                                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                    {unreadCount > 0 ? `${unreadCount} okunmamış bildirim var.` : "Yeni bildirim yok."}
+                                    {unreadCount > 0 ? t("notifications.unreadCount", { count: unreadCount }) : t("notifications.noNew")}
                                 </p>
                             </div>
                         </div>
@@ -313,7 +315,7 @@ export function NotificationsSheet({
                             size="icon"
                             onClick={onClose}
                             className="h-10 w-10 shrink-0 rounded-full border border-slate-200/70 bg-white/80 text-slate-500 hover:bg-white hover:text-slate-900 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white"
-                            aria-label="Bildirimleri kapat"
+                            aria-label={t("notifications.close")}
                         >
                             <X className="h-4 w-4" />
                         </Button>
@@ -332,7 +334,7 @@ export function NotificationsSheet({
                                         : "bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                                 }`}
                             >
-                                Tümü
+                                {t("notifications.all")}
                             </button>
                             <button
                                 type="button"
@@ -343,7 +345,7 @@ export function NotificationsSheet({
                                         : "bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                                 }`}
                             >
-                                Okunmamış {unreadCount > 0 ? `(${unreadCount})` : ""}
+                                {t("notifications.unread")} {unreadCount > 0 ? `(${unreadCount})` : ""}
                             </button>
                         </div>
 
@@ -357,7 +359,7 @@ export function NotificationsSheet({
                                 className="gap-2"
                             >
                                 <CheckCheck className="h-4 w-4" />
-                                Tümünü oku
+                                {t("notifications.markAllRead")}
                             </Button>
                             <Button
                                 type="button"
@@ -368,7 +370,7 @@ export function NotificationsSheet({
                                 className="gap-2"
                             >
                                 <Archive className="h-4 w-4" />
-                                Tümünü temizle
+                                {t("notifications.clearAll")}
                             </Button>
                         </div>
                     </div>
@@ -377,13 +379,13 @@ export function NotificationsSheet({
                 <div className="flex-1 overflow-y-auto px-5 py-5">
                     {loading ? (
                         <div className="rounded-3xl border border-dashed border-sky-200/60 bg-white/60 p-6 text-sm text-slate-500 dark:border-sky-900/20 dark:bg-black/10 dark:text-slate-400">
-                            Bildirimler yükleniyor...
+                            {t("notifications.loading")}
                         </div>
                     ) : visibleNotifications.length === 0 ? (
                         <div className="rounded-3xl border border-dashed border-sky-200/60 bg-white/60 p-6 text-sm text-slate-500 dark:border-sky-900/20 dark:bg-black/10 dark:text-slate-400">
                             {filter === "unread"
-                                ? "Okunmamış bildirim bulunmuyor."
-                                : "Henüz oluşturulmuş bir bildirim yok."}
+                                ? t("notifications.noUnread")
+                                : t("notifications.empty")}
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -406,7 +408,7 @@ export function NotificationsSheet({
                                                 </span>
                                                 {!notification.isRead ? (
                                                     <span className="rounded-full bg-rose-500 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">
-                                                        Yeni
+                                                        {t("notifications.new")}
                                                     </span>
                                                 ) : null}
                                             </div>
@@ -418,7 +420,7 @@ export function NotificationsSheet({
                                             </p>
                                         </div>
                                         <div className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                                            {formatDateTime(notification.createdAt)}
+                                            {formatDateTime(notification.createdAt, toIntlLocale(locale))}
                                         </div>
                                     </div>
 
@@ -427,12 +429,12 @@ export function NotificationsSheet({
                                             {notification.resourceType === "support_ticket" ? (
                                                 <span className="inline-flex items-center gap-1">
                                                     <LifeBuoy className="h-3.5 w-3.5" />
-                                                    Ticket #{notification.resourceId}
+                                                    {t("notifications.ticket", { id: notification.resourceId ?? "" })}
                                                 </span>
                                             ) : notification.isRead ? (
-                                                "Okundu"
+                                                t("notifications.read")
                                             ) : (
-                                                "Okunmamış"
+                                                t("notifications.unread")
                                             )}
                                         </div>
 
@@ -447,7 +449,7 @@ export function NotificationsSheet({
                                                     className="gap-2"
                                                 >
                                                     <Check className="h-4 w-4" />
-                                                    Okundu yap
+                                                    {t("notifications.markRead")}
                                                 </Button>
                                             ) : null}
                                             <Button
@@ -459,7 +461,7 @@ export function NotificationsSheet({
                                                 className="gap-2"
                                             >
                                                 <Archive className="h-4 w-4" />
-                                                Temizle
+                                                {t("notifications.clear")}
                                             </Button>
                                             {notification.resourceType === "support_ticket" ? (
                                                 <Button
@@ -467,7 +469,7 @@ export function NotificationsSheet({
                                                     size="sm"
                                                     onClick={() => void handlePrimaryAction(notification)}
                                                 >
-                                                    Yardım merkezinde aç
+                                                    {t("notifications.openSupport")}
                                                 </Button>
                                             ) : null}
                                         </div>

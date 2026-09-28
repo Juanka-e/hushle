@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -43,6 +43,8 @@ import type {
 import type { CoinGrantRedeemResult } from "@/types/coin-grants";
 import { dispatchWalletUpdated } from "@/lib/wallet-events";
 import { dispatchNotificationsUpdated } from "@/lib/notification-events";
+import { useI18n } from "@/components/providers/i18n-provider";
+import type { AppLocale } from "@/lib/i18n/config";
 
 type ShopCategory = "all" | StoreItemType;
 type BusyTarget = { kind: "shop_item" | "bundle"; id: number } | null;
@@ -68,14 +70,6 @@ interface ShopContentProps {
 
 const COSMETIC_GRID_BATCH_SIZE = 24;
 
-const categories: { id: ShopCategory; icon: typeof ShoppingBag; label: string }[] = [
-    { id: "all", icon: ShoppingBag, label: "Tümü" },
-    { id: "avatar", icon: UserCircle, label: "Avatar" },
-    { id: "frame", icon: Frame, label: "Çerçeve" },
-    { id: "card_back", icon: Layers3, label: "Kart Arkası" },
-    { id: "card_face", icon: Layers3, label: "Kart Önü" },
-];
-
 function createEmptyCatalog(): StoreCatalogResponse {
     return {
         coinBalance: 0,
@@ -92,8 +86,13 @@ function createEmptyCatalog(): StoreCatalogResponse {
     };
 }
 
-function formatItemTypeLabel(type: StoreItemType) {
+function formatItemTypeLabel(type: StoreItemType, locale: AppLocale) {
     if (type === "avatar") return "Avatar";
+    if (locale === "en") {
+        if (type === "frame") return "Frame";
+        if (type === "card_back") return "Card Back";
+        return "Card Face";
+    }
     if (type === "frame") return "Çerçeve";
     if (type === "card_back") return "Kart Arkası";
     return "Kart Önü";
@@ -101,31 +100,31 @@ function formatItemTypeLabel(type: StoreItemType) {
 
 type StoreFlagTone = "neutral" | "accent" | "warning" | "danger";
 
-function getAvailabilityFlag(item: CatalogStoreItemView) {
+function getAvailabilityFlag(item: CatalogStoreItemView, locale: AppLocale) {
     const now = Date.now();
     const endsAtTime = item.endsAt ? new Date(item.endsAt).getTime() : null;
 
     if (item.availabilityMode === "event_only") {
-        return { label: "Etkinlik Özel", tone: "danger" as const };
+        return { label: locale === "tr" ? "Etkinlik Özel" : "Event Exclusive", tone: "danger" as const };
     }
 
     if (endsAtTime && endsAtTime > now) {
         const hoursRemaining = (endsAtTime - now) / (1000 * 60 * 60);
         if (hoursRemaining <= 72) {
-            return { label: "Son Günler", tone: "warning" as const };
+            return { label: locale === "tr" ? "Son Günler" : "Last Days", tone: "warning" as const };
         }
     }
 
     if (item.availabilityMode === "seasonal") {
-        return { label: "Sezonluk", tone: "accent" as const };
+        return { label: locale === "tr" ? "Sezonluk" : "Seasonal", tone: "accent" as const };
     }
 
     if (item.availabilityMode === "limited") {
-        return { label: "Sınırlı", tone: "warning" as const };
+        return { label: locale === "tr" ? "Sınırlı" : "Limited", tone: "warning" as const };
     }
 
     if (item.availabilityMode === "scheduled") {
-        return { label: "Süreli", tone: "neutral" as const };
+        return { label: locale === "tr" ? "Süreli" : "Timed", tone: "neutral" as const };
     }
 
     return null;
@@ -155,6 +154,12 @@ function StoreFlag({
 
 export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
     const { data: session } = useSession();
+    const { locale, t } = useI18n();
+    const categories: { id: ShopCategory; icon: typeof ShoppingBag; label: string }[] = [
+        { id: "all", icon: ShoppingBag, label: t("shop.all") }, { id: "avatar", icon: UserCircle, label: t("shop.avatar") },
+        { id: "frame", icon: Frame, label: t("shop.frame") }, { id: "card_back", icon: Layers3, label: t("shop.cardBack") },
+        { id: "card_face", icon: Layers3, label: t("shop.cardFace") },
+    ];
     const [category, setCategory] = useState<ShopCategory>("all");
     const [catalog, setCatalog] = useState<StoreCatalogResponse>(createEmptyCatalog);
     const [couponCode, setCouponCode] = useState("");
@@ -189,7 +194,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
         void load();
     }, [session]);
 
-    const searchQuery = searchTerm.trim().toLocaleLowerCase("tr-TR");
+    const searchQuery = searchTerm.trim().toLocaleLowerCase(locale);
 
     const filteredItems = useMemo(() => {
         const categoryItems = category === "all"
@@ -201,12 +206,12 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
         }
 
         return categoryItems.filter((item) =>
-            [item.name, item.code, item.badgeText ?? "", formatItemTypeLabel(item.type)]
+            [item.name, item.code, item.badgeText ?? "", formatItemTypeLabel(item.type, locale)]
                 .join(" ")
-                .toLocaleLowerCase("tr-TR")
+                .toLocaleLowerCase(locale)
                 .includes(searchQuery)
         );
-    }, [catalog.items, category, searchQuery]);
+    }, [catalog.items, category, locale, searchQuery]);
 
     const filteredBundles = useMemo(() => {
         if (!searchQuery) {
@@ -216,10 +221,10 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
         return catalog.bundles.filter((bundle) =>
             [bundle.name, bundle.code, bundle.description ?? "", ...bundle.items.map((entry) => entry.itemName)]
                 .join(" ")
-                .toLocaleLowerCase("tr-TR")
+                .toLocaleLowerCase(locale)
                 .includes(searchQuery)
         );
-    }, [catalog.bundles, searchQuery]);
+    }, [catalog.bundles, locale, searchQuery]);
 
     const featuredItems = useMemo(() => {
         const adminFeatured = filteredItems.filter((item) => item.isFeatured);
@@ -361,7 +366,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             });
             const payload = (await response.json()) as { coinBalance?: number; finalPriceCoin?: number; error?: string };
             if (!response.ok) {
-                toast.error(payload.error || "Satın alma başarısız.");
+                toast.error(payload.error || t("shop.purchaseFailed"));
                 return;
             }
 
@@ -370,11 +375,11 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                 dispatchWalletUpdated({ coinBalance: payload.coinBalance, source: "store_purchase" });
             }
             dispatchNotificationsUpdated();
-            toast.success(`${item.name} satın alındı.`, {
-                description: payload.finalPriceCoin !== undefined ? `${payload.finalPriceCoin} coin harcandı.` : undefined,
+            toast.success(t("shop.purchased", { name: item.name }), {
+                description: payload.finalPriceCoin !== undefined ? t("shop.coinSpent", { count: payload.finalPriceCoin }) : undefined,
             });
         } catch {
-            toast.error("Satın alma isteği tamamlanamadı.");
+            toast.error(t("shop.purchaseRequestFailed"));
         } finally {
             setBusyTarget(null);
         }
@@ -396,7 +401,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             });
             const payload = (await response.json()) as { awardedItems?: Array<{ id: number }>; coinBalance?: number; finalPriceCoin?: number; error?: string };
             if (!response.ok) {
-                toast.error(payload.error || "Paket satın alma başarısız.");
+                toast.error(payload.error || t("shop.bundlePurchaseFailed"));
                 return;
             }
 
@@ -406,11 +411,11 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                 dispatchWalletUpdated({ coinBalance: payload.coinBalance, source: "bundle_purchase" });
             }
             dispatchNotificationsUpdated();
-            toast.success(`${bundle.name} satın alındı.`, {
-                description: payload.finalPriceCoin !== undefined ? `${payload.finalPriceCoin} coin harcandı.` : undefined,
+            toast.success(t("shop.purchased", { name: bundle.name }), {
+                description: payload.finalPriceCoin !== undefined ? t("shop.coinSpent", { count: payload.finalPriceCoin }) : undefined,
             });
         } catch {
-            toast.error("Paket satın alma isteği tamamlanamadı.");
+            toast.error(t("shop.bundleRequestFailed"));
         } finally {
             setBusyTarget(null);
         }
@@ -418,7 +423,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
 
     const handleApplyCoupon = async () => {
         if (!trimmedCouponCode || applyingCoupon) {
-            toast.info("Kuponu kullanmak için önce kodu gir.");
+            toast.info(t("shop.enterCoupon"));
             return;
         }
         setApplyingCoupon(true);
@@ -433,12 +438,12 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             const payload = (await response.json()) as CouponCatalogPreviewResponse | { error?: string };
             if (!response.ok || !("valid" in payload)) {
                 setActiveCouponPreview(null);
-                toast.error(("error" in payload && payload.error) ? payload.error : "Kupon doğrulanamadı.");
+                toast.error(("error" in payload && payload.error) ? payload.error : t("shop.couponInvalid"));
                 return;
             }
             if (!payload.valid || !payload.coupon) {
                 setActiveCouponPreview(null);
-                toast.error(payload.reason || "Kupon bu hedef için geçerli değil.");
+                toast.error(payload.reason || t("shop.couponNotApplicable"));
                 return;
             }
 
@@ -449,11 +454,11 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                 items: payload.items,
                 bundles: payload.bundles,
             });
-            toast.success(`${payload.coupon.code} uygulandı.`, {
-                description: `${payload.items.length + payload.bundles.length} teklif güncellendi.`,
+            toast.success(t("shop.couponApplied", { code: payload.coupon.code }), {
+                description: t("shop.offersUpdated", { count: payload.items.length + payload.bundles.length }),
             });
         } catch {
-            toast.error("Kupon doğrulama isteği tamamlanamadı.");
+            toast.error(t("shop.couponRequestFailed"));
         } finally {
             setApplyingCoupon(false);
         }
@@ -473,7 +478,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             });
             const payload = (await response.json()) as CoinGrantRedeemResult | { error?: string };
             if (!response.ok || !("ok" in payload) || !payload.ok) {
-                toast.error(("error" in payload && payload.error) ? payload.error : "Coin kodu kullanılamadı.");
+                toast.error(("error" in payload && payload.error) ? payload.error : t("shop.coinCodeFailed"));
                 return;
             }
 
@@ -481,11 +486,11 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             dispatchWalletUpdated({ coinBalance: payload.coinBalance, source: "coin_grant" });
             dispatchNotificationsUpdated();
             setCoinGrantCode("");
-            toast.success("Coin kodu kullanıldı.", {
-                description: `${payload.coinAmount} coin eklendi.`,
+            toast.success(t("shop.coinCodeUsed"), {
+                description: t("shop.coinAdded", { count: payload.coinAmount }),
             });
         } catch {
-            toast.error("Coin kodu isteği tamamlanamadı.");
+            toast.error(t("shop.coinCodeRequestFailed"));
         } finally {
             setRedeemingCoinGrant(false);
         }
@@ -502,21 +507,21 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                     <div>
                         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-300/70 bg-white/80 px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-slate-700 dark:border-slate-700/70 dark:bg-slate-950/50 dark:text-slate-200">
                             <Sparkles className="h-3.5 w-3.5" />
-                            Mağaza
+                            {t("shop.title")}
                         </div>
                         <h1 className="max-w-2xl text-xl font-black tracking-tight text-slate-950 dark:text-white md:text-[1.75rem]">
-                            Kozmetik kataloğu
+                            {t("shop.catalog")}
                         </h1>
                         <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                            Avatar, çerçeve ve kart kozmetiklerini kategoriye göre tarayabilir, satın almadan önce önizlemeyi açabilirsin.
+                            {t("shop.description")}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                            <StatusChip label={`Mağaza x${catalog.liveops.storePriceMultiplier.toFixed(2)}`} />
-                            <StatusChip label={`Maç x${catalog.liveops.activeMatchCoinMultiplier.toFixed(2)}`} />
-                            {catalog.liveops.weekendBoostApplied ? <StatusChip label="Hafta Sonu Bonusu" tone="warning" /> : null}
-                            {!catalog.liveops.discountCampaignsEnabled ? <StatusChip label="Kampanyalar Durduruldu" tone="danger" /> : null}
+                            <StatusChip label={t("shop.storeMultiplier", { value: catalog.liveops.storePriceMultiplier.toFixed(2) })} />
+                            <StatusChip label={t("shop.matchMultiplier", { value: catalog.liveops.activeMatchCoinMultiplier.toFixed(2) })} />
+                            {catalog.liveops.weekendBoostApplied ? <StatusChip label={t("shop.weekendBonus")} tone="warning" /> : null}
+                            {!catalog.liveops.discountCampaignsEnabled ? <StatusChip label={t("shop.campaignsPaused")} tone="danger" /> : null}
                             <Link href="/checkout" className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 transition hover:bg-sky-100 dark:border-sky-900/50 dark:bg-sky-950/35 dark:text-sky-300 dark:hover:bg-sky-950/60">
-                                <CreditCard className="h-3.5 w-3.5" /> Güvenli ödeme
+                                <CreditCard className="h-3.5 w-3.5" /> {t("shop.securePayment")}
                             </Link>
                         </div>
                         {discountedOffers.length > 0 ? (
@@ -532,12 +537,12 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                         ) : null}
                     </div>
                     <div className="grid gap-3">
-                        <CoinBadge value={catalog.coinBalance} label="Coin Bakiyesi" className="rounded-[24px] border-amber-300/70 bg-white/90 px-4 py-4 dark:bg-slate-950/55" valueClassName="text-2xl" />
+                        <CoinBadge value={catalog.coinBalance} label={t("shop.coinBalance")} className="rounded-[24px] border-amber-300/70 bg-white/90 px-4 py-4 dark:bg-slate-950/55" valueClassName="text-2xl" />
                         <div className="rounded-[24px] border border-slate-200/80 bg-white/90 p-4 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/45">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                                     {utilityMode === "coupon" ? <TicketPercent className="h-3.5 w-3.5" /> : <Gift className="h-3.5 w-3.5" />}
-                                    {utilityMode === "coupon" ? "Kupon" : "Coin Kodu"}
+                                    {utilityMode === "coupon" ? t("shop.coupon") : t("shop.coinCode")}
                                 </div>
                                 <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900/70">
                                     <button
@@ -550,7 +555,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                                                 : "text-slate-500 dark:text-slate-400"
                                         )}
                                     >
-                                        Kupon
+                                        {t("shop.coupon")}
                                     </button>
                                     <button
                                         type="button"
@@ -562,7 +567,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                                                 : "text-slate-500 dark:text-slate-400"
                                         )}
                                     >
-                                        Coin Kodu
+                                        {t("shop.coinCode")}
                                     </button>
                                 </div>
                             </div>
@@ -603,16 +608,16 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                                                 )}
                                             >
                                                 {applyingCoupon ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : hasAppliedCoupon ? <Check className="h-3.5 w-3.5" /> : <TicketPercent className="h-3.5 w-3.5" />}
-                                                {applyingCoupon ? "Kontrol Ediliyor" : hasAppliedCoupon ? "Uygulandı" : "Kullan"}
+                                                {applyingCoupon ? t("shop.checking") : hasAppliedCoupon ? t("shop.applied") : t("shop.use")}
                                             </button>
                                         </div>
                                         <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                                            Kupon geçerliyse indirimli ürün ve paketler üstte görünür. Kartların üzerinde yeni fiyatı hemen görürsün.
+                                            {t("shop.couponHelp")}
                                         </p>
                                         <div className="flex flex-wrap items-center gap-2 text-xs">
                                             {activeCouponPreview ? (
                                                 <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-bold text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">
-                                                    Aktif kupon: {activeCouponPreview.coupon.code} • {activeCouponPreview.items.length + activeCouponPreview.bundles.length} teklif
+                                                    {t("shop.activeCouponMeta", { code: activeCouponPreview.coupon.code, count: activeCouponPreview.items.length + activeCouponPreview.bundles.length })}
                                                 </span>
                                             ) : null}
                                         </div>
@@ -639,11 +644,11 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                                                 disabled={redeemingCoinGrant || !coinGrantCode.trim()}
                                                 className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-bold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300"
                                             >
-                                                {redeemingCoinGrant ? "..." : "Kullan"}
+                                                {redeemingCoinGrant ? "..." : t("shop.use")}
                                             </button>
                                         </div>
                                         <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                                            Etkinlik veya içerik üreticisi kodlarını burada kullan. Başarılı olduğunda coin bakiyen ve bildirimlerin güncellenir.
+                                            {t("shop.coinCodeHelp")}
                                         </p>
                                     </>
                                 )}
@@ -668,19 +673,19 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <div className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-700 dark:text-blue-300">
-                                Aktif Kupon
+                                {t("shop.activeCoupon")}
                             </div>
                             <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-white">{activeCouponPreview.coupon.code}</h2>
                             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                                İndirimli ürün ve paketler aşağıda işaretlendi. Yeni fiyatlar kartların üzerinde doğrudan görünüyor.
+                                {t("shop.activeCouponHelp")}
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-2 text-xs font-bold">
                             <span className="rounded-full border border-blue-200 bg-white/80 px-3 py-1 text-blue-700 dark:border-blue-800/60 dark:bg-slate-950/50 dark:text-blue-300">
-                                {couponMatchedItems.length} ürün
+                                {t("shop.itemCount", { count: couponMatchedItems.length })}
                             </span>
                             <span className="rounded-full border border-blue-200 bg-white/80 px-3 py-1 text-blue-700 dark:border-blue-800/60 dark:bg-slate-950/50 dark:text-blue-300">
-                                {couponMatchedBundles.length} paket
+                                {t("shop.bundleCount", { count: couponMatchedBundles.length })}
                             </span>
                         </div>
                     </div>
@@ -691,8 +696,8 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                 <section className="mb-8">
                     <div className="mb-4 flex items-end justify-between gap-4">
                         <div>
-                            <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">Öne Çıkanlar</h2>
-                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Vitrine alınan ürünler burada öne çıkarılır.</p>
+                            <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">{t("shop.featured")}</h2>
+                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t("shop.featuredHelp")}</p>
                         </div>
                     </div>
                     <div className="grid gap-4 lg:grid-cols-3">
@@ -706,10 +711,10 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             <section className="mb-8 rounded-[28px] border border-slate-200/80 bg-white/85 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.2)] dark:border-slate-800/70 dark:bg-slate-950/40 md:p-6">
                 <div className="mb-5 flex items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">Ürünler</h2>
-                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Seçili kategoriye göre filtrelenmiş mağaza kataloğu.</p>
+                        <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">{t("shop.products")}</h2>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t("shop.productsHelp")}</p>
                     </div>
-                    <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-600 dark:bg-slate-900 dark:text-slate-300">{filteredItems.length} Ürün</div>
+                    <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-600 dark:bg-slate-900 dark:text-slate-300">{t("shop.itemCount", { count: filteredItems.length })}</div>
                 </div>
                 <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="relative w-full max-w-md">
@@ -717,18 +722,18 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                         <input
                             value={searchTerm}
                             onChange={(event) => setSearchTerm(event.target.value)}
-                            placeholder="Ürün, paket veya etiket ara"
+                            placeholder={t("shop.search")}
                             className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-100"
                         />
                     </div>
                     {searchQuery ? (
                         <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                            Arama: {searchTerm}
+                            {t("shop.searchValue", { value: searchTerm })}
                         </div>
                     ) : null}
                 </div>
                 {filteredItems.length === 0 ? (
-                    <div className="rounded-[22px] border border-dashed border-slate-300/70 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">{searchQuery ? "Aramaya uygun ürün bulunamadı." : "Bu kategoride aktif ürün yok."}</div>
+                    <div className="rounded-[22px] border border-dashed border-slate-300/70 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">{searchQuery ? t("shop.noSearchItems") : t("shop.noActiveItems")}</div>
                 ) : (
                     <div className="space-y-5">
                         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-4">
@@ -743,10 +748,10 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
                                     onClick={() => setVisibleItemCount((current) => current + COSMETIC_GRID_BATCH_SIZE)}
                                     className="rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-[0.16em] text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-900"
                                 >
-                                    Daha fazla göster
+                                    {t("shop.showMore")}
                                 </button>
                                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                                    {visibleItems.length} / {sortedItems.length} ürün gösteriliyor
+                                    {t("shop.showing", { visible: visibleItems.length, total: sortedItems.length })}
                                 </span>
                             </div>
                         ) : null}
@@ -757,13 +762,13 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             <section className="rounded-[28px] border border-slate-200/80 bg-white/85 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.2)] dark:border-slate-800/70 dark:bg-slate-950/40 md:p-6">
                 <div className="mb-5 flex items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">Paketler</h2>
-                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Birden fazla kozmetiği tek alımda toplayan teklif setleri.</p>
+                        <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">{t("shop.bundles")}</h2>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t("shop.bundlesHelp")}</p>
                     </div>
-                    <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-600 dark:bg-slate-900 dark:text-slate-300">{filteredBundles.length} Paket</div>
+                    <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-600 dark:bg-slate-900 dark:text-slate-300">{t("shop.bundleCount", { count: filteredBundles.length })}</div>
                 </div>
                 {filteredBundles.length === 0 ? (
-                    <div className="rounded-[22px] border border-dashed border-slate-300/70 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">{catalog.liveops.bundlesEnabled ? (searchQuery ? "Aramaya uygun paket bulunamadı." : "Aktif paket yok.") : "Paket satışları geçici olarak kapalı."}</div>
+                    <div className="rounded-[22px] border border-dashed border-slate-300/70 px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-700/70 dark:text-slate-400">{catalog.liveops.bundlesEnabled ? (searchQuery ? t("shop.noSearchBundles") : t("shop.noBundles")) : t("shop.bundlesPaused")}</div>
                 ) : (
                     <div className="grid gap-4 xl:grid-cols-2">
                         {filteredBundles.map((bundle) => (
@@ -783,7 +788,8 @@ function StatusChip({ label, tone = "neutral" }: { label: string; tone?: "neutra
 }
 
 function FeatureCard({ item, activePricing, busy, onPreview, onBuy }: { item: CatalogStoreItemView; activePricing: DisplayedPricing; busy: boolean; onPreview: () => void; onBuy: () => void }) {
-    const availabilityFlag = getAvailabilityFlag(item);
+    const { locale, t } = useI18n();
+    const availabilityFlag = getAvailabilityFlag(item, locale);
 
     return (
         <article className={cn("group relative overflow-hidden rounded-[30px] border p-5 shadow-[0_24px_60px_-40px_rgba(15,23,42,0.28)] transition-all hover:-translate-y-1 hover:shadow-[0_28px_70px_-42px_rgba(15,23,42,0.32)]", SHOP_RARITY_CARD_CLASS[item.rarity], SHOP_RARITY_HALO_CLASS[item.rarity])}>
@@ -793,13 +799,13 @@ function FeatureCard({ item, activePricing, busy, onPreview, onBuy }: { item: Ca
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-white/60 bg-white/75 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-700 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-200">
-                                {item.isFeatured ? "Vitrin" : formatItemTypeLabel(item.type)}
+                                {item.isFeatured ? t("shop.featured") : formatItemTypeLabel(item.type, locale)}
                             </span>
                             {availabilityFlag ? <StoreFlag label={availabilityFlag.label} tone={availabilityFlag.tone} /> : null}
                             {item.badgeText ? <span className="rounded-full border border-amber-200/80 bg-amber-50/80 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-300">{item.badgeText}</span> : null}
                         </div>
                         <h3 className="mt-3 text-xl font-black tracking-tight text-slate-900 dark:text-white">{item.name}</h3>
-                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.type)} koleksiyonu</p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.type, locale)}</p>
                     </div>
                     <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${SHOP_RARITY_BADGE_CLASS[item.rarity]}`}>{item.rarity}</span>
                 </div>
@@ -810,7 +816,7 @@ function FeatureCard({ item, activePricing, busy, onPreview, onBuy }: { item: Ca
 
                 <div className="mt-5 flex items-end justify-between gap-4">
                     <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Fiyat</div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{t("shop.price")}</div>
                         {(activePricing.couponApplied || activePricing.pricing.discountCoin > 0) ? <div className="mt-1 text-xs text-slate-400 line-through">{activePricing.referencePriceCoin.toLocaleString()} coin</div> : null}
                         <div className="mt-1 flex items-center gap-2 text-2xl font-black text-slate-900 dark:text-white">
                             {activePricing.pricing.finalPriceCoin.toLocaleString()}
@@ -821,7 +827,7 @@ function FeatureCard({ item, activePricing, busy, onPreview, onBuy }: { item: Ca
                 </div>
 
                 <div className="mt-5 flex flex-wrap gap-2">
-                    <ActionButton icon={<Eye className="h-3.5 w-3.5" />} label="Önizle" onClick={onPreview} />
+                    <ActionButton icon={<Eye className="h-3.5 w-3.5" />} label={t("shop.preview")} onClick={onPreview} />
                     <BuyButton item={item} busy={busy} onClick={onBuy} />
                 </div>
             </div>
@@ -829,7 +835,8 @@ function FeatureCard({ item, activePricing, busy, onPreview, onBuy }: { item: Ca
     );
 }
 function MerchItemCard({ item, activePricing, busy, onPreview, onBuy }: { item: CatalogStoreItemView; activePricing: DisplayedPricing; busy: boolean; onPreview: () => void; onBuy: () => void }) {
-    const availabilityFlag = getAvailabilityFlag(item);
+    const { locale, t } = useI18n();
+    const availabilityFlag = getAvailabilityFlag(item, locale);
 
     return (
         <article className={cn("group relative overflow-hidden rounded-[26px] border p-3.5 transition-all hover:-translate-y-0.5 hover:shadow-[0_22px_44px_-34px_rgba(15,23,42,0.25)]", SHOP_RARITY_CARD_CLASS[item.rarity], SHOP_RARITY_HALO_CLASS[item.rarity])}>
@@ -841,7 +848,7 @@ function MerchItemCard({ item, activePricing, busy, onPreview, onBuy }: { item: 
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.type)}</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.type, locale)}</p>
                             {availabilityFlag ? <StoreFlag label={availabilityFlag.label} tone={availabilityFlag.tone} /> : null}
                             {item.badgeText ? <span className="rounded-full border border-amber-200/80 bg-amber-50/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-300">{item.badgeText}</span> : null}
                         </div>
@@ -858,7 +865,7 @@ function MerchItemCard({ item, activePricing, busy, onPreview, onBuy }: { item: 
                         </div>
                         {activePricing.couponApplied ? <div className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 dark:text-blue-300">{activePricing.coupon?.code}</div> : null}
                     </div>
-                    <ActionIconButton icon={<Eye className="h-3.5 w-3.5" />} label="Önizle" onClick={onPreview} />
+                    <ActionIconButton icon={<Eye className="h-3.5 w-3.5" />} label={t("shop.preview")} onClick={onPreview} />
                 </div>
                 <div className="mt-3"><BuyButton item={item} busy={busy} onClick={onBuy} fullWidth /></div>
             </div>
@@ -867,20 +874,21 @@ function MerchItemCard({ item, activePricing, busy, onPreview, onBuy }: { item: 
 }
 
 function BundleMerchCard({ bundle, activePricing, itemLookup, busy, onPreview, onBuy }: { bundle: CatalogBundleView; activePricing: DisplayedPricing; itemLookup: Map<number, CatalogStoreItemView>; busy: boolean; onPreview: () => void; onBuy: () => void }) {
+    const { locale, t } = useI18n();
     const disabled = busy || bundle.fullyOwned || bundle.ownedItemCount > 0;
     return (
         <article className="rounded-[28px] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.9),rgba(240,249,255,0.88))] p-5 shadow-[0_24px_56px_-40px_rgba(15,23,42,0.24)] dark:border-slate-800/70 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(17,24,39,0.82),rgba(30,41,59,0.78))]">
             <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                        <div className="inline-flex rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white dark:bg-slate-100 dark:text-slate-950">Paket</div>
-                        <div className="rounded-full border border-white/70 bg-white/75 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-300">{bundle.items.length} parça</div>
+                        <div className="inline-flex rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white dark:bg-slate-100 dark:text-slate-950">{t("shop.bundle")}</div>
+                        <div className="rounded-full border border-white/70 bg-white/75 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 dark:border-slate-700/70 dark:bg-slate-950/60 dark:text-slate-300">{t("shop.pieces", { count: bundle.items.length })}</div>
                         {activePricing.couponApplied ? <div className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">{activePricing.coupon?.code}</div> : null}
                     </div>
                     <h3 className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-white">{bundle.name}</h3>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">{bundle.description}</p>
                 </div>
-                <CoinBadge value={activePricing.pricing.finalPriceCoin} label="Paket Fiyatı" className="min-w-[140px] rounded-[20px] px-3 py-2" valueClassName="text-base" />
+                <CoinBadge value={activePricing.pricing.finalPriceCoin} label={t("shop.bundlePrice")} className="min-w-[140px] rounded-[20px] px-3 py-2" valueClassName="text-base" />
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {bundle.items.slice(0, 4).map((item) => {
@@ -891,7 +899,7 @@ function BundleMerchCard({ bundle, activePricing, itemLookup, busy, onPreview, o
                                 {catalogItem ? <CosmeticThumbnail item={catalogItem} /> : <div className="flex h-20 w-20 items-center justify-center rounded-[20px] bg-slate-900 text-sm font-black text-white">{item.itemName.slice(0, 1).toUpperCase()}</div>}
                             </div>
                             <div className="mt-3 text-center">
-                                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.itemType)}</div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.itemType, locale)}</div>
                                 <div className="mt-1 truncate text-sm font-black text-slate-900 dark:text-white">{item.itemName}</div>
                             </div>
                         </div>
@@ -901,11 +909,11 @@ function BundleMerchCard({ bundle, activePricing, itemLookup, busy, onPreview, o
             <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     {(activePricing.couponApplied || activePricing.pricing.discountCoin > 0) ? <div className="text-sm text-slate-400 line-through">{activePricing.referencePriceCoin.toLocaleString()} coin</div> : null}
-                    <div className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">{bundle.ownedItemCount > 0 ? `${bundle.ownedItemCount} ürüne zaten sahipsin` : `${bundle.items.length} kozmetik dahil`}</div>
+                    <div className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">{bundle.ownedItemCount > 0 ? t("shop.alreadyOwn", { count: bundle.ownedItemCount }) : t("shop.cosmeticsIncluded", { count: bundle.items.length })}</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    <ActionButton icon={<Eye className="h-3.5 w-3.5" />} label="Önizle" onClick={onPreview} />
-                    <button type="button" onClick={onBuy} disabled={disabled} className="rounded-2xl bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">{bundle.fullyOwned ? "Sahipsin" : bundle.ownedItemCount > 0 ? "Sahip Olduğun Ürün Var" : busy ? "Alınıyor..." : "Paketi Satın Al"}</button>
+                    <ActionButton icon={<Eye className="h-3.5 w-3.5" />} label={t("shop.preview")} onClick={onPreview} />
+                    <button type="button" onClick={onBuy} disabled={disabled} className="rounded-2xl bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">{bundle.fullyOwned ? t("shop.owned") : bundle.ownedItemCount > 0 ? t("shop.ownedItemInBundle") : busy ? t("shop.buying") : t("shop.buyBundle")}</button>
                 </div>
             </div>
         </article>
@@ -921,7 +929,8 @@ function ActionIconButton({ icon, label, onClick, disabled = false }: { icon: Re
 }
 
 function BuyButton({ item, busy, onClick, fullWidth = false }: { item: CatalogStoreItemView; busy: boolean; onClick: () => void; fullWidth?: boolean }) {
-    const label = item.equipped ? "Kullanılıyor" : item.owned ? "Sahipsin" : busy ? "Alınıyor..." : "Satın Al";
+    const { t } = useI18n();
+    const label = item.equipped ? t("shop.inUse") : item.owned ? t("shop.owned") : busy ? t("shop.buying") : t("shop.buy");
     const className = item.owned ? (item.equipped ? "bg-blue-600 text-white" : "bg-emerald-600 text-white") : SHOP_RARITY_BUY_BUTTON_CLASS[item.rarity];
     return <button type="button" onClick={onClick} disabled={busy || item.owned} className={cn("rounded-2xl px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition-all disabled:opacity-50", fullWidth && "w-full", className)}>{label}</button>;
 }
@@ -938,7 +947,8 @@ function PreviewModal({ offer, itemLookup, getDisplayedItemPricing, getDisplayed
 }
 
 function ItemPreviewContent({ item, activePricing, busy, onBuy }: { item: CatalogStoreItemView; activePricing: DisplayedPricing; busy: boolean; onBuy: () => void }) {
-    const availabilityFlag = getAvailabilityFlag(item);
+    const { locale, t } = useI18n();
+    const availabilityFlag = getAvailabilityFlag(item, locale);
 
     return (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -946,9 +956,9 @@ function ItemPreviewContent({ item, activePricing, busy, onBuy }: { item: Catalo
             <div className="flex flex-col rounded-[28px] border border-slate-200/80 bg-white/90 p-5 dark:border-slate-800/70 dark:bg-slate-950/45">
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Ürün Önizleme</div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">{t("shop.itemPreview")}</div>
                         <h3 className="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">{item.name}</h3>
-                        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.type)} • {item.rarity}</p>
+                        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.type, locale)} • {item.rarity}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
                             {availabilityFlag ? <StoreFlag label={availabilityFlag.label} tone={availabilityFlag.tone} /> : null}
                             {item.badgeText ? <StoreFlag label={item.badgeText} tone="warning" /> : null}
@@ -956,8 +966,8 @@ function ItemPreviewContent({ item, activePricing, busy, onBuy }: { item: Catalo
                     </div>
                     <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${SHOP_RARITY_BADGE_CLASS[item.rarity]}`}>{item.rarity}</span>
                 </div>
-                {item.pricing.appliedPromotion ? <div className="mt-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-3 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">Kampanya: {item.pricing.appliedPromotion.name}</div> : null}
-                <div className="mt-6"><div className="text-sm text-slate-400 dark:text-slate-500">Fiyat</div>{(activePricing.couponApplied || activePricing.pricing.discountCoin > 0) ? <div className="mt-1 text-sm text-slate-400 line-through">{activePricing.referencePriceCoin.toLocaleString()} coin</div> : null}<div className="mt-2 flex items-center gap-2 text-3xl font-black text-slate-900 dark:text-white">{activePricing.pricing.finalPriceCoin.toLocaleString()}<CoinMark className="h-9 w-9" iconClassName="h-4 w-4" /></div>{activePricing.couponApplied ? <div className="mt-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">{activePricing.coupon?.code}</div> : null}</div>
+                {item.pricing.appliedPromotion ? <div className="mt-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-3 py-2 text-sm font-medium text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">{t("shop.campaign", { name: item.pricing.appliedPromotion.name })}</div> : null}
+                <div className="mt-6"><div className="text-sm text-slate-400 dark:text-slate-500">{t("shop.price")}</div>{(activePricing.couponApplied || activePricing.pricing.discountCoin > 0) ? <div className="mt-1 text-sm text-slate-400 line-through">{activePricing.referencePriceCoin.toLocaleString()} coin</div> : null}<div className="mt-2 flex items-center gap-2 text-3xl font-black text-slate-900 dark:text-white">{activePricing.pricing.finalPriceCoin.toLocaleString()}<CoinMark className="h-9 w-9" iconClassName="h-4 w-4" /></div>{activePricing.couponApplied ? <div className="mt-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">{activePricing.coupon?.code}</div> : null}</div>
                 <div className="mt-auto flex flex-wrap gap-2 pt-6"><BuyButton item={item} busy={busy} onClick={onBuy} /></div>
             </div>
         </div>
@@ -965,16 +975,17 @@ function ItemPreviewContent({ item, activePricing, busy, onBuy }: { item: Catalo
 }
 
 function BundlePreviewContent({ bundle, activePricing, itemLookup, busy, onBuy }: { bundle: CatalogBundleView; activePricing: DisplayedPricing; itemLookup: Map<number, CatalogStoreItemView>; busy: boolean; onBuy: () => void }) {
+    const { locale, t } = useI18n();
     const disabled = busy || bundle.fullyOwned || bundle.ownedItemCount > 0;
     return (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="rounded-[28px] border border-slate-200/80 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.6),_transparent_60%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(226,232,240,0.9))] p-5 dark:border-slate-800/70 dark:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_60%),linear-gradient(180deg,rgba(17,24,39,0.96),rgba(2,6,23,0.96))]">
-                <div className="grid grid-cols-2 gap-4">{bundle.items.map((item) => { const catalogItem = itemLookup.get(item.shopItemId); return (<div key={item.id} className={`rounded-[22px] border p-4 text-center ${SHOP_RARITY_CARD_CLASS[item.itemRarity]}`}><div className="flex justify-center">{catalogItem ? <CosmeticThumbnail item={catalogItem} /> : <div className="flex h-20 w-20 items-center justify-center rounded-[20px] bg-slate-900 text-sm font-black text-white">{item.itemName.slice(0, 1).toUpperCase()}</div>}</div><div className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.itemType)}</div><div className="mt-1 text-sm font-black text-slate-900 dark:text-white">{item.itemName}</div></div>); })}</div>
+                <div className="grid grid-cols-2 gap-4">{bundle.items.map((item) => { const catalogItem = itemLookup.get(item.shopItemId); return (<div key={item.id} className={`rounded-[22px] border p-4 text-center ${SHOP_RARITY_CARD_CLASS[item.itemRarity]}`}><div className="flex justify-center">{catalogItem ? <CosmeticThumbnail item={catalogItem} /> : <div className="flex h-20 w-20 items-center justify-center rounded-[20px] bg-slate-900 text-sm font-black text-white">{item.itemName.slice(0, 1).toUpperCase()}</div>}</div><div className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{formatItemTypeLabel(item.itemType, locale)}</div><div className="mt-1 text-sm font-black text-slate-900 dark:text-white">{item.itemName}</div></div>); })}</div>
             </div>
             <div className="flex flex-col rounded-[28px] border border-slate-200/80 bg-white/90 p-5 dark:border-slate-800/70 dark:bg-slate-950/45">
-                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Paket Önizleme</div><h3 className="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">{bundle.name}</h3><p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">{bundle.description}</p>
-                <div className="mt-6"><div className="text-sm text-slate-400 dark:text-slate-500">Fiyat</div>{(activePricing.couponApplied || activePricing.pricing.discountCoin > 0) ? <div className="mt-1 text-sm text-slate-400 line-through">{activePricing.referencePriceCoin.toLocaleString()} coin</div> : null}<div className="mt-2 flex items-center gap-2 text-3xl font-black text-slate-900 dark:text-white">{activePricing.pricing.finalPriceCoin.toLocaleString()}<CoinMark className="h-9 w-9" iconClassName="h-4 w-4" /></div>{activePricing.couponApplied ? <div className="mt-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">{activePricing.coupon?.code}</div> : null}<div className="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">{bundle.ownedItemCount > 0 ? `${bundle.ownedItemCount} ürüne zaten sahipsin` : `${bundle.items.length} kozmetik dahil`}</div></div>
-                <div className="mt-auto flex flex-wrap gap-2 pt-6"><button type="button" onClick={onBuy} disabled={disabled} className="rounded-2xl bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">{bundle.fullyOwned ? "Sahipsin" : bundle.ownedItemCount > 0 ? "Sahip Olduğun Ürün Var" : busy ? "Alınıyor..." : "Paketi Satın Al"}</button></div>
+                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">{t("shop.bundlePreview")}</div><h3 className="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">{bundle.name}</h3><p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">{bundle.description}</p>
+                <div className="mt-6"><div className="text-sm text-slate-400 dark:text-slate-500">{t("shop.price")}</div>{(activePricing.couponApplied || activePricing.pricing.discountCoin > 0) ? <div className="mt-1 text-sm text-slate-400 line-through">{activePricing.referencePriceCoin.toLocaleString()} coin</div> : null}<div className="mt-2 flex items-center gap-2 text-3xl font-black text-slate-900 dark:text-white">{activePricing.pricing.finalPriceCoin.toLocaleString()}<CoinMark className="h-9 w-9" iconClassName="h-4 w-4" /></div>{activePricing.couponApplied ? <div className="mt-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">{activePricing.coupon?.code}</div> : null}<div className="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">{bundle.ownedItemCount > 0 ? t("shop.alreadyOwn", { count: bundle.ownedItemCount }) : t("shop.cosmeticsIncluded", { count: bundle.items.length })}</div></div>
+                <div className="mt-auto flex flex-wrap gap-2 pt-6"><button type="button" onClick={onBuy} disabled={disabled} className="rounded-2xl bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">{bundle.fullyOwned ? t("shop.owned") : bundle.ownedItemCount > 0 ? t("shop.ownedItemInBundle") : busy ? t("shop.buying") : t("shop.buyBundle")}</button></div>
             </div>
         </div>
     );

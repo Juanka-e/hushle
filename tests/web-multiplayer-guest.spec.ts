@@ -53,8 +53,8 @@ test("four guests form two playable teams and enter the first transition", async
 
     await test.step("host creates a room", async () => {
       await hostPage.goto("/");
-      await hostPage.getByPlaceholder(/Adinizi girin/i).fill(hostName);
-      await hostPage.getByRole("button", { name: /Yeni Oda Olustur/i }).click();
+      await hostPage.getByPlaceholder(/Adınızı girin|Enter your name/i).fill(hostName);
+      await hostPage.getByRole("button", { name: /Yeni Oda Oluştur|Create New Room/i }).click();
       await expect(hostPage).toHaveURL(/\/room\/[A-Z0-9]{6}$/, {
         timeout: 20_000,
       });
@@ -69,9 +69,9 @@ test("four guests form two playable teams and enter the first transition", async
 
     await test.step("second guest joins the room", async () => {
       await guestPage.goto("/");
-      await guestPage.getByPlaceholder(/Adinizi girin/i).fill(guestName);
-      await guestPage.getByPlaceholder(/ABC123|Orn: ABC123/i).fill(roomCode ?? "");
-      await guestPage.getByRole("button", { name: /^Katil$/i }).click();
+      await guestPage.getByPlaceholder(/Adınızı girin|Enter your name/i).fill(guestName);
+      await guestPage.getByPlaceholder(/Örn: ABC123|E.g.: ABC123/i).fill(roomCode ?? "");
+      await guestPage.getByRole("button", { name: /^Katıl$|^Join$/i }).click();
       try {
         await expect(guestPage).toHaveURL(new RegExp(`/room/${roomCode}$`), {
           timeout: 20_000,
@@ -120,11 +120,11 @@ test("four guests form two playable teams and enter the first transition", async
 
       for (const [playerPage, playerName] of supportPlayers) {
         await playerPage.goto("/");
-        await playerPage.getByPlaceholder(/Adinizi girin/i).fill(playerName);
+        await playerPage.getByPlaceholder(/Adınızı girin|Enter your name/i).fill(playerName);
         await playerPage
-          .getByPlaceholder(/ABC123|Orn: ABC123/i)
+          .getByPlaceholder(/Örn: ABC123|E.g.: ABC123/i)
           .fill(roomCode ?? "");
-        await playerPage.getByRole("button", { name: /^Katil$/i }).click();
+        await playerPage.getByRole("button", { name: /^Katıl$|^Join$/i }).click();
         await expect(playerPage).toHaveURL(new RegExp(`/room/${roomCode}$`), {
           timeout: 20_000,
         });
@@ -232,12 +232,12 @@ test("four guests form two playable teams and enter the first transition", async
 
     await test.step("active game reconnect restores the game instead of the lobby", async () => {
       await hostPage.getByRole("button", { name: /Devam Ettir/i }).click();
-      await expect(guestPage.getByText("Anlatan", { exact: true })).toBeVisible({
+      await expect(guestPage.getByText(/^(?:ANLATICI|NARRATOR)$/i)).toBeVisible({
         timeout: 20_000,
       });
 
       await guestPage.reload();
-      await expect(guestPage.getByText("Anlatan", { exact: true })).toBeVisible({
+      await expect(guestPage.getByText(/^(?:ANLATICI|NARRATOR)$/i)).toBeVisible({
         timeout: 20_000,
       });
       await expect(
@@ -279,9 +279,9 @@ test("mobile host creates a room that a desktop guest can join", async ({
 
   try {
     await mobileHostPage.goto("/");
-    await mobileHostPage.getByPlaceholder(/Adinizi girin/i).fill(hostName);
+    await mobileHostPage.getByPlaceholder(/Adınızı girin|Enter your name/i).fill(hostName);
     await mobileHostPage
-      .getByRole("button", { name: /Yeni Oda Olustur/i })
+      .getByRole("button", { name: /Yeni Oda Oluştur|Create New Room/i })
       .click();
     await expect(mobileHostPage).toHaveURL(/\/room\/[A-Z0-9]{6}$/, {
       timeout: 20_000,
@@ -291,12 +291,12 @@ test("mobile host creates a room that a desktop guest can join", async ({
 
     await desktopGuestPage.goto("/");
     await desktopGuestPage
-      .getByPlaceholder(/Adinizi girin/i)
+      .getByPlaceholder(/Adınızı girin|Enter your name/i)
       .fill(guestName);
     await desktopGuestPage
-      .getByPlaceholder(/ABC123|Orn: ABC123/i)
+      .getByPlaceholder(/Örn: ABC123|E.g.: ABC123/i)
       .fill(roomCode ?? "");
-    await desktopGuestPage.getByRole("button", { name: /^Katil$/i }).click();
+    await desktopGuestPage.getByRole("button", { name: /^Katıl$|^Join$/i }).click();
 
     await expect(desktopGuestPage).toHaveURL(
       new RegExp(`/room/${roomCode}$`),

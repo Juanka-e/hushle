@@ -23,6 +23,14 @@ See:
 
 ## Key Components
 
+### Localization and content-language boundary
+
+UI locale is a client preference persisted in the `hushle_locale` cookie and
+local storage. Room word locale is server-authoritative state and must not be
+derived from an individual player's UI preference. Announcement translations
+use a normalized child table; word and category packs use locale-scoped rows.
+See `docs/guides/i18n-announcements-and-word-packs.md`.
+
 ### 1. GameSocket (`apps/web/src/lib/socket/game-socket.ts`)
 This file exports `setupGameSocket(io, roomOwnership)`, which initializes the
 socket event listeners with an explicit room ownership coordinator.

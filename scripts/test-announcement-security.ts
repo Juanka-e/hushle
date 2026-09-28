@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+    ANNOUNCEMENT_MEDIA_URL_MAX_LENGTH,
     sanitizeAnnouncementContent,
     sanitizeAnnouncementMedia,
 } from "../apps/web/src/lib/security/announcements";
@@ -29,6 +30,18 @@ assert.equal(safeYoutube.mediaType, "youtube");
 const unsafeYoutube = sanitizeAnnouncementMedia("http://evil.example/video", "youtube");
 assert.equal(unsafeYoutube.mediaUrl, null);
 assert.equal(unsafeYoutube.mediaType, null);
+
+const malformedYoutube = sanitizeAnnouncementMedia(
+    "https://www.youtube.com/embed/abc123/../../tracking",
+    "youtube"
+);
+assert.equal(malformedYoutube.mediaUrl, null);
+
+const oversizedMediaUrl = sanitizeAnnouncementMedia(
+    `https://cdn.example.com/${"a".repeat(ANNOUNCEMENT_MEDIA_URL_MAX_LENGTH)}.png`,
+    "image"
+);
+assert.equal(oversizedMediaUrl.mediaUrl, null);
 
 const safeImage = sanitizeAnnouncementMedia("/cosmetics/mock/card-faces/ember-glow.svg", "image");
 assert.equal(safeImage.mediaUrl, null);

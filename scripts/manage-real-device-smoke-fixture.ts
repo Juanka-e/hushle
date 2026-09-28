@@ -78,9 +78,15 @@ export async function prepareFixture(databaseName: string): Promise<void> {
         const suffix = String(index).padStart(2, "0");
         const wordText = `${FIXTURE_PREFIX}${suffix}`;
         const word = await prisma.word.upsert({
-            where: { wordText },
+            where: {
+                locale_wordText: {
+                    locale: "tr",
+                    wordText,
+                },
+            },
             create: {
                 wordText,
+                locale: "tr",
                 difficulty: ((index - 1) % 3) + 1,
             },
             update: {

@@ -25,10 +25,16 @@ import type {
     PendingAdminHandoffState,
     RoomStartReadiness,
 } from "@/types/game";
+import { useI18n } from "@/components/providers/i18n-provider";
+import {
+    GAME_CONTENT_LOCALES,
+    GAME_CONTENT_LOCALE_DEFINITIONS,
+    type GameContentLocale,
+} from "@hushle/domain-game";
 
 interface LobbyProps {
     roomCode: string;
-    settings: { sure: number; mod: "tur" | "skor"; deger: number };
+    settings: { sure: number; mod: "tur" | "skor"; deger: number; wordLocale: GameContentLocale };
     selectedCategories: number[];
     selectedDifficulties: number[];
     categories: CategoryItem[];
@@ -39,6 +45,7 @@ interface LobbyProps {
         sure: number;
         mod: "tur" | "skor";
         deger: number;
+        wordLocale: GameContentLocale;
     }) => void;
     onUpdateCategories: (ids: number[]) => void;
     onUpdateDifficulties: (ids: number[]) => void;
@@ -49,12 +56,6 @@ interface LobbyProps {
     onKickPlayer: (playerId: string) => void;
     onTransferHost: (playerId: string) => void;
 }
-
-const difficultyLabels: Record<number, string> = {
-    1: "Kolay",
-    2: "Orta",
-    3: "Zor",
-};
 
 export function Lobby({
     roomCode,
@@ -73,6 +74,12 @@ export function Lobby({
     onSwitchTeam,
     onStartGame,
 }: LobbyProps) {
+    const { t } = useI18n();
+    const difficultyLabels: Record<number, string> = {
+        1: t("room.easy"),
+        2: t("room.medium"),
+        3: t("room.hard"),
+    };
     const [copied, setCopied] = useState(false);
     const [hideUrl, setHideUrl] = useState(false);
     const [hideUrlReady, setHideUrlReady] = useState(false);
@@ -85,19 +92,20 @@ export function Lobby({
     const [showStartRequirement, setShowStartRequirement] = useState(false);
     const startBlockedReason = useMemo(() => {
         if (!startReadiness.ready) {
-            return "Her iki takımda en az iki oyuncu olmalı!";
+            return t("room.minimumPlayers");
         }
         if (selectedCategories.length === 0) {
-            return "Başlamak için en az bir kategori seçmelisin.";
+            return t("room.categoryRequired");
         }
         if (selectedDifficulties.length === 0) {
-            return "Başlamak için en az bir zorluk seviyesi seçmelisin.";
+            return t("room.difficultyRequired");
         }
         return null;
     }, [
         selectedCategories.length,
         selectedDifficulties.length,
         startReadiness.ready,
+        t,
     ]);
 
     useEffect(() => {
@@ -275,11 +283,11 @@ export function Lobby({
     };
 
     const getSelectedText = () => {
-        if (selectedCategories.length === 0) return "Henüz kategori seçilmedi";
-        if (flatCategories.length > 0 && selectedCategories.length === flatCategories.length) return "Tüm Kategoriler";
-        const firstLabel = categoryPathLabelById.get(selectedCategories[0]) || "1 kategori";
+        if (selectedCategories.length === 0) return t("room.noneSelected");
+        if (flatCategories.length > 0 && selectedCategories.length === flatCategories.length) return t("room.allCategories");
+        const firstLabel = categoryPathLabelById.get(selectedCategories[0]) || t("room.categoryFallback");
         if (selectedCategories.length === 1) return firstLabel;
-        return `${firstLabel} +${selectedCategories.length - 1} diğer`;
+        return t("room.moreCategories", { label: firstLabel, count: selectedCategories.length - 1 });
     };
 
     return (
@@ -290,7 +298,7 @@ export function Lobby({
                     {!hideUrl ? (
                         <div className="animate-fade-in">
                             <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 text-center">
-                                Davet Bağlantısı
+                                {t("room.inviteLink")}
                             </label>
 
                             <button
@@ -330,7 +338,7 @@ export function Lobby({
                     ) : (
                         <div className="text-center py-2 animate-fade-in">
                             <span className="text-sm text-gray-400 italic">
-                                Bağlantı ve Oda Kodu Gizlendi
+                                {t("room.hidden")}
                             </span>
                         </div>
                     )}
@@ -341,8 +349,8 @@ export function Lobby({
                     >
                         {hideUrl ? <Eye size={14} /> : <EyeOff size={14} />}
                         {hideUrl
-                            ? "Bağlantıyı Göster"
-                            : "URL Ve Oda Kodunu Gizle"}
+                            ? t("room.showLink")
+                            : t("room.hideLink")}
                     </button>
                 </div>
 
@@ -363,7 +371,7 @@ export function Lobby({
                             >
                                 <LayoutGrid size={24} />
                                 <span className="text-xs font-bold">
-                                    Kategoriler
+                                    {t("room.categories")}
                                 </span>
                             </button>
 
@@ -375,7 +383,7 @@ export function Lobby({
                             >
                                 <Shuffle size={24} />
                                 <span className="text-xs font-bold">
-                                    Takım Karıştır
+                                    {t("room.shuffleTeams")}
                                 </span>
                             </button>
 
@@ -386,7 +394,7 @@ export function Lobby({
                             >
                                 <Users size={24} />
                                 <span className="text-xs font-bold">
-                                    Takım Değiştir
+                                    {t("room.switchTeam")}
                                 </span>
                             </button>
                         </div>
@@ -394,7 +402,7 @@ export function Lobby({
                         {/* Selected Categories Info */}
                         <div className="mt-4 text-center">
                             <span className="text-xs text-gray-400 uppercase font-semibold">
-                                Seçili Kategoriler
+                                {t("room.selectedCategories")}
                             </span>
                             <div className="flex items-center justify-center gap-2 mt-1">
                                 <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
@@ -414,13 +422,13 @@ export function Lobby({
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-700/80 dark:text-amber-300/80">
-                                        Yonetici Devri Bekleniyor
+                                        {t("room.handoffPending")}
                                     </div>
                                     <div className="mt-1 text-sm font-semibold">
-                                        Mevcut yonetici geri donmezse otomatik devir {handoffRemainingSeconds} saniye icinde tamamlanacak.
+                                        {t("room.handoffCountdown", { seconds: handoffRemainingSeconds })}
                                     </div>
                                     <div className="mt-1 text-xs text-amber-800/80 dark:text-amber-200/80">
-                                        Bu sure dolarsa sistem odadaki bir sonraki cevrimici oyuncuyu yonetici yapar.
+                                        {t("room.handoffHelp")}
                                     </div>
                                 </div>
                             </div>
@@ -431,13 +439,29 @@ export function Lobby({
                     <div>
                         <div className="flex items-center gap-2 mb-4 text-gray-800 dark:text-gray-200">
                             <Settings size={18} />
-                            <h3 className="font-semibold">Oyun Ayarları</h3>
+                            <h3 className="font-semibold">{t("room.gameSettings")}</h3>
                         </div>
 
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                            <label htmlFor="room-word-language" className="text-sm font-medium text-muted-foreground" title={t("room.wordLanguageHelp")}>
+                                {t("room.wordLanguage")}
+                            </label>
+                            <select id="room-word-language" value={settings.wordLocale}
+                                onChange={event => onUpdateSettings({ ...settings, wordLocale: event.target.value as GameContentLocale })}
+                                disabled={!isHost}
+                                className="min-h-11 max-w-full rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70">
+                                {GAME_CONTENT_LOCALES.map(locale => (
+                                    <option key={locale} value={locale}>{GAME_CONTENT_LOCALE_DEFINITIONS[locale].nativeName}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <details className="group/settings mb-4">
+                            <summary className="cursor-pointer py-2 text-sm font-semibold text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("room.advancedSettings")}</summary>
+                            <div className="pt-3">
                         {/* Game Mode Selection */}
                         <div className="mb-4">
                             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                                Oyun Modu
+                                {t("room.gameMode")}
                             </label>
                             <div className="grid grid-cols-2 gap-2">
                                 <button
@@ -458,7 +482,7 @@ export function Lobby({
                                 >
                                     <Hash size={16} />
                                     <span className="text-sm font-medium">
-                                        Tur Sayısı
+                                        {t("room.roundCount")}
                                     </span>
                                 </button>
                                 <button
@@ -479,7 +503,7 @@ export function Lobby({
                                 >
                                     <Trophy size={16} />
                                     <span className="text-sm font-medium">
-                                        Hedef Skor
+                                        {t("room.targetScore")}
                                     </span>
                                 </button>
                             </div>
@@ -488,7 +512,7 @@ export function Lobby({
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1">
-                                    <Clock size={12} /> Süre (Saniye)
+                                    <Clock size={12} /> {t("room.durationSeconds")}
                                 </label>
                                 <select
                                     value={settings.sure}
@@ -501,11 +525,9 @@ export function Lobby({
                                     className="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-600 text-gray-900 dark:text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                     disabled={!isHost}
                                 >
-                                    <option value={30}>30 Saniye</option>
-                                    <option value={45}>45 Saniye</option>
-                                    <option value={60}>60 Saniye</option>
-                                    <option value={90}>90 Saniye</option>
-                                    <option value={120}>120 Saniye</option>
+                                    {[30, 45, 60, 90, 120].map((seconds) => (
+                                        <option key={seconds} value={seconds}>{t("room.secondsValue", { count: seconds })}</option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -513,7 +535,7 @@ export function Lobby({
                                 {settings.mod === "tur" ? (
                                     <>
                                         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1">
-                                            <Hash size={12} /> Toplam Tur
+                                            <Hash size={12} /> {t("room.totalRounds")}
                                         </label>
                                         <input
                                             type="number"
@@ -537,13 +559,13 @@ export function Lobby({
                                             disabled={!isHost}
                                         />
                                         <p className="mt-1 text-[11px] text-gray-400">
-                                            Minimum 2, maksimum 30 tur.
+                                            {t("room.roundRange")}
                                         </p>
                                     </>
                                 ) : (
                                     <>
                                         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1">
-                                            <Trophy size={12} /> Hedef Skor
+                                            <Trophy size={12} /> {t("room.targetScore")}
                                         </label>
                                         <input
                                             type="number"
@@ -567,12 +589,14 @@ export function Lobby({
                                             disabled={!isHost}
                                         />
                                         <p className="mt-1 text-[11px] text-gray-400">
-                                            Hedef skoru 5&apos;er 5&apos;er artirabilirsin. Varsayilan baslangic 10.
+                                            {t("room.scoreHint")}
                                         </p>
                                     </>
                                 )}
                             </div>
                         </div>
+                            </div>
+                        </details>
                     </div>
 
                     {/* Start Action */}
@@ -601,7 +625,7 @@ export function Lobby({
                                     }`}
                                 >
                                     <Play size={22} />
-                                    Oyunu Başlat
+                                    {t("room.startGame")}
                                 </button>
                                 {startBlockedReason ? (
                                     <div
@@ -620,7 +644,7 @@ export function Lobby({
                             </div>
                         ) : (
                             <div className="w-full py-4 text-gray-400 text-center text-sm animate-pulse bg-gray-50 dark:bg-slate-900/50 rounded-xl">
-                                Yönetici oyunu başlatıyor...
+                                {t("room.hostStarting")}
                             </div>
                         )}
 
@@ -637,18 +661,18 @@ export function Lobby({
                             <div>
                                 <h3 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                                     <LayoutGrid className="text-blue-500" />
-                                    Kategoriler
+                                    {t("room.categories")}
                                 </h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-400">
                                     {isHost
-                                        ? "Soldaki grup kutusu ana kategori ile alt kategorilerini birlikte seçer. Kart listesindeki ana kategori satırı ise yalnızca ana kategoriye bağlı kelimeleri ekler."
-                                        : "Bu liste yalnızca görüntüleme amaçlıdır. Kategori ve zorlukları sadece oda yöneticisi değiştirebilir."}
+                                        ? t("room.categoryHostHelp")
+                                        : t("room.categoryReadonlyHelp")}
                                 </p>
 
                                 {/* Difficulty Selection */}
                                 <div className="mt-3 flex items-center gap-2">
                                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wide mr-1">
-                                        Zorluk:
+                                        {t("room.difficulty")}
                                     </span>
                                     {[1, 2, 3].map((diff) => {
                                         const isSelected =
@@ -700,7 +724,7 @@ export function Lobby({
                                             )}
                                         </button>
                                         <span className="font-bold text-slate-800 dark:text-slate-200 text-sm sm:text-base">
-                                            Tüm Kategoriler
+                                            {t("room.allCategories")}
                                         </span>
                                     </div>
                                 </div>
@@ -799,16 +823,10 @@ export function Lobby({
                                                             {mainCat.name}
                                                         </span>
                                                         <span className="text-xs text-gray-400">
-                                                            {
-                                                                allItems.filter(
-                                                                    (c) =>
-                                                                        tempSelectedCategories.includes(
-                                                                            c.id
-                                                                        )
-                                                                ).length
-                                                            }{" "}
-                                                            / {allItems.length}{" "}
-                                                            seçili
+                                                            {t("room.selectedCount", {
+                                                                selected: allItems.filter((c) => tempSelectedCategories.includes(c.id)).length,
+                                                                total: allItems.length,
+                                                            })}
                                                         </span>
                                                     </div>
                                                     <div
@@ -923,7 +941,7 @@ export function Lobby({
 
                                 {flatCategories.length === 0 && (
                                     <div className="text-center py-8 text-gray-400">
-                                        Kategoriler yükleniyor...
+                                        {t("room.categoryLoading")}
                                     </div>
                                 )}
                             </div>
@@ -935,7 +953,9 @@ export function Lobby({
                                 onClick={isHost ? confirmCategories : () => setShowCategoryModal(false)}
                                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-[0.99]"
                             >
-                                {isHost ? `Seçimi Onayla (${tempSelectedCategories.length})` : "Kapat"}
+                                {isHost
+                                    ? t("room.confirmSelection", { count: tempSelectedCategories.length })
+                                    : t("room.close")}
                             </button>
                         </div>
                     </div>

@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { AnnouncementsModal } from "@/components/game/announcements-modal";
 import { useBranding } from "@/components/providers/branding-provider";
+import { useI18n } from "@/components/providers/i18n-provider";
+import { LanguageSwitcher } from "@/components/i18n/language-switcher";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,6 +48,7 @@ export default function HomePage() {
     const router = useRouter();
     const { status } = useSession();
     const branding = useBranding();
+    const { t } = useI18n();
 
     useEffect(() => {
         if (status === "authenticated") {
@@ -57,12 +60,12 @@ export default function HomePage() {
         const currentUsername = username.trim();
 
         if (!currentUsername) {
-            setError("Lutfen bir kullanici adi girin.");
+            setError(t("home.usernameRequired"));
             return;
         }
 
         if (!isCreate && !roomCode.trim()) {
-            setError("Lutfen bir oda kodu girin.");
+            setError(t("home.roomCodeRequired"));
             return;
         }
 
@@ -123,12 +126,12 @@ export default function HomePage() {
             socket.on("connect_error", (error) => {
                 setError(
                     getSocketProtocolErrorMessage(error) ??
-                        "Sunucuya baglanilamadi. Lutfen tekrar deneyin."
+                        t("home.connectionFailed")
                 );
                 setIsConnecting(false);
             });
         } catch {
-            setError("Guvenlik dogrulamasi baslatilamadi. Lutfen tekrar deneyin.");
+            setError(t("home.securityFailed"));
             setIsConnecting(false);
         }
     };
@@ -150,23 +153,24 @@ export default function HomePage() {
             </div>
 
             <div className="fixed right-4 top-4 z-50 flex items-center gap-2">
+                <LanguageSwitcher compact />
                 <Button variant="ghost" size="sm" onClick={() => router.push("/login")}>
-                    Giris Yap
+                    {t("home.login")}
                 </Button>
                 <Button
                     variant="outline"
                     size="sm"
                     onClick={() => router.push("/register")}
                 >
-                    Kayit Ol
+                    {t("home.register")}
                 </Button>
                 <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setShowAnnouncements(true)}
                     className="rounded-full"
-                    aria-label="Duyurulari ac"
-                    title="Duyurular"
+                    aria-label={t("home.openAnnouncements")}
+                    title={t("home.announcements")}
                 >
                     <Megaphone className="h-5 w-5" />
                 </Button>
@@ -177,8 +181,8 @@ export default function HomePage() {
                         setTheme(resolvedTheme === "dark" ? "light" : "dark")
                     }
                     className="rounded-full"
-                    aria-label="Temayi degistir"
-                    title="Temayi degistir"
+                    aria-label={t("home.changeTheme")}
+                    title={t("home.changeTheme")}
                 >
                     <span className="relative flex h-5 w-5 items-center justify-center">
                         <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -219,10 +223,10 @@ export default function HomePage() {
                     <div className="space-y-2">
                         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                             <Users className="h-4 w-4 text-muted-foreground" />
-                            Kullanici Adi
+                            {t("home.username")}
                         </div>
                         <Input
-                            placeholder="Adinizi girin..."
+                            placeholder={t("home.usernamePlaceholder")}
                             value={username}
                             onChange={(event) => {
                                 setUsername(event.target.value);
@@ -248,12 +252,12 @@ export default function HomePage() {
                         {isConnecting ? (
                             <div className="flex items-center gap-2">
                                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                Baglaniliyor...
+                                {t("home.connecting")}
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
                                 <Plus className="h-5 w-5" />
-                                Yeni Oda Olustur
+                                {t("home.createRoom")}
                             </div>
                         )}
                     </Button>
@@ -261,7 +265,7 @@ export default function HomePage() {
                     <div className="flex items-center gap-3">
                         <Separator className="flex-1" />
                         <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                            veya
+                            {t("home.or")}
                         </span>
                         <Separator className="flex-1" />
                     </div>
@@ -269,11 +273,11 @@ export default function HomePage() {
                     <div className="space-y-3">
                         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                             <Sparkles className="h-4 w-4 text-muted-foreground" />
-                            Oda Kodu
+                            {t("home.roomCode")}
                         </div>
                         <div className="flex gap-2">
                             <Input
-                                placeholder="Orn: ABC123"
+                                placeholder={t("home.roomCodePlaceholder")}
                                 value={roomCode}
                                 onChange={(event) => {
                                     setRoomCode(event.target.value.toUpperCase());
@@ -304,7 +308,7 @@ export default function HomePage() {
                                 className="h-12 px-6 font-semibold"
                             >
                                 <LogIn className="mr-1 h-5 w-5" />
-                                Katil
+                                {t("home.join")}
                             </Button>
                         </div>
                     </div>

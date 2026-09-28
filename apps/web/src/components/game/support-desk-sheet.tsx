@@ -18,23 +18,8 @@ import type {
     SupportTicketStatus,
     SupportTicketView,
 } from "@/types/support";
-
-const categoryLabels: Record<SupportTicketCategory, string> = {
-    account: "Hesap",
-    gameplay: "Oyun",
-    store: "Mağaza",
-    rewards: "Ödüller",
-    bug: "Hata",
-    report: "Bildirim",
-    other: "Diğer",
-};
-
-const statusLabels: Record<SupportTicketStatus, string> = {
-    open: "Açık",
-    in_progress: "İşlemde",
-    resolved: "Çözüldü",
-    closed: "Kapalı",
-};
+import { useI18n } from "@/components/providers/i18n-provider";
+import { toIntlLocale } from "@/lib/i18n/config";
 
 const statusBadgeClass: Record<SupportTicketStatus, string> = {
     open: "bg-sky-100 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300",
@@ -43,8 +28,8 @@ const statusBadgeClass: Record<SupportTicketStatus, string> = {
     closed: "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
 };
 
-function formatDateTime(value: string): string {
-    return new Date(value).toLocaleString("tr-TR", {
+function formatDateTime(value: string, locale: string): string {
+    return new Date(value).toLocaleString(locale, {
         dateStyle: "short",
         timeStyle: "short",
     });
@@ -57,6 +42,15 @@ interface SupportDeskSheetProps {
 }
 
 export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: SupportDeskSheetProps) {
+    const { locale, t } = useI18n();
+    const categoryLabels: Record<SupportTicketCategory, string> = {
+        account: t("support.account"), gameplay: t("support.gameplay"), store: t("support.store"),
+        rewards: t("support.rewards"), bug: t("support.bug"), report: t("support.report"), other: t("support.other"),
+    };
+    const statusLabels: Record<SupportTicketStatus, string> = {
+        open: t("support.open"), in_progress: t("support.inProgress"),
+        resolved: t("support.resolved"), closed: t("support.closed"),
+    };
     const [tickets, setTickets] = useState<SupportTicketView[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
@@ -82,7 +76,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                 const response = await fetch("/api/support/tickets", { cache: "no-store" });
                 if (!response.ok) {
                     if (!options?.silent) {
-                        toast.error("Destek talepleri yüklenemedi.");
+                        toast.error(t("support.loadFailed"));
                     }
                     return;
                 }
@@ -92,7 +86,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                 setSelectedTicketId((current) => current ?? payload.tickets[0]?.id ?? null);
             } catch {
                 if (!options?.silent) {
-                    toast.error("Destek talepleri yüklenemedi.");
+                    toast.error(t("support.loadFailed"));
                 }
             } finally {
                 if (!options?.silent) {
@@ -100,7 +94,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                 }
             }
         },
-        []
+        [t]
     );
 
     useEffect(() => {
@@ -174,12 +168,12 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                 }),
             });
 
-            const payload = (await response.json().catch(() => ({ error: "Destek talebi oluşturulamadı." }))) as
+            const payload = (await response.json().catch(() => ({ error: t("support.createFailed") }))) as
                 | SupportTicketView
                 | { error?: string };
 
             if (!response.ok || !("id" in payload)) {
-                toast.error(("error" in payload && payload.error) || "Destek talebi oluşturulamadı.");
+                toast.error(("error" in payload && payload.error) || t("support.createFailed"));
                 return;
             }
 
@@ -189,9 +183,9 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
             setSubject("");
             setMessage("");
             setCategory("gameplay");
-            toast.success("Destek talebi oluşturuldu.");
+            toast.success(t("support.created"));
         } catch {
-            toast.error("Destek talebi oluşturulamadı.");
+            toast.error(t("support.createFailed"));
         } finally {
             setSaving(false);
         }
@@ -210,12 +204,12 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                 body: JSON.stringify({ body: replyBody }),
             });
 
-            const payload = (await response.json().catch(() => ({ error: "Mesaj gönderilemedi." }))) as
+            const payload = (await response.json().catch(() => ({ error: t("support.sendFailed") }))) as
                 | SupportTicketView
                 | { error?: string };
 
             if (!response.ok || !("id" in payload)) {
-                toast.error(("error" in payload && payload.error) || "Mesaj gönderilemedi.");
+                toast.error(("error" in payload && payload.error) || t("support.sendFailed"));
                 return;
             }
 
@@ -223,9 +217,9 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                 current.map((ticket) => (ticket.id === payload.id ? payload : ticket))
             );
             setReplyBody("");
-            toast.success("Mesaj gönderildi.");
+            toast.success(t("support.sent"));
         } catch {
-            toast.error("Mesaj gönderilemedi.");
+            toast.error(t("support.sendFailed"));
         } finally {
             setSaving(false);
         }
@@ -245,10 +239,10 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                         </div>
                         <div>
                             <div className="text-[11px] font-black uppercase tracking-[0.24em] text-amber-600 dark:text-amber-300">
-                                Destek Masası
+                                {t("support.desk")}
                             </div>
                             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                                Yardım merkezi
+                                {t("support.center")}
                             </h2>
                         </div>
                     </div>
@@ -263,10 +257,10 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                             <div className="flex items-start justify-between gap-3">
                                 <div>
                                     <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">
-                                        Kanal
+                                        {t("support.channel")}
                                     </div>
                                     <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                                        Destek ekibine talep aç, mevcut kayıtları takip et.
+                                        {t("support.channelHelp")}
                                     </p>
                                 </div>
                                 <Button
@@ -279,7 +273,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                     }}
                                 >
                                     <Plus className="h-4 w-4" />
-                                    Yeni
+                                    {t("support.new")}
                                 </Button>
                             </div>
                         </div>
@@ -287,11 +281,11 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                         <div className="mt-4 space-y-3 overflow-y-auto pb-4 lg:max-h-[calc(100vh-220px)]">
                             {loading ? (
                                 <div className="rounded-3xl border border-dashed border-amber-200/60 bg-white/60 p-6 text-sm text-slate-500 dark:border-amber-900/20 dark:bg-black/10 dark:text-slate-400">
-                                    Talepler yukleniyor...
+                                    {t("support.loading")}
                                 </div>
                             ) : tickets.length === 0 ? (
                                 <div className="rounded-3xl border border-dashed border-amber-200/60 bg-white/60 p-6 text-sm text-slate-500 dark:border-amber-900/20 dark:bg-black/10 dark:text-slate-400">
-                                    Henüz açılmış bir destek talebin yok.
+                                    {t("support.empty")}
                                 </div>
                             ) : (
                                 tickets.map((ticket) => (
@@ -321,7 +315,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                             {categoryLabels[ticket.category]}
                                         </div>
                                         <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                                            Son hareket: {formatDateTime(ticket.lastMessageAt)}
+                                            {t("support.lastActivity", { date: formatDateTime(ticket.lastMessageAt, toIntlLocale(locale)) })}
                                         </div>
                                     </button>
                                 ))
@@ -339,10 +333,10 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                         </div>
                                         <div>
                                             <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">
-                                                Yeni Talep
+                                                {t("support.newRequest")}
                                             </div>
                                             <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                                                Destek ekibine bağlan
+                                                {t("support.connect")}
                                             </h3>
                                         </div>
                                     </div>
@@ -350,7 +344,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                     <div className="mt-6 grid gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
                                             <label className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                                                Kategori
+                                                {t("support.category")}
                                             </label>
                                             <select
                                                 value={category}
@@ -366,20 +360,20 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                                                Başlık
+                                                {t("support.subject")}
                                             </label>
                                             <Input
                                                 value={subject}
                                                 onChange={(event) => setSubject(event.target.value)}
                                                 maxLength={160}
-                                                placeholder="Sorunu kısaca özetle"
+                                                placeholder={t("support.subjectPlaceholder")}
                                             />
                                         </div>
                                     </div>
 
                                     <div className="mt-4 space-y-2">
                                         <label className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                                            Mesaj
+                                            {t("support.message")}
                                         </label>
                                         <textarea
                                             value={message}
@@ -387,7 +381,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                             rows={8}
                                             maxLength={2000}
                                             className="min-h-[180px] w-full rounded-[24px] border border-border bg-background px-4 py-3 text-sm outline-none focus:border-amber-500 resize-y"
-                                                placeholder="Ne oldu, ne denedin, sorunu ne zaman gördün?"
+                                                placeholder={t("support.messagePlaceholder")}
                                         />
                                     </div>
 
@@ -400,7 +394,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                                 setSelectedTicketId(tickets[0]?.id ?? null);
                                             }}
                                         >
-                                            İptal
+                                            {t("common.cancel")}
                                         </Button>
                                         <Button
                                             type="button"
@@ -409,7 +403,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                             className="gap-2"
                                         >
                                             <Send className="h-4 w-4" />
-                                            Gönder
+                                            {t("support.send")}
                                         </Button>
                                     </div>
                                 </div>
@@ -429,9 +423,9 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                         {selectedTicket.subject}
                                     </h3>
                                     <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                                        Talep #{selectedTicket.id} - {formatDateTime(selectedTicket.createdAt)}
+                                        {t("support.requestMeta", { id: selectedTicket.id, date: formatDateTime(selectedTicket.createdAt, toIntlLocale(locale)) })}
                                         {selectedTicket.assignedAdmin
-                                            ? ` - Atanan yetkili: @${selectedTicket.assignedAdmin.username}`
+                                            ? ` - ${t("support.assigned", { name: selectedTicket.assignedAdmin.username })}`
                                             : ""}
                                     </div>
                                 </div>
@@ -450,10 +444,10 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                             >
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                                                        {entry.author?.role === "admin" ? "Destek Ekibi" : "Sen"}
+                                                        {entry.author?.role === "admin" ? t("support.team") : t("support.you")}
                                                     </div>
                                                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                                                        {formatDateTime(entry.createdAt)}
+                                                        {formatDateTime(entry.createdAt, toIntlLocale(locale))}
                                                     </div>
                                                 </div>
                                                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
@@ -468,8 +462,8 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                     {selectedTicket.status === "closed" || selectedTicket.status === "resolved" ? (
                                         <div className="rounded-2xl border border-dashed border-zinc-300/70 bg-white/70 px-4 py-4 text-sm text-slate-500 dark:border-zinc-700/70 dark:bg-zinc-950/30 dark:text-slate-400">
                                             {selectedTicket.status === "resolved"
-                                                ? "Bu talep çözüldü olarak işaretlendi. Yeni bir durum varsa yeni bir destek talebi aç."
-                                                : "Bu talep kapatıldı. Yeni bir durum varsa yeni bir destek talebi aç."}
+                                                ? t("support.resolvedHelp")
+                                                : t("support.closedHelp")}
                                         </div>
                                     ) : (
                                         <div className="space-y-3">
@@ -479,7 +473,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                                 rows={4}
                                                 maxLength={2000}
                                                 className="min-h-[110px] w-full rounded-[24px] border border-border bg-background px-4 py-3 text-sm outline-none focus:border-amber-500 resize-y"
-                                                placeholder="Destek ekibine ek bilgi gönder..."
+                                                placeholder={t("support.replyPlaceholder")}
                                             />
                                             <div className="flex justify-end">
                                                 <Button
@@ -489,7 +483,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                                     className="gap-2"
                                                 >
                                                     <Send className="h-4 w-4" />
-                                                    Mesaj Gönder
+                                                    {t("support.sendMessage")}
                                                 </Button>
                                             </div>
                                         </div>
@@ -501,10 +495,10 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                                 <div className="max-w-md space-y-3">
                                     <Headset className="mx-auto h-10 w-10 text-amber-500" />
                                     <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
-                                        Bir destek talebi seç
+                                        {t("support.select")}
                                     </h3>
                                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                                        Soldan mevcut taleplerinden birini aç veya yeni talep oluştur.
+                                        {t("support.selectHelp")}
                                     </p>
                                 </div>
                             </div>

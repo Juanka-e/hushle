@@ -24,9 +24,8 @@ import {
     ROOM_ROLE_INSPECTOR,
     ROOM_ROLE_NARRATOR,
     shouldShowGuessPanel,
-    TEAM_A_LABEL,
-    TEAM_B_LABEL,
 } from "@/lib/game/room-display";
+import { useI18n } from "@/components/providers/i18n-provider";
 import type { CardData, GameState } from "@/types/game";
 
 interface ActiveGameProps {
@@ -46,16 +45,6 @@ interface ActiveGameProps {
 }
 
 const passthroughImageLoader = ({ src }: ImageLoaderProps) => src;
-const MODERATOR_LABEL = "Gözetmen";
-const GUESS_PROMPT_TITLE = "Tahmin Et";
-const GAME_PAUSED_LABEL = "Oyun duraklatıldı";
-const RETURN_TO_LOBBY_LABEL = "Lobiye Dön";
-const CORRECT_LABEL = "DOĞRU";
-const CARD_FLIP_LABEL = "Kart Flip";
-const CARD_FLIP_ON_LABEL = "Acik";
-const CARD_FLIP_OFF_LABEL = "Kapali";
-const CARD_FLIP_HINT_LABEL = "Acikken karta tiklayarak on ve arka yuz arasinda gecis yapabilirsin.";
-
 export function ActiveGame({
     gameState,
     card,
@@ -71,6 +60,7 @@ export function ActiveGame({
     onPauseResume,
     onResetGame,
 }: ActiveGameProps) {
+    const { t } = useI18n();
     const activeNarratorTeam = getActiveNarratorTeam(gameState);
     const timerPercent = gameState
         ? (gameState.kalanZaman / (gameState.toplamSure || settings.sure || 60)) * 100
@@ -96,7 +86,7 @@ export function ActiveGame({
                             {gameState?.skor.A ?? 0}
                         </div>
                         <div className="text-[10px] sm:text-xs text-red-500/80 font-bold uppercase tracking-wider mt-1">
-                            {TEAM_A_LABEL}
+                            {t("game.teamA")}
                         </div>
                     </div>
 
@@ -122,7 +112,7 @@ export function ActiveGame({
                             {gameState?.skor.B ?? 0}
                         </div>
                         <div className="text-[10px] sm:text-xs text-blue-500/80 font-bold uppercase tracking-wider mt-1">
-                            {TEAM_B_LABEL}
+                            {t("game.teamB")}
                         </div>
                     </div>
                 </div>
@@ -131,7 +121,7 @@ export function ActiveGame({
                     <div className="flex items-center gap-4 text-xs sm:text-sm font-medium">
                         <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-slate-700">
                             <span className="text-gray-400 uppercase tracking-widest text-[10px]">
-                                Anlatan
+                                {t("game.narrator")}
                             </span>
                             <span className={`${narratorColorClass} font-bold`}>
                                 {narratorName}
@@ -140,7 +130,7 @@ export function ActiveGame({
 
                         <div className="flex items-center gap-2 bg-white dark:bg-slate-800 px-4 py-2 rounded-full shadow-sm border border-gray-200 dark:border-slate-700">
                             <span className="text-gray-400 uppercase tracking-widest text-[10px]">
-                                {MODERATOR_LABEL}
+                                {t("game.moderator")}
                             </span>
                             <span className={`${inspectorColorClass} font-bold`}>
                                 {inspectorName}
@@ -150,16 +140,16 @@ export function ActiveGame({
 
                     <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                         {gameState && gameState.toplamTur > 0
-                            ? `Tur ${gameState.mevcutTur} / ${gameState.toplamTur}`
+                            ? t("game.round", { current: gameState.mevcutTur, total: gameState.toplamTur })
                             : settings.mod === "skor"
-                                ? `Hedef Skor: ${settings.deger}`
+                                ? t("game.target", { score: settings.deger })
                                 : ""}
                     </div>
 
                     {gameState?.altinSkorAktif && (
                         <span className="flex items-center gap-1 px-3 py-1 rounded-lg bg-amber-500/20 text-amber-400 font-bold text-xs">
                             <Sparkles className="h-3.5 w-3.5" />
-                            ALTIN SKOR
+                            {t("game.goldenScore")}
                         </span>
                     )}
                 </div>
@@ -186,7 +176,7 @@ export function ActiveGame({
                         <div className="w-full max-w-[320px] sm:max-w-[360px] animate-fade-in">
                             <div className="flex min-h-[474px] flex-col items-center justify-center rounded-3xl border-4 border-gray-200 bg-white px-8 py-10 text-center shadow-xl dark:border-slate-700 dark:bg-slate-800 sm:min-h-[500px]">
                                 <h3 className="text-3xl font-black uppercase tracking-[0.18em] text-slate-800 dark:text-white">
-                                {`${GUESS_PROMPT_TITLE}!`}
+                                    {t("game.guess")}
                                 </h3>
                             </div>
                         </div>
@@ -202,7 +192,7 @@ export function ActiveGame({
                             className="bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-xl shadow-md font-bold flex flex-col items-center justify-center transition-transform active:scale-95"
                         >
                             <Check size={24} className="mb-1" />
-                            <span className="text-sm">{CORRECT_LABEL}</span>
+                            <span className="text-sm">{t("game.correct")}</span>
                         </button>
 
                         {canSubmitTabu && (
@@ -211,7 +201,7 @@ export function ActiveGame({
                                 className="bg-rose-500 hover:bg-rose-600 text-white py-4 rounded-xl shadow-md font-bold flex flex-col items-center justify-center transition-transform active:scale-95"
                             >
                                 <X size={24} className="mb-1" />
-                                <span className="text-sm">TABU</span>
+                                <span className="text-sm">{t("game.taboo")}</span>
                             </button>
                         )}
 
@@ -221,7 +211,7 @@ export function ActiveGame({
                             className={`bg-amber-400 hover:bg-amber-500 disabled:bg-gray-200 dark:disabled:bg-slate-700 disabled:text-gray-400 text-white py-4 rounded-xl shadow-md font-bold flex flex-col items-center justify-center transition-transform active:scale-95 ${canSubmitTabu ? "" : "col-span-2"}`}
                         >
                             <ArrowRight size={24} className="mb-1" />
-                            <span className="text-sm">PAS ({gameState?.kalanPasHakki ?? 0})</span>
+                            <span className="text-sm">{t("game.pass")} ({gameState?.kalanPasHakki ?? 0})</span>
                         </button>
                     </div>
                 </div>
@@ -235,7 +225,7 @@ export function ActiveGame({
                             className="w-full bg-rose-500 hover:bg-rose-600 text-white py-4 rounded-xl shadow-md font-bold flex items-center justify-center gap-2 transition-transform active:scale-95"
                         >
                             <X size={24} />
-                            <span>TABU</span>
+                            <span>{t("game.taboo")}</span>
                         </button>
                     </div>
                 </div>
@@ -247,13 +237,13 @@ export function ActiveGame({
                         onClick={onPauseResume}
                         className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-slate-700 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-2 text-sm font-bold py-2 px-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 transition-all active:scale-95"
                     >
-                        <Pause size={18} /> Durdur
+                        <Pause size={18} /> {t("transition.pause")}
                     </button>
                     <button
                         onClick={onResetGame}
                         className="bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-slate-700 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-2 text-sm font-bold py-2 px-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 transition-all active:scale-95"
                     >
-                        <RotateCcw size={18} /> {RETURN_TO_LOBBY_LABEL}
+                        <RotateCcw size={18} /> {t("game.returnLobby")}
                     </button>
                 </div>
             )}
@@ -272,7 +262,7 @@ export function ActiveGame({
                             <div className="w-20 h-20 bg-gray-400 dark:bg-slate-600 text-white rounded-full flex items-center justify-center shadow-2xl mx-auto">
                                 <Pause size={32} />
                             </div>
-                            <p className="text-sm text-gray-500 font-medium">{GAME_PAUSED_LABEL}</p>
+                            <p className="text-sm text-gray-500 font-medium">{t("game.paused")}</p>
                         </div>
                     )}
                 </div>
@@ -290,6 +280,7 @@ export function ViewerCardPreview({
     cardFaceTheme: ResolvedCardFaceTheme | null;
     cardBackTheme: ResolvedCardBackTheme | null;
 }) {
+    const { t } = useI18n();
     const isFlipEnabled = useSyncExternalStore(
         subscribeCardFlipSettings,
         () => readCardFlipSettings().enabled,
@@ -322,15 +313,15 @@ export function ViewerCardPreview({
                             : "bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                     }`}
                 >
-                    {CARD_FLIP_LABEL}
+                    {t("game.cardFlip")}
                     <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] dark:bg-slate-900/20">
-                        {isFlipEnabled ? CARD_FLIP_ON_LABEL : CARD_FLIP_OFF_LABEL}
+                        {isFlipEnabled ? t("game.on") : t("game.off")}
                     </span>
                 </button>
             </div>
             {canFlip ? (
                 <p className="mb-4 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
-                    {CARD_FLIP_HINT_LABEL}
+                    {t("game.cardFlipHint")}
                 </p>
             ) : null}
             <div className="flex justify-center">
@@ -366,6 +357,7 @@ export function ViewerCardPreview({
 }
 
 export function CardBackPanel({ cardBackTheme }: { cardBackTheme: ResolvedCardBackTheme | null }) {
+    const { t } = useI18n();
     const cardBackMotionClass = cardBackTheme ? getCosmeticMotionClass(cardBackTheme.motionPreset) : "";
     const cardBackMotionStyle = cardBackTheme ? getCosmeticMotionStyle(cardBackTheme.motionSpeedMs) : undefined;
     const cardBackPatternStyle = cardBackTheme
@@ -425,7 +417,7 @@ export function CardBackPanel({ cardBackTheme }: { cardBackTheme: ResolvedCardBa
                         className="text-3xl font-black uppercase tracking-[0.18em]"
                         style={{ color: cardBackTheme.titleColor }}
                     >
-                        {GUESS_PROMPT_TITLE}
+                        {t("game.guess")}
                     </h3>
                 </div>
             </div>

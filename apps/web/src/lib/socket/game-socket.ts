@@ -1,10 +1,12 @@
 ﻿import { Server, Socket } from "socket.io";
+import { randomInt } from "node:crypto";
 import { z } from "zod";
 import { isEmailVerificationRestrictionActive } from "@hushle/platform-auth";
 import { getToken } from "next-auth/jwt";
 import {
     TABU_DEFAULT_SETTINGS,
     TABU_MODE_ID,
+    GAME_CONTENT_LOCALES,
     createInitialTabuState,
     normalizeTabuRoomSettings,
     resolveTabuFinish,
@@ -106,6 +108,7 @@ interface NarratorInfo {
 }
 
 interface GameStateData {
+    startingTeam?: "A" | "B";
     oyunAktifMi: boolean;
     oyunDurduruldu: boolean;
     gecisEkraninda: boolean;
@@ -353,6 +356,7 @@ const OdaIstegiSchema = z.object({
 const KategoriAyarlariSchema = z.object({
     seciliKategoriler: z.array(z.number().int().positive()).max(100),
     seciliZorluklar: z.array(z.number().int().min(1).max(3)).max(3),
+    wordLocale: z.enum(GAME_CONTENT_LOCALES).optional(),
 });
 
 const DisplayNameUpdateSchema = z.object({
@@ -370,6 +374,7 @@ const StartGameSchema = z.object({
         sure: z.union([z.string(), z.number()]),
         mod: z.enum(["tur", "skor"]),
         deger: z.union([z.string(), z.number()]),
+        wordLocale: z.enum(GAME_CONTENT_LOCALES).optional(),
     }),
 });
 
@@ -584,7 +589,8 @@ export function setupGameSocket(
 
     async function sendVisibleCategories(socket: Socket): Promise<void> {
         try {
-            const categories = await getVisibleCategories();
+            const room = getRoomBySocketId(socket.id);
+            const categories = await getVisibleCategories(room?.ayarlar.wordLocale ?? "tr");
             if (Array.isArray(categories) && categories.length > 0) {
                 socket.emit("kategoriListesiGonder", categories);
             }
@@ -610,7 +616,7 @@ export function setupGameSocket(
         }
 
         if (
-            room.oyunDurumu.anlatacakTakim === "A" &&
+            room.oyunDurumu.anlatacakTakim === (room.oyunDurumu.startingTeam ?? "A") &&
             !room.oyunDurumu.altinSkorAktif
         ) {
             room.oyunDurumu.mevcutTur += 1;
@@ -618,6 +624,7 @@ export function setupGameSocket(
                 settings: room.ayarlar,
                 currentRound: room.oyunDurumu.mevcutTur,
                 speakingTeam: room.oyunDurumu.anlatacakTakim,
+                startingTeam: room.oyunDurumu.startingTeam,
                 goldenScoreActive: room.oyunDurumu.altinSkorAktif,
             })) {
                 finishGame(roomCode);
@@ -640,7 +647,7 @@ export function setupGameSocket(
             room.oyunDurumu.anlatacakTakim =
                 anlatacakTakim === "A" ? "B" : "A";
             if (
-                room.oyunDurumu.anlatacakTakim === "A" &&
+                room.oyunDurumu.anlatacakTakim === (room.oyunDurumu.startingTeam ?? "A") &&
                 !room.oyunDurumu.altinSkorAktif
             ) {
                 room.oyunDurumu.mevcutTur -= 1;
@@ -786,7 +793,8 @@ export function setupGameSocket(
             const draw = await getNextWord(
                 currentRoom.odaKodu,
                 currentRoom.gecerliKategoriIdleri,
-                currentRoom.gecerliZorlukSeviyeleri
+                currentRoom.gecerliZorlukSeviyeleri,
+                currentRoom.ayarlar.wordLocale
             );
 
             const card = draw?.card ?? null;
@@ -1018,7 +1026,8 @@ export function setupGameSocket(
             const draw = await getNextWord(
                 room.odaKodu,
                 room.gecerliKategoriIdleri,
-                room.gecerliZorlukSeviyeleri
+                room.gecerliZorlukSeviyeleri,
+                room.ayarlar.wordLocale
             );
 
             const card = draw?.card ?? null;
@@ -1562,6 +1571,30 @@ export function setupGameSocket(
         );
 
         // ── Team Shuffle ──
+        socket.on("narrator_order", (payload: unknown) => {
+            const parsed = z.object({ playerId: z.string().min(1).max(128), direction: z.enum(["up", "down"]) }).strict().safeParse(payload);
+            if (!parsed.success) return;
+            const room = getRoomBySocketId(socket.id);
+            if (!room || room.oyunDurumu.oyunAktifMi) return;
+            const actor = room.oyuncular.find(p => p.id === socket.id);
+            if (!actor || actor.playerId !== room.creatorPlayerId) return;
+            const target = room.oyuncular.find(p => p.playerId === parsed.data.playerId);
+            if (!target || !target.takim) return;
+            const now = Date.now();
+            if (now - (socket.data.lastNarratorOrderAt ?? 0) < 200) return;
+            socket.data.lastNarratorOrderAt = now;
+            const team = room.oyuncular.filter(p => p.takim === target.takim);
+            const index = team.indexOf(target);
+            const neighbour = team[index + (parsed.data.direction === "up" ? -1 : 1)];
+            if (!neighbour) return;
+            const a = room.oyuncular.indexOf(target);
+            const b = room.oyuncular.indexOf(neighbour);
+            // Synchronous swap preserves membership and cannot interleave with match start.
+            [room.oyuncular[a], room.oyuncular[b]] = [room.oyuncular[b], room.oyuncular[a]];
+            persistRoom(room);
+            broadcastLobby(room);
+        });
+
         socket.on("takimlariKaristir", async () => {
             const room = getRoomBySocketId(socket.id);
             if (!room) return;
@@ -1779,8 +1812,9 @@ export function setupGameSocket(
                         return;
                     }
 
+                    room.ayarlar = normalizeTabuRoomSettings(ayarlar);
                     const visibleCategoryIds = collectVisibleCategoryIds(
-                        await getVisibleCategories()
+                        await getVisibleCategories(room.ayarlar.wordLocale)
                     );
                     const allowedCategoryIds = [
                         ...new Set(seciliKategoriler),
@@ -1788,7 +1822,6 @@ export function setupGameSocket(
                         visibleCategoryIds.has(categoryId)
                     );
 
-                    room.ayarlar = normalizeTabuRoomSettings(ayarlar);
                     room.gecerliKategoriIdleri = allowedCategoryIds;
                     room.gecerliZorlukSeviyeleri = seciliZorluklar;
 
@@ -1829,13 +1862,15 @@ export function setupGameSocket(
                         }));
                     room.activeWordAnalytics = null;
 
+                    const startingTeam = randomInt(2) === 0 ? "A" : "B";
                     room.oyunDurumu = {
                         ...room.oyunDurumu,
                         oyunAktifMi: true,
                         skor: { A: 0, B: 0 },
                         mevcutTur: 0,
                         toplamTur,
-                        anlatacakTakim: "A",
+                        anlatacakTakim: startingTeam,
+                        startingTeam,
                         takimA_anlaticiIndex: -1,
                         takimB_anlaticiIndex: -1,
                         altinSkorAktif: false,
@@ -2058,7 +2093,7 @@ export function setupGameSocket(
                     socket.emit("hata", "Geçersiz kategori verisi.");
                     return;
                 }
-                const { seciliKategoriler, seciliZorluklar } = parsed.data;
+                const { seciliKategoriler, seciliZorluklar, wordLocale } = parsed.data;
                 const room = getRoomBySocketId(socket.id);
                 if (!room) return;
                 const player = room.oyuncular.find((p) => p.id === socket.id);
@@ -2073,15 +2108,26 @@ export function setupGameSocket(
                         if (room.oyunDurumu.oyunAktifMi) {
                             return;
                         }
-                        const visibleCategoryIds = collectVisibleCategoryIds(
-                            await getVisibleCategories()
-                        );
+                        const previousLocale = room.ayarlar.wordLocale;
+                        if (wordLocale) {
+                            room.ayarlar = normalizeTabuRoomSettings({
+                                ...room.ayarlar,
+                                wordLocale,
+                            });
+                        }
+                        const visibleCategories = await getVisibleCategories(room.ayarlar.wordLocale);
+                        const visibleCategoryIds = collectVisibleCategoryIds(visibleCategories);
                         room.seciliKategoriler = [
                             ...new Set(seciliKategoriler),
                         ].filter((categoryId) =>
                             visibleCategoryIds.has(categoryId)
                         );
                         room.seciliZorluklar = seciliZorluklar;
+                        if (previousLocale !== room.ayarlar.wordLocale) {
+                            clearWordPool(room.odaKodu);
+                            room.seciliKategoriler = [];
+                            io.to(room.odaKodu).emit("kategoriListesiGonder", visibleCategories);
+                        }
                         persistRoom(room);
 
                         io.to(room.odaKodu).emit(
@@ -2089,6 +2135,7 @@ export function setupGameSocket(
                             {
                                 seciliKategoriler: room.seciliKategoriler,
                                 seciliZorluklar: room.seciliZorluklar,
+                                wordLocale: room.ayarlar.wordLocale,
                             }
                         );
                     }

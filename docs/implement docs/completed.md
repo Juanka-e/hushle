@@ -462,6 +462,12 @@
 - provider pending/succeeded, exact reversal ve duplicate refund idempotency doğrulaması
 - kabul kanıtı oluşmadan normal checkout/refund registry'sini açmayan fail-closed sınır
 
+### 64. `feature/bilingual-announcements-and-word-locales`
+- kalıcı ve sekmeler arası senkron Türkçe/İngilizce web locale altyapısı
+- güvenli içerik bloklarını koruyan çift dilli duyuru, güncelleme ve SSS akışı
+- locale bazlı kategori/kelime paketleri ve sunucu otoriteli oda kelime dili
+- cross-locale kategori/kelime bağlarını API ve socket sınırında reddeden kontroller
+
 ## Tamamlanan Docs-Only Branch'ler
 - `docs/cleanup-roadmap-and-encoding`
   - stale roadmap ve tarihsel planning copleri temizlendi
@@ -475,3 +481,10 @@
 ## Not
 Bu dosya sadece kalici olarak degerli tamamlanmis dilimleri tutar.
 Eski gunluk debug notlari ve artik tekrar bakilmayan checklist'ler burada tutulmaz.
+# Bilingual Theme And Player Surface Completion
+
+- Duyuru modalı ve önizlemeleri ortak açık/koyu tema provider'ına bağlandı.
+- Dashboard, envanter, mağaza, ayarlar, bildirim, destek, hesap kurtarma,
+  checkout ve ödeme hukuki belge yüzeyleri TR/EN kapsamına alındı.
+- Duyuru editöründeki ASCII Türkçe kalıntıları UTF-8 metinlerle değiştirildi ve
+  repository mojibake taraması temizlendi.

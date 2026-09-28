@@ -32,6 +32,12 @@ import {
     describeBulkCategoryAssignment,
     resolveWordCategoryToggle,
 } from "@/lib/words/category-selection-ui";
+import {
+    DEFAULT_GAME_CONTENT_LOCALE,
+    GAME_CONTENT_LOCALES,
+    GAME_CONTENT_LOCALE_DEFINITIONS,
+    type GameContentLocale,
+} from "@hushle/domain-game";
 
 interface TabooWord {
     id: number;
@@ -46,6 +52,7 @@ interface Word {
     id: number;
     wordText: string;
     difficulty: number;
+    locale: GameContentLocale;
     tabooWords: TabooWord[];
     wordCategories: WordCategoryJoin[];
 }
@@ -137,6 +144,9 @@ function WordPerformance({
 
 export default function AdminWordsPage() {
     const [words, setWords] = useState<Word[]>([]);
+    const [selectedLocale, setSelectedLocale] = useState<GameContentLocale>(
+        DEFAULT_GAME_CONTENT_LOCALE
+    );
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [pages, setPages] = useState(1);
@@ -234,6 +244,7 @@ export default function AdminWordsPage() {
         const params = new URLSearchParams({
             page: String(page),
             limit: "15",
+            locale: selectedLocale,
         });
         if (search.trim()) {
             params.set("search", search.trim());
@@ -266,12 +277,12 @@ export default function AdminWordsPage() {
         } finally {
             setLoading(false);
         }
-    }, [analyticsDays, filterCategoryId, filterDifficulty, page, search]);
+    }, [analyticsDays, filterCategoryId, filterDifficulty, page, search, selectedLocale]);
 
     const fetchCategories = useCallback(async () => {
         setCategoriesLoading(true);
         try {
-            const response = await fetch("/api/admin/categories", { cache: "no-store" });
+            const response = await fetch(`/api/admin/categories?locale=${selectedLocale}`, { cache: "no-store" });
             if (!response.ok) {
                 return;
             }
@@ -282,7 +293,7 @@ export default function AdminWordsPage() {
         } finally {
             setCategoriesLoading(false);
         }
-    }, []);
+    }, [selectedLocale]);
 
     useEffect(() => {
         void fetchWords();
@@ -382,6 +393,7 @@ export default function AdminWordsPage() {
                         difficulty: formDifficulty,
                         tabooWords: cleanedTaboos,
                         categoryIds: formCategoryIds,
+                        locale: selectedLocale,
                     }),
                 }
             );
@@ -412,6 +424,7 @@ export default function AdminWordsPage() {
         formTabooWords,
         formWord,
         resetForm,
+        selectedLocale,
     ]);
 
     const handleDelete = useCallback(async (word: Word) => {
@@ -490,7 +503,24 @@ export default function AdminWordsPage() {
                 meta={`${total} kayit`}
                 icon={<BookOpen className="h-5 w-5 text-sky-500" />}
                 action={
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <select
+                            value={selectedLocale}
+                            onChange={(event) => {
+                                setSelectedLocale(event.target.value as GameContentLocale);
+                                setPage(1);
+                                setFilterCategoryId("");
+                                setFormCategoryIds([]);
+                            }}
+                            className="h-10 rounded-xl border border-border bg-background px-3 text-sm font-bold"
+                            aria-label="Kelime paketi dili"
+                        >
+                            {GAME_CONTENT_LOCALES.map((locale) => (
+                                <option key={locale} value={locale}>
+                                    {GAME_CONTENT_LOCALE_DEFINITIONS[locale].adminLabel}
+                                </option>
+                            ))}
+                        </select>
                         <Button variant="outline" onClick={() => setBulkOpen(true)} className="gap-2">
                             <FileUp size={16} />
                             Toplu Yukle
@@ -1134,6 +1164,7 @@ export default function AdminWordsPage() {
                                         const formData = new FormData();
                                         formData.append("file", bulkFile);
                                         formData.append("mode", bulkMode);
+                                        formData.append("locale", selectedLocale);
                                         if (bulkMode === "fixed_categories" && bulkCategoryId) {
                                             formData.append("categoryId", bulkCategoryId);
                                         }

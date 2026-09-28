@@ -17,6 +17,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Player } from "@/types/game";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 interface SidebarProps {
     team: "A" | "B";
@@ -26,6 +27,7 @@ interface SidebarProps {
     isOpen: boolean;
     onToggle: () => void;
     isMobile: boolean;
+    onMoveNarrator?: (playerId: string, direction: "up" | "down") => void;
     onSwitchTeam?: () => void;
     onKickPlayer?: (playerId: string) => void;
     onTransferHost?: (playerId: string) => void;
@@ -68,10 +70,12 @@ export function Sidebar({
     isOpen,
     onToggle,
     isMobile,
+    onMoveNarrator,
     onSwitchTeam,
     onKickPlayer,
     onTransferHost,
 }: SidebarProps) {
+    const { t } = useI18n();
     const theme = teamTheme[team];
     const isTeamA = team === "A";
     const teamPlayers = players.filter((p) => p.takim === team);
@@ -114,7 +118,7 @@ export function Sidebar({
                 {isMobile ? (
                     <button
                         type="button"
-                        aria-label={`Takım ${team} panelini kapat`}
+                        aria-label={t("common.closeTeamPanel", { team })}
                         onClick={onToggle}
                         className={`absolute top-4 rounded-xl border border-gray-200 bg-white p-2 text-gray-500 shadow-sm transition hover:text-gray-900 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-300 dark:hover:text-white ${
                             isTeamA ? "right-3" : "left-3"
@@ -161,7 +165,7 @@ export function Sidebar({
                                 <h2
                                     className={`text-2xl font-black uppercase tracking-tight leading-none ${theme.primary}`}
                                 >
-                                    TAKIM {team}
+                                    {t("common.team", { team })}
                                 </h2>
                                 <div
                                     className={`h-1 w-8 rounded-full ${theme.bg} mt-1 brightness-95`}
@@ -205,7 +209,7 @@ export function Sidebar({
                     </button>
                 )}
 
-                {teamPlayers.map((player) => {
+                {teamPlayers.map((player, playerIndex) => {
                     const isCreator = player.playerId === creatorPlayerId;
                     const isMe = player.playerId === currentPlayerId;
                     const canManage = isHost && !isMe && !isCreator;
@@ -337,6 +341,20 @@ export function Sidebar({
                                 </div>
                             )}
 
+                            {(isOpen || isMobile) && isHost && onMoveNarrator && (
+                                <div className="flex shrink-0 flex-col">
+                                    {(["up", "down"] as const).map(direction => (
+                                        <button key={direction} type="button"
+                                            aria-label={t(direction === "up" ? "room.orderUp" : "room.orderDown") + ": " + player.ad}
+                                            title={t(direction === "up" ? "room.orderUp" : "room.orderDown")}
+                                            disabled={direction === "up" ? playerIndex === 0 : playerIndex === teamPlayers.length - 1}
+                                            onClick={() => onMoveNarrator(player.playerId, direction)}
+                                            className="min-h-8 min-w-8 rounded-md text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-25">
+                                            {direction === "up" ? "↑" : "↓"}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             {/* Admin Actions */}
                             {(isOpen || isMobile) && canManage && (
                                 <DropdownMenu>
@@ -346,7 +364,7 @@ export function Sidebar({
                                         </button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                        <DropdownMenuLabel>Yönetici İşlemleri</DropdownMenuLabel>
+                                        <DropdownMenuLabel>{t("common.adminActions")}</DropdownMenuLabel>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
                                             onClick={() => onTransferHost?.(player.playerId)}
@@ -354,7 +372,7 @@ export function Sidebar({
                                             disabled={!onTransferHost}
                                         >
                                             <ArrowRightLeft className="mr-2 h-4 w-4" />
-                                            <span>Yöneticiliği Devret</span>
+                                            <span>{t("common.transferHost")}</span>
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
                                             onClick={() => onKickPlayer?.(player.playerId)}
@@ -362,7 +380,7 @@ export function Sidebar({
                                             disabled={!onKickPlayer}
                                         >
                                             <UserX className="mr-2 h-4 w-4" />
-                                            <span>Oyundan At</span>
+                                            <span>{t("common.kickPlayer")}</span>
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
@@ -390,7 +408,7 @@ export function Sidebar({
                         />
                         {(isOpen || isMobile) && (
                             <span className="text-xs font-bold uppercase tracking-widest opacity-60">
-                                Boş
+                                {t("common.empty")}
                             </span>
                         )}
                     </div>
@@ -407,7 +425,7 @@ export function Sidebar({
                             className="w-full text-xs"
                             onClick={onSwitchTeam}
                         >
-                            Takım Değiştir
+                            {t("room.switchTeamAction")}
                         </Button>
                     </div>
                 )

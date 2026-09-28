@@ -1,4 +1,5 @@
 export type AnnouncementMediaType = "image" | "youtube" | null;
+export const ANNOUNCEMENT_MEDIA_URL_MAX_LENGTH = 2_048;
 
 export function toAnnouncementMediaType(value: string | null | undefined): AnnouncementMediaType {
     return value === "image" || value === "youtube" ? value : null;
@@ -158,17 +159,24 @@ function extractYoutubeEmbedUrl(value: string): string | null {
 
         if (url.hostname === "youtu.be") {
             const videoId = url.pathname.slice(1);
-            return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+            return isValidYoutubeVideoId(videoId)
+                ? `https://www.youtube.com/embed/${videoId}`
+                : null;
         }
 
         if (url.hostname === "www.youtube.com" || url.hostname === "youtube.com") {
             if (url.pathname === "/watch") {
                 const videoId = url.searchParams.get("v");
-                return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+                return isValidYoutubeVideoId(videoId)
+                    ? `https://www.youtube.com/embed/${videoId}`
+                    : null;
             }
 
             if (url.pathname.startsWith("/embed/")) {
-                return url.toString();
+                const videoId = url.pathname.slice("/embed/".length);
+                return isValidYoutubeVideoId(videoId)
+                    ? `https://www.youtube.com/embed/${videoId}`
+                    : null;
             }
         }
 
@@ -178,11 +186,19 @@ function extractYoutubeEmbedUrl(value: string): string | null {
     }
 }
 
+function isValidYoutubeVideoId(value: string | null): value is string {
+    return typeof value === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(value);
+}
+
 export function sanitizeAnnouncementMedia(
     mediaUrl: string | null | undefined,
     mediaType: AnnouncementMediaType
 ): { mediaUrl: string | null; mediaType: AnnouncementMediaType } {
     if (!mediaUrl || !mediaType) {
+        return { mediaUrl: null, mediaType: null };
+    }
+
+    if (mediaUrl.length > ANNOUNCEMENT_MEDIA_URL_MAX_LENGTH) {
         return { mediaUrl: null, mediaType: null };
     }
 

@@ -9,6 +9,11 @@ import {
     consumeRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
+import {
+    DEFAULT_GAME_CONTENT_LOCALE,
+    GAME_CONTENT_LOCALES,
+    normalizeGameContentLocale,
+} from "@hushle/domain-game";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +40,9 @@ export async function GET(request: NextRequest) {
         );
     }
 
+    const locale = normalizeGameContentLocale(
+        request.nextUrl.searchParams.get("locale")
+    );
     const categories = await prisma.category.findMany({
         orderBy: { sortOrder: "asc" },
         include: {
@@ -46,7 +54,10 @@ export async function GET(request: NextRequest) {
             },
             _count: { select: { wordCategories: true } },
         },
-        where: { parentId: null },
+        where: {
+            parentId: null,
+            locale,
+        },
     });
 
     return NextResponse.json(categories, {
@@ -60,6 +71,7 @@ const createCategorySchema = z.object({
     color: z.string().max(7).nullable().optional(),
     sortOrder: z.number().optional(),
     isVisible: z.boolean().optional(),
+    locale: z.enum(GAME_CONTENT_LOCALES).default(DEFAULT_GAME_CONTENT_LOCALE),
 });
 
 export async function POST(request: NextRequest) {
@@ -93,6 +105,7 @@ export async function POST(request: NextRequest) {
                 color: data.color ?? null,
                 sortOrder: data.sortOrder ?? 0,
                 isVisible: data.isVisible ?? true,
+                locale: data.locale ?? "tr",
             },
         });
 

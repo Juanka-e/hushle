@@ -8,10 +8,57 @@ export type Score = Record<TeamId, number>;
 export type MatchWinner = TeamId | "Berabere";
 export type WordAction = "dogru" | "tabu" | "pas";
 
+export const GAME_CONTENT_LOCALES = ["tr", "en"] as const;
+export type GameContentLocale = (typeof GAME_CONTENT_LOCALES)[number];
+
+export interface GameContentLocaleDefinition {
+    code: GameContentLocale;
+    nativeName: string;
+    adminLabel: string;
+    intlLocale: string;
+}
+
+export const GAME_CONTENT_LOCALE_DEFINITIONS: Readonly<
+    Record<GameContentLocale, GameContentLocaleDefinition>
+> = Object.freeze({
+    tr: Object.freeze({
+        code: "tr",
+        nativeName: "Türkçe",
+        adminLabel: "Türkçe paket",
+        intlLocale: "tr-TR",
+    }),
+    en: Object.freeze({
+        code: "en",
+        nativeName: "English",
+        adminLabel: "English pack",
+        intlLocale: "en-US",
+    }),
+});
+
+export const DEFAULT_GAME_CONTENT_LOCALE: GameContentLocale = "tr";
+
+export function isGameContentLocale(value: unknown): value is GameContentLocale {
+    return (
+        typeof value === "string" &&
+        GAME_CONTENT_LOCALES.includes(value as GameContentLocale)
+    );
+}
+
+export function normalizeGameContentLocale(value: unknown): GameContentLocale {
+    return isGameContentLocale(value) ? value : DEFAULT_GAME_CONTENT_LOCALE;
+}
+
+export function getGameContentLocaleDefinition(
+    locale: GameContentLocale
+): GameContentLocaleDefinition {
+    return GAME_CONTENT_LOCALE_DEFINITIONS[locale];
+}
+
 export interface TabuRoomSettings {
     sure: number;
     mod: MatchFormat;
     deger: number;
+    wordLocale: GameContentLocale;
 }
 
 export interface TabuInitialState {
@@ -47,6 +94,7 @@ export const TABU_DEFAULT_SETTINGS: Readonly<TabuRoomSettings> = Object.freeze({
     sure: 60,
     mod: "tur",
     deger: 2,
+    wordLocale: DEFAULT_GAME_CONTENT_LOCALE,
 });
 
 export const TABU_PASS_LIMIT = 3;
@@ -70,7 +118,9 @@ export function normalizeTabuRoomSettings(input: unknown): TabuRoomSettings {
             ? Math.min(100, Math.max(10, rawValue || 10))
             : Math.min(30, Math.max(2, rawValue || 2));
 
-    return { sure, mod, deger };
+    const wordLocale = normalizeGameContentLocale(value.wordLocale);
+
+    return { sure, mod, deger, wordLocale };
 }
 
 export function createInitialTabuState(
@@ -98,10 +148,11 @@ export function shouldFinishTabuBeforeRound(input: {
     settings: TabuRoomSettings;
     currentRound: number;
     speakingTeam: TeamId;
+    startingTeam?: TeamId;
     goldenScoreActive: boolean;
 }): boolean {
     return (
-        input.speakingTeam === "A" &&
+        input.speakingTeam === (input.startingTeam ?? "A") &&
         !input.goldenScoreActive &&
         input.settings.mod === "tur" &&
         input.currentRound > input.settings.deger

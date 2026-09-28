@@ -11,13 +11,14 @@ import {
 import type { AnnouncementBlocks } from "@/lib/announcements/content";
 import { AnnouncementBlocksView } from "@/components/game/announcement-blocks-view";
 import { AnnouncementPreviewCard } from "@/components/game/announcement-preview-card";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 interface Announcement {
     id: number;
     title: string;
     contentBlocks: AnnouncementBlocks;
     preview: string;
-    type: "guncelleme" | "duyuru";
+    type: "guncelleme" | "duyuru" | "sss";
     created_at: string;
     isPinned: boolean;
     version?: string | null;
@@ -33,19 +34,24 @@ interface AnnouncementsModalProps {
 }
 
 export function AnnouncementsModal({ isOpen, onClose }: AnnouncementsModalProps) {
+    const { locale, t } = useI18n();
     const [announcements, setAnnouncements] = useState<Announcement[]>([]);
     const [expandedId, setExpandedId] = useState<number | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<"updates" | "announcements">("updates");
+    const [loadedLocale, setLoadedLocale] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<"updates" | "announcements" | "faq">("updates");
 
     useEffect(() => {
         if (!isOpen) {
             return;
         }
 
+        const controller = new AbortController();
         const recentThreshold = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
-        fetch("/api/announcements/visible", { cache: "no-store" })
+        fetch(`/api/announcements/visible?locale=${locale}`, {
+            cache: "no-store",
+            signal: controller.signal,
+        })
             .then(async (response) => {
                 if (!response.ok) {
                     throw new Error("request_failed");
@@ -60,13 +66,18 @@ export function AnnouncementsModal({ isOpen, onClose }: AnnouncementsModalProps)
                     }))
                 );
             })
-            .catch(() => {
-                setAnnouncements([]);
+            .catch((error: unknown) => {
+                if (!(error instanceof DOMException && error.name === "AbortError")) {
+                    setAnnouncements([]);
+                }
             })
             .finally(() => {
-                setLoading(false);
+                if (!controller.signal.aborted) {
+                    setLoadedLocale(locale);
+                }
             });
-    }, [isOpen]);
+        return () => controller.abort();
+    }, [isOpen, locale]);
 
     const updates = useMemo(
         () => announcements.filter((announcement) => announcement.type === "guncelleme"),
@@ -76,15 +87,20 @@ export function AnnouncementsModal({ isOpen, onClose }: AnnouncementsModalProps)
         () => announcements.filter((announcement) => announcement.type === "duyuru"),
         [announcements]
     );
-    const activeItems = activeTab === "updates" ? updates : notices;
+    const faq = useMemo(
+        () => announcements.filter((announcement) => announcement.type === "sss"),
+        [announcements]
+    );
+    const activeItems = activeTab === "updates" ? updates : activeTab === "announcements" ? notices : faq;
+    const loading = loadedLocale !== locale;
 
     if (!isOpen) {
         return null;
     }
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/80 p-3 backdrop-blur-md">
-            <div className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/55 p-3 backdrop-blur-md transition-colors dark:bg-black/80">
+            <div data-testid="announcements-panel" className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white text-slate-900 shadow-2xl transition-colors dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                 <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-slate-800">
                     <div>
                         <h2 className="flex items-center gap-2 text-xl font-black text-slate-800 dark:text-white">
@@ -93,17 +109,21 @@ export function AnnouncementsModal({ isOpen, onClose }: AnnouncementsModalProps)
                             ) : (
                                 <Megaphone size={18} className="text-orange-500" />
                             )}
-                            {activeTab === "updates" ? "Yenilikler" : "Duyurular"}
+                            {activeTab === "updates"
+                                ? t("announcements.titleUpdates")
+                                : activeTab === "announcements"
+                                  ? t("announcements.titleNotices")
+                                  : t("announcements.titleFaq")}
                         </h2>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            Son gelismeler ve yayinlanan duyurular.
+                            {t("announcements.subtitle")}
                         </p>
                     </div>
                     <button
                         onClick={onClose}
                         className="rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-100 dark:hover:bg-slate-800"
-                        aria-label="Duyurulari kapat"
-                        title="Kapat"
+                        aria-label={t("common.close")}
+                        title={t("common.close")}
                     >
                         <X size={20} />
                     </button>
@@ -121,7 +141,7 @@ export function AnnouncementsModal({ isOpen, onClose }: AnnouncementsModalProps)
                                 : "border border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-300"
                         }`}
                     >
-                        Guncellemeler
+                        {t("announcements.updates")}
                     </button>
                     <button
                         onClick={() => {
@@ -134,11 +154,24 @@ export function AnnouncementsModal({ isOpen, onClose }: AnnouncementsModalProps)
                                 : "border border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-300"
                         }`}
                     >
-                        Duyurular
+                        {t("announcements.notices")}
+                    </button>
+                    <button
+                        onClick={() => {
+                            setActiveTab("faq");
+                            setExpandedId(null);
+                        }}
+                        className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition-all ${
+                            activeTab === "faq"
+                                ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
+                                : "border border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-300"
+                        }`}
+                    >
+                        {t("announcements.faq")}
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto bg-gray-50/30 p-4 dark:bg-slate-900">
+                <div className="flex-1 overflow-y-auto bg-slate-50/80 p-4 transition-colors dark:bg-slate-950">
                     {loading ? (
                         <div className="flex items-center justify-center py-16">
                             <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
@@ -146,7 +179,7 @@ export function AnnouncementsModal({ isOpen, onClose }: AnnouncementsModalProps)
                     ) : activeItems.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-20 text-center text-gray-400 dark:text-slate-600">
                             {activeTab === "updates" ? <Rocket size={34} /> : <Megaphone size={34} />}
-                            <p className="mt-3 text-sm font-medium">Bu kategoride henuz icerik yok.</p>
+                            <p className="mt-3 text-sm font-medium">{t("announcements.empty")}</p>
                         </div>
                     ) : (
                         <div className="space-y-4">

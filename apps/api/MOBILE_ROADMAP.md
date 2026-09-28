@@ -98,3 +98,11 @@ Yeniden başlarken önce bu dosya, `apps/api/README.md` ve
 - `docs/guides/mobile-inventory-and-equip-guide.md`
 - `docs/guides/mobile-store-catalog-guide.md`
 - `docs/architecture/apps-migration-plan.md`
+# Locale compatibility note
+
+Web'deki UI locale ile oda `wordLocale` alanı ayrıdır. Mobile player/game
+contract genişletildiğinde `tr|en` UI tercihi istemciye ait kalmalı;
+`wordLocale` ise room snapshot/event içinden okunmalı ve yalnız host komutuyla
+değişmelidir. Duyuru endpoint'i locale isteğini ve Türkçe fallback bilgisini
+versioned response içinde taşımalıdır. Ayrıntı:
+`docs/guides/i18n-announcements-and-word-packs.md`.

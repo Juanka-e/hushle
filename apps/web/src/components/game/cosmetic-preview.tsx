@@ -9,6 +9,8 @@ import { resolveCardFaceTheme } from "@/lib/cosmetics/card-face";
 import { buildCosmeticPatternStyle, getCosmeticMotionClass, getCosmeticMotionStyle } from "@/lib/cosmetics/effects";
 import { resolveFrameTheme } from "@/lib/cosmetics/frame";
 import type { StoreItemRarity, StoreItemRenderMode, StoreItemType, TemplateConfig } from "@/types/economy";
+import type { AppLocale } from "@/lib/i18n/config";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 export interface CosmeticPreviewItem {
     name: string;
@@ -24,8 +26,13 @@ export interface CosmeticPreviewItem {
 
 const passthroughImageLoader = ({ src }: ImageLoaderProps) => src;
 
-export function formatCosmeticTypeLabel(type: StoreItemType): string {
+export function formatCosmeticTypeLabel(type: StoreItemType, locale: AppLocale = "tr"): string {
     if (type === "avatar") return "Avatar";
+    if (locale === "en") {
+        if (type === "frame") return "Frame";
+        if (type === "card_back") return "Card Back";
+        return "Card Face";
+    }
     if (type === "frame") return "Çerçeve";
     if (type === "card_back") return "Kart Arkası";
     return "Kart Önü";
@@ -116,8 +123,9 @@ export function CosmeticLargePreview({
     item: CosmeticPreviewItem;
     enableFlipToggle?: boolean;
 }) {
+    const { t } = useI18n();
     if (item.type === "avatar") {
-        return <div className="flex min-h-[320px] items-center justify-center p-6"><div className="space-y-5 text-center"><div className="mx-auto flex h-36 w-36 items-center justify-center overflow-hidden rounded-[36px] border border-white/20 bg-gradient-to-br from-indigo-500 via-blue-500 to-cyan-400 shadow-[0_24px_60px_-34px_rgba(59,130,246,0.65)]">{item.imageUrl ? <Image loader={passthroughImageLoader} unoptimized src={item.imageUrl} alt={item.name} width={144} height={144} className="h-full w-full object-cover" /> : <span className="text-5xl font-black text-white">{getItemInitial(item.name)}</span>}</div><div><div className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Oyuncu Kutusu</div><div className="mt-2 text-lg font-black text-slate-900 dark:text-white">{item.name}</div></div></div></div>;
+        return <div className="flex min-h-[320px] items-center justify-center p-6"><div className="space-y-5 text-center"><div className="mx-auto flex h-36 w-36 items-center justify-center overflow-hidden rounded-[36px] border border-white/20 bg-gradient-to-br from-indigo-500 via-blue-500 to-cyan-400 shadow-[0_24px_60px_-34px_rgba(59,130,246,0.65)]">{item.imageUrl ? <Image loader={passthroughImageLoader} unoptimized src={item.imageUrl} alt={item.name} width={144} height={144} className="h-full w-full object-cover" /> : <span className="text-5xl font-black text-white">{getItemInitial(item.name)}</span>}</div><div><div className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">{t("cosmetics.playerTile")}</div><div className="mt-2 text-lg font-black text-slate-900 dark:text-white">{item.name}</div></div></div></div>;
     }
     if (item.type === "frame") {
         const theme = resolveFrameTheme({ renderMode: item.renderMode, imageUrl: item.imageUrl, templateKey: item.templateKey, templateConfig: item.templateConfig, rarity: item.rarity });
@@ -137,6 +145,7 @@ function CosmeticCardFlipPreview({
     item: CosmeticPreviewItem;
     enableFlipToggle: boolean;
 }) {
+    const { t } = useI18n();
     const actualSide = item.type === "card_back" ? "back" : "front";
     const [isFlipEnabled, setIsFlipEnabled] = useState(true);
     const [isFlipped, setIsFlipped] = useState(actualSide === "back");
@@ -177,9 +186,9 @@ function CosmeticCardFlipPreview({
                                 : "bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                         )}
                     >
-                        Flip
+                        {t("cosmetics.flip")}
                         <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] dark:bg-slate-900/20">
-                            {isFlipEnabled ? "Acik" : "Kapali"}
+                            {isFlipEnabled ? t("cosmetics.enabled") : t("cosmetics.disabled")}
                         </span>
                     </button>
                 </div>
@@ -192,7 +201,7 @@ function CosmeticCardFlipPreview({
                     "relative h-[272px] w-[198px] cursor-pointer [perspective:1600px]",
                     !isFlipEnabled && "cursor-default"
                 )}
-                aria-label={isFlipEnabled ? "Karti cevir" : undefined}
+                aria-label={isFlipEnabled ? t("cosmetics.flipCard") : undefined}
             >
                 <div
                     className={cn(
@@ -211,8 +220,8 @@ function CosmeticCardFlipPreview({
             {enableFlipToggle ? (
                 <div className="mt-4 text-center text-[11px] text-slate-500 dark:text-slate-400">
                     {isFlipEnabled
-                        ? "Flip acikken karta tiklayarak on ve arka tasarimi inceleyebilirsin."
-                        : "Flip kapalidir. Kart varsayilan yuzde sabit kalir."}
+                        ? t("cosmetics.flipEnabledHelp")
+                        : t("cosmetics.flipDisabledHelp")}
                 </div>
             ) : null}
         </div>
@@ -246,10 +255,11 @@ function createCardSidePreviewItem(item: CosmeticPreviewItem, side: "front" | "b
 }
 
 function CosmeticCardPreviewSurface({ item, compact = false }: { item: CosmeticPreviewItem; compact?: boolean }) {
+    const { t } = useI18n();
     if (item.type === "card_back") {
         const theme = resolveCardBackTheme({ renderSpecVersion: item.renderSpecVersion, renderMode: item.renderMode, imageUrl: item.imageUrl, templateKey: item.templateKey, templateConfig: item.templateConfig, rarity: item.rarity });
         const patternStyle = buildCosmeticPatternStyle({ pattern: theme.pattern, primaryColor: theme.borderColor, secondaryColor: theme.secondaryColor, scale: theme.patternScale, opacity: theme.patternOpacity });
-        return <div className="absolute inset-0 overflow-hidden rounded-[inherit] bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(30,41,59,0.98))]">{theme.overlayImageUrl ? <Image loader={passthroughImageLoader} unoptimized src={theme.overlayImageUrl} alt={item.name} fill className="object-cover opacity-90" /> : null}<div className={cn("absolute inset-0", getCosmeticMotionClass(theme.motionPreset))} style={{ ...patternStyle, ...getCosmeticMotionStyle(theme.motionSpeedMs) }} /><div className="absolute inset-[10%] rounded-[22px] border-2" style={{ borderColor: theme.borderColor }} /><div className="absolute inset-[20%] rounded-[16px] border" style={{ borderColor: theme.secondaryColor }} />{!compact ? <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-sm">Kart Arkası</div> : null}</div>;
+        return <div className="absolute inset-0 overflow-hidden rounded-[inherit] bg-[linear-gradient(180deg,rgba(15,23,42,0.94),rgba(30,41,59,0.98))]">{theme.overlayImageUrl ? <Image loader={passthroughImageLoader} unoptimized src={theme.overlayImageUrl} alt={item.name} fill className="object-cover opacity-90" /> : null}<div className={cn("absolute inset-0", getCosmeticMotionClass(theme.motionPreset))} style={{ ...patternStyle, ...getCosmeticMotionStyle(theme.motionSpeedMs) }} /><div className="absolute inset-[10%] rounded-[22px] border-2" style={{ borderColor: theme.borderColor }} /><div className="absolute inset-[20%] rounded-[16px] border" style={{ borderColor: theme.secondaryColor }} />{!compact ? <div className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-sm">{t("cosmetics.cardBack")}</div> : null}</div>;
     }
 
     const theme = resolveCardFaceTheme({ renderSpecVersion: item.renderSpecVersion, renderMode: item.renderMode, imageUrl: item.imageUrl, templateKey: item.templateKey, templateConfig: item.templateConfig, rarity: item.rarity });

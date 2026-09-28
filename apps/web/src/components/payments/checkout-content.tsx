@@ -13,6 +13,9 @@ import {
     ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useI18n } from "@/components/providers/i18n-provider";
+import { toIntlLocale, type AppLocale } from "@/lib/i18n/config";
+import { translate } from "@/lib/i18n/dictionaries";
 
 interface PaymentOffer {
     code: string;
@@ -65,9 +68,9 @@ const TERMINAL_ORDER_STATUSES = new Set([
     "chargeback",
 ]);
 
-function formatMoney(amountMinor: number, currency: string): string {
+function formatMoney(amountMinor: number, currency: string, locale: AppLocale): string {
     try {
-        return new Intl.NumberFormat("tr-TR", {
+        return new Intl.NumberFormat(toIntlLocale(locale), {
             style: "currency",
             currency,
         }).format(amountMinor / 100);
@@ -76,16 +79,16 @@ function formatMoney(amountMinor: number, currency: string): string {
     }
 }
 
-function statusLabel(status: string): string {
-    if (status === "created" || status === "pending_provider") return "Ödeme hazırlanıyor";
-    if (status === "awaiting_payment") return "Ödeme bekleniyor";
-    if (status === "paid") return "Ödeme doğrulandı";
-    if (status === "fulfilled") return "Teslim edildi";
-    if (status === "failed") return "Ödeme başarısız";
-    if (status === "expired") return "Sipariş süresi doldu";
-    if (status === "refunded") return "İade edildi";
-    if (status === "chargeback") return "Ödeme itirazı incelemede";
-    return "Sipariş güncelleniyor";
+function statusLabel(status: string, locale: AppLocale): string {
+    if (status === "created" || status === "pending_provider") return translate(locale, "checkout.preparing");
+    if (status === "awaiting_payment") return translate(locale, "checkout.awaiting");
+    if (status === "paid") return translate(locale, "checkout.paid");
+    if (status === "fulfilled") return translate(locale, "checkout.delivered");
+    if (status === "failed") return translate(locale, "checkout.failed");
+    if (status === "expired") return translate(locale, "checkout.expired");
+    if (status === "refunded") return translate(locale, "checkout.refunded");
+    if (status === "chargeback") return translate(locale, "checkout.chargeback");
+    return translate(locale, "checkout.updating");
 }
 
 function isAllowedPaymentRedirect(provider: "iyzico" | "shopier_v2", value: string): boolean {
@@ -110,6 +113,7 @@ function isAllowedPaymentRedirect(provider: "iyzico" | "shopier_v2", value: stri
 }
 
 export function CheckoutContent() {
+    const { locale, t } = useI18n();
     const searchParams = useSearchParams();
     const orderId = searchParams.get("order");
     const providerResult = searchParams.get("result");
@@ -130,7 +134,7 @@ export function CheckoutContent() {
     const [phone, setPhone] = useState("");
     const [address, setAddress] = useState("");
     const [city, setCity] = useState("");
-    const [country, setCountry] = useState("Türkiye");
+    const [country, setCountry] = useState(locale === "tr" ? "Türkiye" : "Turkey");
     const [zipCode, setZipCode] = useState("");
     const [buyerDataAcknowledged, setBuyerDataAcknowledged] = useState(false);
     const idempotencyKey = useRef(`web:${crypto.randomUUID()}`);
@@ -141,13 +145,13 @@ export function CheckoutContent() {
         void fetch("/api/payments/offers", { cache: "no-store" })
             .then(async (response) => {
                 const payload = (await response.json()) as OffersResponse & { error?: string };
-                if (!response.ok) throw new Error(payload.error || "Teklifler yüklenemedi.");
+                if (!response.ok) throw new Error(payload.error || t("checkout.offersLoadFailed"));
                 if (!active) return;
                 setData(payload);
                 setSelectedCode(payload.offers[0]?.code ?? null);
             })
             .catch((error: unknown) => {
-                if (active) toast.error(error instanceof Error ? error.message : "Teklifler yüklenemedi.");
+                if (active) toast.error(error instanceof Error ? error.message : t("checkout.offersLoadFailed"));
             })
             .finally(() => {
                 if (active) setLoading(false);
@@ -155,7 +159,7 @@ export function CheckoutContent() {
         return () => {
             active = false;
         };
-    }, []);
+    }, [t]);
 
     const loadOrder = useCallback(async () => {
         if (!activeOrderId) return null;
@@ -232,7 +236,7 @@ export function CheckoutContent() {
         setPhone("");
         setAddress("");
         setCity("");
-        setCountry("Türkiye");
+        setCountry(locale === "tr" ? "Türkiye" : "Turkey");
         setZipCode("");
         setBuyerDataAcknowledged(false);
     };
@@ -289,7 +293,7 @@ export function CheckoutContent() {
                 ? Boolean(payload.redirectUrl && isAllowedPaymentRedirect(provider, payload.redirectUrl))
                 : Boolean(payload.iframeUrl);
             if (!response.ok || !payload.orderId || !validSession) {
-                toast.error(payload.error || "Ödeme başlatılamadı.");
+                toast.error(payload.error || t("checkout.startFailed"));
                 return;
             }
             setCreatedOrderId(payload.orderId);
@@ -305,7 +309,7 @@ export function CheckoutContent() {
             clearTransientBuyerData();
             void loadOrder();
         } catch {
-            toast.error("Ödeme isteği tamamlanamadı.");
+            toast.error(t("checkout.requestFailed"));
         } finally {
             setSubmitting(false);
         }
@@ -315,17 +319,17 @@ export function CheckoutContent() {
         <main className="min-h-screen bg-[radial-gradient(circle_at_12%_5%,#bae6fd_0,transparent_28%),radial-gradient(circle_at_92%_12%,#fde68a_0,transparent_23%),linear-gradient(155deg,#f8fafc_0%,#eef2f7_100%)] px-4 py-6 text-slate-950 dark:bg-[radial-gradient(circle_at_12%_5%,#0c4a6e_0,transparent_30%),radial-gradient(circle_at_92%_12%,#713f12_0,transparent_25%),linear-gradient(155deg,#020617_0%,#111827_100%)] dark:text-white md:px-8 md:py-10">
             <div className="mx-auto max-w-6xl">
                 <Link href="/dashboard?tab=shop" className="inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white">
-                    <ArrowLeft className="h-4 w-4" /> Mağazaya dön
+                    <ArrowLeft className="h-4 w-4" /> {t("checkout.backStore")}
                 </Link>
 
                 <header className="mt-6 grid gap-6 rounded-[32px] border border-white/70 bg-white/80 p-6 shadow-[0_30px_90px_-55px_rgba(15,23,42,0.55)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/75 md:p-8 lg:grid-cols-[1fr_auto] lg:items-end">
                     <div>
                         <div className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-white dark:bg-white dark:text-slate-950">
-                            <CreditCard className="h-4 w-4" /> Güvenli ödeme
+                            <CreditCard className="h-4 w-4" /> {t("checkout.securePayment")}
                         </div>
-                        <h1 className="mt-5 text-3xl font-black tracking-tight md:text-5xl">Hesabın için dijital ürünler</h1>
+                        <h1 className="mt-5 text-3xl font-black tracking-tight md:text-5xl">{t("checkout.title")}</h1>
                         <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300 md:text-base">
-                            Tutar ve ürün sunucuda doğrulanır. Ödeme sonucu sağlayıcı bildirimiyle kesinleşmeden ürün teslim edilmez.
+                            {t("checkout.description")}
                         </p>
                     </div>
                     <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200">
@@ -335,12 +339,12 @@ export function CheckoutContent() {
 
                 {providerResult === "provider-return" ? (
                     <section className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-100">
-                        Ödeme sağlayıcısından geri döndün. Sipariş, sunucu doğrulaması tamamlanana kadar beklemede kalabilir.
+                        {t("checkout.returned")}
                     </section>
                 ) : null}
                 {providerResult === "provider-review" || providerResult === "provider-error" ? (
                     <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-100">
-                        Ödeme sonucu kesinleşmedi. Yeni bir ödeme başlatma; sipariş durumu güvenli şekilde kontrol ediliyor.
+                        {t("checkout.pending")}
                     </section>
                 ) : null}
 
@@ -348,9 +352,9 @@ export function CheckoutContent() {
                     <section className="mt-6 rounded-[28px] border border-blue-200 bg-blue-50/90 p-6 dark:border-blue-900/60 dark:bg-blue-950/35">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700 dark:text-blue-300">Sipariş durumu</p>
-                                <h2 className="mt-2 text-2xl font-black">{statusLabel(order.status)}</h2>
-                                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{order.productNameSnapshot} · {formatMoney(order.totalAmountMinor, order.currency)}</p>
+                                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-700 dark:text-blue-300">{t("checkout.orderStatus")}</p>
+                                <h2 className="mt-2 text-2xl font-black">{statusLabel(order.status, locale)}</h2>
+                                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{order.productNameSnapshot} · {formatMoney(order.totalAmountMinor, order.currency, locale)}</p>
                             </div>
                             {order.status === "fulfilled" ? <PackageCheck className="h-10 w-10 text-emerald-600" /> : <LoaderCircle className="h-10 w-10 animate-spin text-blue-600" />}
                         </div>
@@ -361,14 +365,14 @@ export function CheckoutContent() {
                     <section className="mt-6 overflow-hidden rounded-[28px] border border-sky-200 bg-white shadow-[0_24px_70px_-45px_rgba(2,132,199,0.65)] dark:border-sky-900 dark:bg-slate-950">
                         <div className="flex flex-col gap-2 border-b border-slate-200 bg-sky-50 px-5 py-4 dark:border-slate-800 dark:bg-sky-950/35 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <p className="font-black">PayTR güvenli ödeme alanı</p>
-                                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Kart bilgileri PayTR tarafından işlenir ve Hushle sistemlerine yazılmaz.</p>
+                                <p className="font-black">{t("checkout.paytrTitle")}</p>
+                                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{t("checkout.paytrHelp")}</p>
                             </div>
                             <span className="w-fit rounded-full bg-amber-200 px-3 py-1 text-xs font-black text-amber-950">SANDBOX TEST</span>
                         </div>
                         <iframe
                             src={iframeUrl}
-                            title="PayTR güvenli ödeme"
+                            title={t("checkout.paytrFrame")}
                             className="h-[680px] w-full bg-white sm:h-[720px]"
                             allow="payment"
                             referrerPolicy="no-referrer"
@@ -379,18 +383,18 @@ export function CheckoutContent() {
                 {redirectUrl && order?.status === "awaiting_payment" ? (
                     <section className="mt-6 flex flex-col gap-4 rounded-[28px] border border-cyan-200 bg-cyan-50/90 p-5 dark:border-cyan-900/60 dark:bg-cyan-950/35 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <p className="font-black">{redirectProvider === "shopier_v2" ? "Shopier" : "iyzico"} ödeme sayfası hazır</p>
-                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Ödeme sayfasını kapattıysan aynı güvenli bağlantıdan devam edebilirsin.</p>
+                            <p className="font-black">{t("checkout.providerReady", { provider: redirectProvider === "shopier_v2" ? "Shopier" : "iyzico" })}</p>
+                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t("checkout.providerReadyHelp")}</p>
                         </div>
                         <button type="button" onClick={() => window.location.assign(redirectUrl)} className="rounded-2xl bg-cyan-600 px-5 py-3 text-sm font-black text-white transition hover:bg-cyan-500">
-                            Ödemeye devam et
+                            {t("checkout.continuePayment")}
                         </button>
                     </section>
                 ) : null}
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
                     <section className="rounded-[30px] border border-white/70 bg-white/85 p-5 shadow-[0_28px_80px_-58px_rgba(15,23,42,0.6)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/75 md:p-7">
-                        <h2 className="text-xl font-black">Teklif seç</h2>
+                        <h2 className="text-xl font-black">{t("checkout.selectOffer")}</h2>
                         {loading ? (
                             <div className="flex min-h-48 items-center justify-center"><LoaderCircle className="h-7 w-7 animate-spin text-blue-600" /></div>
                         ) : data?.offers.length ? (
@@ -404,43 +408,43 @@ export function CheckoutContent() {
                                                 {selected ? <CheckCircle2 className="h-5 w-5 shrink-0 text-blue-600" /> : null}
                                             </div>
                                             <p className="mt-2 text-sm leading-5 text-slate-500 dark:text-slate-400">{offer.description}</p>
-                                            <p className="mt-4 text-xl font-black">{formatMoney(offer.unitAmountMinor, offer.currency)}</p>
+                                            <p className="mt-4 text-xl font-black">{formatMoney(offer.unitAmountMinor, offer.currency, locale)}</p>
                                         </button>
                                     );
                                 })}
                             </div>
                         ) : (
                             <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm leading-6 text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
-                                Şu anda aktif gerçek para teklifi bulunmuyor. Coin mağazasını kullanmaya devam edebilirsin.
+                                {t("checkout.noOffers")}
                             </div>
                         )}
                     </section>
 
                     <aside className="h-fit rounded-[30px] border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_28px_80px_-50px_rgba(15,23,42,0.9)] md:p-6">
-                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-sky-300"><ShieldCheck className="h-4 w-4" /> Sipariş özeti</div>
-                        <h2 className="mt-4 text-2xl font-black">{selectedOffer?.productName ?? "Teklif seçilmedi"}</h2>
+                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-sky-300"><ShieldCheck className="h-4 w-4" /> {t("checkout.summary")}</div>
+                        <h2 className="mt-4 text-2xl font-black">{selectedOffer?.productName ?? t("checkout.noOffer")}</h2>
                         <div className="mt-5 flex items-end justify-between border-y border-white/10 py-4">
-                            <span className="text-sm text-slate-400">Ödenecek toplam</span>
-                            <strong className="text-2xl">{selectedOffer ? formatMoney(selectedOffer.unitAmountMinor, selectedOffer.currency) : "-"}</strong>
+                            <span className="text-sm text-slate-400">{t("checkout.total")}</span>
+                            <strong className="text-2xl">{selectedOffer ? formatMoney(selectedOffer.unitAmountMinor, selectedOffer.currency, locale) : "-"}</strong>
                         </div>
 
                         <div className="mt-5 space-y-3">
                             {provider === "paytr" ? (
                                 <>
                             <div>
-                                <label htmlFor="payment-full-name" className="text-xs font-bold text-slate-300">Ad ve soyad</label>
+                                <label htmlFor="payment-full-name" className="text-xs font-bold text-slate-300">{t("checkout.fullName")}</label>
                                 <input id="payment-full-name" autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} maxLength={60} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" placeholder="Ad Soyad" />
                             </div>
                             <div>
-                                <label htmlFor="payment-phone" className="text-xs font-bold text-slate-300">Telefon</label>
+                                <label htmlFor="payment-phone" className="text-xs font-bold text-slate-300">{t("checkout.phone")}</label>
                                 <input id="payment-phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={20} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" placeholder="05xx xxx xx xx" />
                             </div>
                             <div>
-                                <label htmlFor="payment-address" className="text-xs font-bold text-slate-300">Fatura/iletişim adresi</label>
-                                <textarea id="payment-address" autoComplete="street-address" value={address} onChange={(event) => setAddress(event.target.value)} maxLength={400} rows={3} className="mt-1.5 w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" placeholder="Mahalle, sokak, ilçe ve il" />
+                                <label htmlFor="payment-address" className="text-xs font-bold text-slate-300">{t("checkout.address")}</label>
+                                <textarea id="payment-address" autoComplete="street-address" value={address} onChange={(event) => setAddress(event.target.value)} maxLength={400} rows={3} className="mt-1.5 w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" placeholder={t("checkout.addressPlaceholder")} />
                             </div>
                             <p className="rounded-xl border border-sky-300/15 bg-sky-300/10 p-3 text-xs leading-5 text-sky-100">
-                                Bu iletişim bilgileri yalnız ödeme oturumu için PayTR’ye iletilir; Hushle sipariş, audit veya log kayıtlarına kopyalanmaz.
+                                {t("checkout.paytrPrivacy")}
                             </p>
                                 </>
                             ) : null}
@@ -449,53 +453,53 @@ export function CheckoutContent() {
                                 <>
                                     <div className="grid gap-3 sm:grid-cols-2">
                                         <div>
-                                            <label htmlFor="payment-given-name" className="text-xs font-bold text-slate-300">Ad</label>
+                                            <label htmlFor="payment-given-name" className="text-xs font-bold text-slate-300">{t("checkout.firstName")}</label>
                                             <input id="payment-given-name" autoComplete="given-name" value={givenName} onChange={(event) => setGivenName(event.target.value)} maxLength={60} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" />
                                         </div>
                                         <div>
-                                            <label htmlFor="payment-family-name" className="text-xs font-bold text-slate-300">Soyad</label>
+                                            <label htmlFor="payment-family-name" className="text-xs font-bold text-slate-300">{t("checkout.lastName")}</label>
                                             <input id="payment-family-name" autoComplete="family-name" value={familyName} onChange={(event) => setFamilyName(event.target.value)} maxLength={60} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" />
                                         </div>
                                     </div>
                                     <div>
-                                        <label htmlFor="payment-identity-number" className="text-xs font-bold text-slate-300">T.C. kimlik numarası</label>
+                                        <label htmlFor="payment-identity-number" className="text-xs font-bold text-slate-300">{t("checkout.identityNumber")}</label>
                                         <input id="payment-identity-number" type="text" inputMode="numeric" autoComplete="off" value={identityNumber} onChange={(event) => setIdentityNumber(event.target.value.replace(/\D/g, "").slice(0, 11))} minLength={11} maxLength={11} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" placeholder="11 hane" />
                                     </div>
                                     <div>
-                                        <label htmlFor="payment-phone" className="text-xs font-bold text-slate-300">Telefon</label>
+                                        <label htmlFor="payment-phone" className="text-xs font-bold text-slate-300">{t("checkout.phone")}</label>
                                         <input id="payment-phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={20} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" placeholder="+90 5xx xxx xx xx" />
                                     </div>
                                     <div>
-                                        <label htmlFor="payment-address" className="text-xs font-bold text-slate-300">Fatura adresi</label>
-                                        <textarea id="payment-address" autoComplete="street-address" value={address} onChange={(event) => setAddress(event.target.value)} maxLength={400} rows={3} className="mt-1.5 w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" placeholder="Mahalle, sokak, ilçe" />
+                                        <label htmlFor="payment-address" className="text-xs font-bold text-slate-300">{t("checkout.billingAddress")}</label>
+                                        <textarea id="payment-address" autoComplete="street-address" value={address} onChange={(event) => setAddress(event.target.value)} maxLength={400} rows={3} className="mt-1.5 w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" placeholder={t("checkout.shortAddressPlaceholder")} />
                                     </div>
                                     <div className="grid gap-3 sm:grid-cols-2">
                                         <div>
-                                            <label htmlFor="payment-city" className="text-xs font-bold text-slate-300">İl</label>
+                                            <label htmlFor="payment-city" className="text-xs font-bold text-slate-300">{t("checkout.city")}</label>
                                             <input id="payment-city" autoComplete="address-level1" value={city} onChange={(event) => setCity(event.target.value)} maxLength={80} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" />
                                         </div>
                                         <div>
-                                            <label htmlFor="payment-zip-code" className="text-xs font-bold text-slate-300">Posta kodu <span className="font-normal text-slate-500">(opsiyonel)</span></label>
+                                            <label htmlFor="payment-zip-code" className="text-xs font-bold text-slate-300">{t("checkout.zipCode")} <span className="font-normal text-slate-500">{t("checkout.optional")}</span></label>
                                             <input id="payment-zip-code" inputMode="numeric" autoComplete="postal-code" value={zipCode} onChange={(event) => setZipCode(event.target.value)} maxLength={20} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" />
                                         </div>
                                     </div>
                                     <div>
-                                        <label htmlFor="payment-country" className="text-xs font-bold text-slate-300">Ülke</label>
+                                        <label htmlFor="payment-country" className="text-xs font-bold text-slate-300">{t("checkout.country")}</label>
                                         <input id="payment-country" autoComplete="country-name" value={country} onChange={(event) => setCountry(event.target.value)} maxLength={80} className="mt-1.5 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400" />
                                     </div>
                                     <p className="rounded-xl border border-cyan-300/15 bg-cyan-300/10 p-3 text-xs leading-5 text-cyan-100">
-                                        Bu bilgiler yalnız bu ödeme oturumu için iyzico’ya iletilir. Kimlik numarası, telefon ve adres Hushle profilinde, siparişte, audit kaydında veya hash olarak saklanmaz.
+                                        {t("checkout.iyzicoPrivacy")}
                                     </p>
                                     <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-3 text-xs leading-5 text-cyan-50">
                                         <input type="checkbox" checked={buyerDataAcknowledged} onChange={(event) => setBuyerDataAcknowledged(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-cyan-400" />
-                                        <span>Ödeme için gerekli bu verilerin iyzico’ya aktarılacağına ilişkin bilgilendirmeyi okudum.</span>
+                                        <span>{t("checkout.iyzicoConsent")}</span>
                                     </label>
                                 </>
                             ) : null}
 
                             {provider === "shopier_v2" ? (
                                 <p className="rounded-xl border border-cyan-300/15 bg-cyan-300/10 p-3 text-xs leading-5 text-cyan-100">
-                                    Shopier sayfasında Hushle hesabındaki doğrulanmış e-posta adresini kullan. Farklı e-posta ile tamamlanan sipariş otomatik teslim edilmez ve incelemeye alınır.
+                                    {t("checkout.shopierHelp")}
                                 </p>
                             ) : null}
                         </div>
@@ -503,12 +507,12 @@ export function CheckoutContent() {
                         {data ? (
                             <div className="mt-5 space-y-3 text-sm leading-6 text-slate-300">
                                 <p>
-                                    <Link className="font-bold text-sky-300 hover:text-sky-200" href={data.checkout.legalDocuments.privacyNotice.href} target="_blank">Ödeme Aydınlatma Metni</Link> kişisel verilerin ödeme sırasında nasıl işlendiğini açıklar.
+                                    <Link className="font-bold text-sky-300 hover:text-sky-200" href={data.checkout.legalDocuments.privacyNotice.href} target="_blank">{t("checkout.privacyNotice")}</Link> {t("checkout.privacyHelp")}
                                 </p>
                                 <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
                                     <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-sky-500" />
                                     <span>
-                                        <Link className="font-bold text-sky-300 hover:text-sky-200" href={data.checkout.legalDocuments.distanceSalesNotice.href} target="_blank">Ön bilgilendirmeyi</Link> ve <Link className="font-bold text-sky-300 hover:text-sky-200" href={data.checkout.legalDocuments.checkoutTerms.href} target="_blank">satın alma koşullarını</Link> okudum, sipariş verdiğimde ödeme yükümlülüğü doğacağını kabul ediyorum.
+                                        <Link className="font-bold text-sky-300 hover:text-sky-200" href={data.checkout.legalDocuments.distanceSalesNotice.href} target="_blank">{t("checkout.preInfo")}</Link> &amp; <Link className="font-bold text-sky-300 hover:text-sky-200" href={data.checkout.legalDocuments.checkoutTerms.href} target="_blank">{t("checkout.terms")}</Link> {t("checkout.termsConsent")}
                                     </span>
                                 </label>
                             </div>
@@ -520,7 +524,7 @@ export function CheckoutContent() {
 
                         <button type="button" onClick={() => void startCheckout()} disabled={!selectedOffer || !accepted || !buyerDataReady || !data?.checkout.available || submitting} className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-sky-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400">
                             {submitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                            Ödeme yükümlülüğü doğuran siparişi ver
+                            {t("checkout.placeOrder")}
                         </button>
                     </aside>
                 </div>

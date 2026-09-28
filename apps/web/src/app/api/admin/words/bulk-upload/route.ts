@@ -8,9 +8,14 @@ import {
 import { writeAuditLog } from "@/lib/security/audit-log";
 import {
     processBulkWordUpload,
+    MAX_BULK_WORD_UPLOAD_FILE_BYTES,
     type BulkUploadMode,
 } from "@/lib/admin-words-bulk-upload/service";
 import { invalidateAdminDashboardStatsCache } from "@/lib/cache/application-cache";
+import {
+    DEFAULT_GAME_CONTENT_LOCALE,
+    isGameContentLocale,
+} from "@hushle/domain-game";
 
 export const dynamic = "force-dynamic";
 
@@ -39,11 +44,28 @@ export async function POST(request: NextRequest) {
         const mode = String(formData.get("mode") || "fixed_categories").trim() as BulkUploadMode;
         const categoryIdValue = String(formData.get("categoryId") || "").trim();
         const subcategoryIdValue = String(formData.get("subcategoryId") || "").trim();
+        const localeValue = String(
+            formData.get("locale") || DEFAULT_GAME_CONTENT_LOCALE
+        ).trim();
+        if (!isGameContentLocale(localeValue)) {
+            return NextResponse.json(
+                { error: "Gecersiz kelime paketi dili." },
+                { status: 422, headers: buildRateLimitHeaders(rateLimit) }
+            );
+        }
+        const locale = localeValue;
 
         if (!(file instanceof File)) {
             return NextResponse.json(
                 { error: "Dosya bulunamadi." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
+            );
+        }
+
+        if (file.size > MAX_BULK_WORD_UPLOAD_FILE_BYTES) {
+            return NextResponse.json(
+                { error: "CSV dosyasi en fazla 2 MB olabilir." },
+                { status: 413, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 
@@ -60,6 +82,7 @@ export async function POST(request: NextRequest) {
             mode,
             categoryIdValue,
             subcategoryIdValue,
+            locale,
         });
         if ("error" in processed) {
             return NextResponse.json(
@@ -81,6 +104,7 @@ export async function POST(request: NextRequest) {
                 skippedCount: results.skipped,
                 errorCount: results.errors.length,
                 fixedCategoryIds,
+                locale,
             },
             request,
         });

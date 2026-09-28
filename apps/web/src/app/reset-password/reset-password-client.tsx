@@ -10,8 +10,10 @@ import {
 } from "@hushle/auth-policy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 export function ResetPasswordClient() {
+    const { t } = useI18n();
     const token = useSearchParams().get("token") ?? "";
     const [password, setPassword] = useState("");
     const [confirmation, setConfirmation] = useState("");
@@ -40,15 +42,15 @@ export function ResetPasswordClient() {
                 error?: string;
             } | null;
             if (!response.ok) {
-                setError(payload?.error || "Parola sıfırlanamadı.");
+                setError(payload?.error || t("auth.resetFailed"));
                 return;
             }
             setCompleted(true);
             setMessage(
-                "Parolan değiştirildi. Güvenlik için açık oturumların kapatıldı."
+                t("auth.passwordChanged")
             );
         } catch {
-            setError("Parola sıfırlama servisine ulaşılamadı.");
+            setError(t("auth.resetUnavailable"));
         } finally {
             setLoading(false);
         }
@@ -66,7 +68,7 @@ export function ResetPasswordClient() {
                     )}
                 </div>
                 <h1 className="text-3xl font-black tracking-tight">
-                    {completed ? "Parola yenilendi" : "Yeni parola belirle"}
+                    {completed ? t("auth.passwordRenewed") : t("auth.choosePassword")}
                 </h1>
                 {completed ? (
                     <>
@@ -77,7 +79,7 @@ export function ResetPasswordClient() {
                             href="/login"
                             className="mt-7 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-teal-300 px-5 text-sm font-black text-[#082322] hover:bg-teal-200"
                         >
-                            Yeniden giriş yap
+                            {t("auth.loginAgain")}
                         </Link>
                     </>
                 ) : (
@@ -88,7 +90,7 @@ export function ResetPasswordClient() {
                             onChange={(event) =>
                                 setPassword(event.target.value)
                             }
-                            placeholder="Yeni parola"
+                            placeholder={t("auth.newPassword")}
                             autoComplete="new-password"
                             className="border-white/10 bg-black/20 text-white"
                             required
@@ -99,7 +101,7 @@ export function ResetPasswordClient() {
                             onChange={(event) =>
                                 setConfirmation(event.target.value)
                             }
-                            placeholder="Yeni parolayı tekrar yaz"
+                            placeholder={t("auth.repeatPassword")}
                             autoComplete="new-password"
                             className="border-white/10 bg-black/20 text-white"
                             required
@@ -121,16 +123,16 @@ export function ResetPasswordClient() {
                         <p className="text-xs leading-5 text-slate-400">
                             {password
                                 ? policy.accepted
-                                    ? "Güçlü parola."
-                                    : policy.issues[0]
-                                : `En az ${PASSWORD_MIN_LENGTH} karakter kullan.`}
+                                    ? t("auth.strongPassword")
+                                    : t("auth.strengthenPassword")
+                                : t("auth.minPassword", { count: PASSWORD_MIN_LENGTH })}
                             {confirmation && !matches
-                                ? " Parolalar eşleşmiyor."
+                                ? ` ${t("auth.passwordsMismatch")}`
                                 : ""}
                         </p>
                         {!token ? (
                             <p className="rounded-xl border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-100">
-                                Sıfırlama bağlantısı eksik veya geçersiz.
+                                {t("auth.invalidResetLink")}
                             </p>
                         ) : null}
                         {error ? (
@@ -148,7 +150,7 @@ export function ResetPasswordClient() {
                             }
                             className="w-full bg-teal-300 font-black text-[#082322] hover:bg-teal-200"
                         >
-                            {loading ? "Değiştiriliyor..." : "Parolayı değiştir"}
+                            {loading ? t("auth.changing") : t("auth.changePassword")}
                         </Button>
                     </form>
                 )}
