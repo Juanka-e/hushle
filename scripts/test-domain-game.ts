@@ -31,7 +31,7 @@ assert.equal(initialState.anlatacakTakim, "A");
 
 assert.equal(
     shouldFinishTabuBeforeRound({
-        settings: { sure: 60, mod: "tur", deger: 2 },
+        settings: { sure: 60, mod: "tur", deger: 2, wordLocale: "tr" },
         currentRound: 3,
         speakingTeam: "A",
         goldenScoreActive: false,
@@ -40,7 +40,7 @@ assert.equal(
 );
 assert.equal(
     shouldFinishTabuAfterAction({
-        settings: { sure: 60, mod: "skor", deger: 10 },
+        settings: { sure: 60, mod: "skor", deger: 10, wordLocale: "tr" },
         score: { A: 10, B: 4 },
         actingTeam: "A",
         action: "dogru",
@@ -50,7 +50,7 @@ assert.equal(
 );
 assert.deepEqual(
     resolveTabuFinish({
-        settings: { sure: 60, mod: "tur", deger: 2 },
+        settings: { sure: 60, mod: "tur", deger: 2, wordLocale: "tr" },
         score: { A: 3, B: 3 },
         goldenScoreActive: false,
     }),
@@ -58,7 +58,7 @@ assert.deepEqual(
 );
 assert.deepEqual(
     resolveTabuFinish({
-        settings: { sure: 60, mod: "skor", deger: 10 },
+        settings: { sure: 60, mod: "skor", deger: 10, wordLocale: "tr" },
         score: { A: 10, B: 6 },
         goldenScoreActive: false,
     }),
@@ -70,7 +70,12 @@ console.log("domain game smoke test passed");
 // Either starting team must receive exactly the configured number of turns.
 for (const startingTeam of ["A", "B"] as const) {
     for (const rounds of [2, 5, 30]) {
-        const settings = { sure: 60, mod: "tur" as const, deger: rounds };
+        const settings = {
+            sure: 60,
+            mod: "tur" as const,
+            deger: rounds,
+            wordLocale: "tr" as const,
+        };
         for (let round = 1; round <= rounds; round++) {
             for (const speakingTeam of [startingTeam, startingTeam === "A" ? "B" : "A"] as const) {
                 assert.equal(shouldFinishTabuBeforeRound({ settings, currentRound: round, speakingTeam, startingTeam, goldenScoreActive: false }), false);

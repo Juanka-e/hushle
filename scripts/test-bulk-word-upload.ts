@@ -12,7 +12,11 @@ async function main() {
         ).join("\n"),
         mode: "fixed_categories",
     });
-    if (!("error" in oversizedResult) || !oversizedResult.error.includes("1000")) {
+    if (
+        !("error" in oversizedResult) ||
+        typeof oversizedResult.error !== "string" ||
+        !oversizedResult.error.includes("1000")
+    ) {
         throw new Error("Bulk row limit was not enforced.");
     }
 
