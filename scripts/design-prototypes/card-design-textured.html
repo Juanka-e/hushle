@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hushle Material Card Lab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800;900&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: dark;
+            --page-bg:
+                radial-gradient(circle at top, rgba(148, 163, 184, 0.12), transparent 30%),
+                radial-gradient(circle at 12% 18%, rgba(14, 165, 233, 0.08), transparent 24%),
+                radial-gradient(circle at 85% 16%, rgba(244, 114, 182, 0.08), transparent 18%),
+                linear-gradient(180deg, #04070d 0%, #090f18 100%);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Manrope", sans-serif;
+            background: var(--page-bg);
+            color: #f8fafc;
+        }
+
+        .font-display { font-family: "Outfit", sans-serif; }
+
+        .lab-shell {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)),
+                rgba(7, 12, 20, 0.78);
+            box-shadow: 0 40px 120px -60px rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(24px);
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .card-frame {
+            position: relative;
+            perspective: 1600px;
+        }
+
+        .card-plate {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 0.72;
+            border-radius: 30px;
+            transform-style: preserve-3d;
+            transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translate3d(0, var(--lift, 0px), 0);
+            transition: transform 180ms ease-out, box-shadow 180ms ease-out, filter 180ms ease-out;
+            box-shadow: 0 28px 70px -38px rgba(15, 23, 42, 0.75);
+            overflow: hidden;
+            isolation: isolate;
+            will-change: transform;
+        }
+
+        .card-plate::before,
+        .card-plate::after,
+        .card-texture,
+        .card-grain,
+        .card-specular {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .card-plate::before {
+            content: "";
+            background:
+                radial-gradient(circle at 18% 12%, rgba(255,255,255,0.22), transparent 22%),
+                radial-gradient(circle at 82% 0%, rgba(255,255,255,0.18), transparent 20%);
+            opacity: 0.8;
+            z-index: 0;
+        }
+
+        .card-plate::after {
+            content: "";
+            border-radius: inherit;
+            inset: 1px;
+            border: 1px solid rgba(255,255,255,0.14);
+            z-index: 4;
+        }
+
+        .card-sheen {
+            position: absolute;
+            inset: -20%;
+            background:
+                linear-gradient(115deg, transparent 24%, rgba(255,255,255,0.18) 44%, rgba(255,255,255,0.04) 50%, transparent 64%);
+            transform: translateX(var(--sheen-x, -120%)) rotate(8deg);
+            opacity: 0.6;
+            filter: blur(1px);
+            transition: transform 260ms ease-out;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .card-specular {
+            z-index: 2;
+            opacity: 0.8;
+            background:
+                radial-gradient(circle at var(--px, 50%) var(--py, 50%), rgba(255,255,255,0.22), transparent 26%);
+        }
+
+        .card-grain {
+            z-index: 1;
+            opacity: 0.22;
+            background-image:
+                radial-gradient(rgba(255,255,255,0.22) 0.8px, transparent 0.8px),
+                radial-gradient(rgba(15,23,42,0.08) 0.8px, transparent 0.8px);
+            background-size: 12px 12px, 16px 16px;
+            background-position: 0 0, 6px 8px;
+            mix-blend-mode: soft-light;
+        }
+
+        .card-texture {
+            z-index: 1;
+            opacity: var(--texture-opacity, 0.35);
+            background: var(--texture, none);
+            mix-blend-mode: overlay;
+        }
+
+        .card-layer {
+            position: absolute;
+            inset: 10px;
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 2;
+        }
+
+        .card-inner {
+            position: relative;
+            z-index: 5;
+            display: flex;
+            height: 100%;
+            flex-direction: column;
+        }
+
+        .card-header {
+            position: relative;
+            padding: 1rem 1rem 1.1rem;
+            overflow: hidden;
+        }
+
+        .card-header::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.14), transparent 68%);
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .head-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .head-pill,
+        .head-rune {
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .head-pill {
+            padding: 0.35rem 0.7rem;
+            font-size: 0.62rem;
+            font-weight: 900;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+        }
+
+        .head-rune {
+            width: 1.9rem;
+            height: 1.9rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.78rem;
+            font-weight: 900;
+        }
+
+        .title-wrap {
+            position: relative;
+            z-index: 1;
+            margin-top: 1.15rem;
+            text-align: center;
+        }
+
+        .brand-mark {
+            font-size: 0.62rem;
+            font-weight: 900;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            opacity: 0.78;
+        }
+
+        .hero-word {
+            margin-top: 0.45rem;
+            font-family: "Outfit", sans-serif;
+            font-size: clamp(1.85rem, 3vw, 2.25rem);
+            font-weight: 900;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            line-height: 0.96;
+            text-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+        }
+
+        .hero-underline {
+            width: 64px;
+            height: 6px;
+            margin: 0.8rem auto 0;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.34);
+        }
+
+        .card-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.95rem;
+            padding: 1rem 1rem 1.05rem;
+        }
+
+        .taboo-list {
+            display: grid;
+            gap: 0.62rem;
+            margin-top: 0.2rem;
+        }
+
+        .taboo-row {
+            display: flex;
+            align-items: center;
+            gap: 0.72rem;
+            min-height: 2.55rem;
+            padding: 0.75rem 0.9rem;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.08);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+            transition: transform 180ms ease-out, background 180ms ease-out;
+        }
+
+        .taboo-row span:first-child {
+            font-size: 0.84rem;
+            font-weight: 900;
+        }
+
+        .taboo-row span:last-child {
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .card-footer {
+            height: 16px;
+            margin-top: auto;
+        }
+
+        .card-caption {
+            margin-top: 0.95rem;
+            padding-inline: 0.2rem;
+        }
+
+        .card-name {
+            font-size: 1rem;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            color: #f8fafc;
+        }
+
+        .card-note {
+            margin-top: 0.35rem;
+            font-size: 0.84rem;
+            line-height: 1.55;
+            color: rgba(226, 232, 240, 0.7);
+        }
+
+        .card-frame:hover .card-plate {
+            box-shadow: 0 36px 90px -42px rgba(15, 23, 42, 0.92), 0 0 0 1px rgba(255,255,255,0.05);
+            filter: saturate(1.06);
+        }
+
+        .card-frame:hover .taboo-row {
+            transform: translateX(3px);
+            background: rgba(255,255,255,0.11);
+        }
+
+        .section-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+            padding: 0.4rem 0.85rem;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.04);
+            font-size: 0.68rem;
+            font-weight: 900;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: rgba(226,232,240,0.72);
+        }
+
+        .texture-obsidian {
+            --texture-opacity: 0.38;
+            --texture:
+                repeating-linear-gradient(135deg, rgba(255,255,255,0.12) 0 2px, transparent 2px 10px),
+                radial-gradient(circle at 20% 10%, rgba(103,232,249,0.2), transparent 22%),
+                radial-gradient(circle at 100% 0%, rgba(168,85,247,0.18), transparent 24%);
+        }
+
+        .texture-pearl {
+            --texture-opacity: 0.46;
+            --texture:
+                linear-gradient(120deg, rgba(255,255,255,0.52), transparent 22%, rgba(255,255,255,0.16) 42%, transparent 58%),
+                radial-gradient(circle at 18% 12%, rgba(244,114,182,0.3), transparent 22%),
+                radial-gradient(circle at 82% 14%, rgba(96,165,250,0.22), transparent 20%);
+        }
+
+        .texture-linen {
+            --texture-opacity: 0.34;
+            --texture:
+                linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px);
+            background-size: 100% 6px, 6px 100%;
+        }
+
+        .texture-foil {
+            --texture-opacity: 0.44;
+            --texture:
+                linear-gradient(135deg, rgba(255,255,255,0.14), transparent 28%, rgba(255,255,255,0.04) 42%, transparent 70%),
+                radial-gradient(circle at 15% 18%, rgba(251,191,36,0.22), transparent 24%),
+                radial-gradient(circle at 92% 8%, rgba(251,191,36,0.18), transparent 18%);
+        }
+
+        .texture-velvet {
+            --texture-opacity: 0.28;
+            --texture:
+                repeating-linear-gradient(180deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 8px),
+                radial-gradient(circle at 12% 0%, rgba(255,255,255,0.09), transparent 24%);
+        }
+
+        .texture-carbon {
+            --texture-opacity: 0.36;
+            --texture:
+                repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 3px, transparent 3px 12px),
+                repeating-linear-gradient(-45deg, rgba(255,255,255,0.05) 0 3px, transparent 3px 12px);
+        }
+
+        .texture-vellum {
+            --texture-opacity: 0.28;
+            --texture:
+                linear-gradient(rgba(120,53,15,0.06) 1px, transparent 1px),
+                radial-gradient(circle at 18% 32%, rgba(120,53,15,0.08), transparent 20%),
+                radial-gradient(circle at 84% 12%, rgba(245,158,11,0.08), transparent 18%);
+        }
+
+        .texture-holo {
+            --texture-opacity: 0.46;
+            --texture:
+                linear-gradient(120deg, rgba(255,255,255,0.18), transparent 16%, rgba(125,211,252,0.22) 34%, rgba(196,181,253,0.18) 54%, transparent 72%),
+                radial-gradient(circle at 100% 0%, rgba(255,255,255,0.18), transparent 20%);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .card-plate,
+            .card-sheen,
+            .taboo-row {
+                transition: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="px-6 py-10 md:px-10">
+    <main class="mx-auto max-w-7xl">
+        <section class="lab-shell rounded-[38px] px-6 py-8 md:px-8 md:py-10">
+            <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div class="max-w-3xl">
+                    <div class="section-badge">Hushle Material Lab</div>
+                    <h1 class="mt-4 font-display text-4xl font-black tracking-[-0.04em] text-white md:text-6xl">
+                        Sahne degil, kartin malzemesi premium hissettirsin.
+                    </h1>
+                    <p class="mt-4 max-w-2xl text-sm leading-7 text-slate-300 md:text-base">
+                        Bu set sadece kart yuzeyine odaklanir: lak, folyo, saten, karbon, keten, inci ve holo malzemeler.
+                        `design-spells` mantigiyla hover'da manyetik tilt, yumusak isik kaymasi ve kucuk bir "expensive" tepkisellik var.
+                    </p>
+                </div>
+                <div class="grid gap-3 rounded-[28px] border border-white/10 bg-black/20 p-4 text-slate-200 sm:grid-cols-2">
+                    <div class="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
+                        <div class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Focus</div>
+                        <div class="mt-2 text-sm font-bold">Card material language</div>
+                    </div>
+                    <div class="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
+                        <div class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Motion</div>
+                        <div class="mt-2 text-sm font-bold">Magnetic tilt + sheen</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="mt-8">
+            <div class="card-grid" id="cardGrid"></div>
+        </section>
+    </main>
+
+    <script>
+        const cards = [
+            {
+                name: "Obsidian Prism",
+                badge: "Pulse",
+                rune: "✦",
+                word: "EJDERHA",
+                taboo: ["ATES", "KANAT", "EFSANE", "KALE", "UCMak".toUpperCase()],
+                note: "Siyah cam, neon kenar ve dijital prizma hissi. Daha koleksiyonluk ve premium oyuncu estetigi.",
+                plate: "texture-obsidian",
+                shell: "border border-cyan-300/20 bg-[linear-gradient(180deg,#08111c_0%,#0d1527_52%,#090d15_100%)] text-cyan-50",
+                header: "bg-[linear-gradient(135deg,#25154e,#0f2f49,#06111b)]",
+                body: "bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]",
+                row: "text-cyan-50",
+                footer: "bg-[linear-gradient(90deg,#22d3ee,#8b5cf6)]",
+                x: "text-rose-300"
+            },
+            {
+                name: "Pearl Bloom",
+                badge: "Muse",
+                rune: "✷",
+                word: "LOKUM",
+                taboo: ["TATLI", "SEKER", "PEMBE", "KUTU", "YEMEK"],
+                note: "Inci parlakligi, yumuşak lak ve moda aksesuarı gibi temiz bir premium his.",
+                plate: "texture-pearl",
+                shell: "border border-white/40 bg-[linear-gradient(180deg,#fff9fc_0%,#fff6f8_52%,#fef2f2_100%)] text-slate-800",
+                header: "bg-[linear-gradient(135deg,#38bdf8,#fb7185,#f9a8d4)]",
+                body: "bg-[linear-gradient(180deg,rgba(255,255,255,0.65),rgba(255,255,255,0.46))]",
+                row: "text-slate-700",
+                footer: "bg-[linear-gradient(90deg,#38bdf8,#fb7185)]",
+                x: "text-rose-500"
+            },
+            {
+                name: "Linen Archive",
+                badge: "Quiet",
+                rune: "✧",
+                word: "ANSIKLOPEDI",
+                taboo: ["KITAP", "BILGI", "CILT", "RAF", "OKUMAK"],
+                note: "Kumas gibi hissedilen mat doku. Klasik ama generik degil; daha akilli ve yetiskin duruyor.",
+                plate: "texture-linen",
+                shell: "border border-amber-200/30 bg-[linear-gradient(180deg,#f3ead5_0%,#ece0c3_58%,#e3d3b0_100%)] text-[#4f3820]",
+                header: "bg-[linear-gradient(135deg,#4e3422,#87603b,#b58a56)]",
+                body: "bg-[linear-gradient(180deg,rgba(255,255,255,0.22),rgba(255,255,255,0.06))]",
+                row: "text-[#4f3820]",
+                footer: "bg-[linear-gradient(90deg,#6b4d2d,#d2a86d)]",
+                x: "text-rose-500"
+            },
+            {
+                name: "Foil Crown",
+                badge: "Royal",
+                rune: "✹",
+                word: "TAC",
+                taboo: ["KRAL", "ALTIN", "BAS", "SARAY", "MUCEVHER"],
+                note: "Altin folyo hissi ve koyu mine zemini. Baya oyuncak degil, daha pahali bir koleksiyon urunu gibi.",
+                plate: "texture-foil",
+                shell: "border border-[#d8b466]/50 bg-[linear-gradient(180deg,#161b2f_0%,#1e243d_56%,#15192a_100%)] text-[#f3deb0]",
+                header: "bg-[linear-gradient(180deg,#eed08a,#ba8c35)]",
+                body: "bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]",
+                row: "text-[#f3deb0]",
+                footer: "bg-[linear-gradient(90deg,#c38b2a,#f0d07f)]",
+                x: "text-amber-200"
+            },
+            {
+                name: "Velvet Ember",
+                badge: "Stage",
+                rune: "✦",
+                word: "VOLKAN",
+                taboo: ["LAV", "ATES", "DAG", "DUMAN", "PATLAMA"],
+                note: "Koyu kadife zemin ve sicak kor yansimasi. Daha karizmatik ve erkek/kadin fark etmeksizin guclu duruyor.",
+                plate: "texture-velvet",
+                shell: "border border-orange-300/20 bg-[linear-gradient(180deg,#321113_0%,#251017_46%,#110d12_100%)] text-orange-50",
+                header: "bg-[linear-gradient(135deg,#9a3412,#ef5b22,#f59e0b)]",
+                body: "bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]",
+                row: "text-orange-50",
+                footer: "bg-[linear-gradient(90deg,#f97316,#ef4444)]",
+                x: "text-orange-300"
+            },
+            {
+                name: "Carbon Drive",
+                badge: "Spec",
+                rune: "◈",
+                word: "PILOT",
+                taboo: ["KOKPIT", "KANAT", "YAKIT", "ROTA", "HIZ"],
+                note: "Karbon fiber ve satin metal arasi bir dil. Tech oyunculari icin daha ciddi ve spor bir karakter verir.",
+                plate: "texture-carbon",
+                shell: "border border-white/12 bg-[linear-gradient(180deg,#0c1118_0%,#141a24_56%,#0b0f15_100%)] text-slate-100",
+                header: "bg-[linear-gradient(135deg,#0f172a,#364152,#111827)]",
+                body: "bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.02))]",
+                row: "text-slate-100",
+                footer: "bg-[linear-gradient(90deg,#475569,#ef4444)]",
+                x: "text-red-300"
+            },
+            {
+                name: "Vellum Mist",
+                badge: "Calm",
+                rune: "✳",
+                word: "AURORA",
+                taboo: ["KUTUP", "ISIK", "YESIL", "GECE", "GOKYUZU"],
+                note: "Ince kagit ve sisli boya hissi. Daha artistik ve premium bir yumusaklik sunuyor.",
+                plate: "texture-vellum",
+                shell: "border border-sky-200/30 bg-[linear-gradient(180deg,#fbfeff_0%,#f3f8ff_56%,#edf4ff_100%)] text-slate-800",
+                header: "bg-[linear-gradient(135deg,#81c8f1,#9cd7f7,#d4efff)]",
+                body: "bg-[linear-gradient(180deg,rgba(255,255,255,0.58),rgba(255,255,255,0.44))]",
+                row: "text-slate-700",
+                footer: "bg-[linear-gradient(90deg,#7dd3fc,#c4b5fd)]",
+                x: "text-sky-500"
+            },
+            {
+                name: "Holo Tide",
+                badge: "Wave",
+                rune: "✦",
+                word: "MERCAN",
+                taboo: ["DENIZ", "RENK", "BALIK", "KAYALIK", "SU ALTI"],
+                note: "Dalgali holografik yuzey ve temiz mavi shell. Daha modern, daha oyuncu, ama ucuz hissettirmiyor.",
+                plate: "texture-holo",
+                shell: "border border-cyan-300/28 bg-[linear-gradient(180deg,#0f2840_0%,#10314a_56%,#0c2033_100%)] text-cyan-50",
+                header: "bg-[linear-gradient(135deg,#1aa0d0,#37b5df,#0e7490)]",
+                body: "bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))]",
+                row: "text-cyan-50",
+                footer: "bg-[linear-gradient(90deg,#22d3ee,#38bdf8)]",
+                x: "text-cyan-200"
+            }
+        ];
+
+        function rowMarkup(words, rowClass, xClass) {
+            return words.map((word) => `
+                <div class="taboo-row ${rowClass}">
+                    <span class="${xClass}">×</span>
+                    <span>${word}</span>
+                </div>
+            `).join("");
+        }
+
+        function cardMarkup(card) {
+            return `
+                <article class="card-frame">
+                    <div class="card-plate ${card.plate} ${card.shell}">
+                        <div class="card-texture"></div>
+                        <div class="card-grain"></div>
+                        <div class="card-specular"></div>
+                        <div class="card-sheen"></div>
+                        <div class="card-layer"></div>
+                        <div class="card-inner">
+                            <div class="card-header ${card.header}">
+                                <div class="head-meta">
+                                    <div class="head-pill">${card.badge}</div>
+                                    <div class="head-rune">${card.rune}</div>
+                                </div>
+                                <div class="title-wrap">
+                                    <div class="brand-mark">Hushle</div>
+                                    <div class="hero-word">${card.word}</div>
+                                    <div class="hero-underline"></div>
+                                </div>
+                            </div>
+                            <div class="card-body ${card.body}">
+                                <div class="taboo-list">
+                                    ${rowMarkup(card.taboo, card.row, card.x)}
+                                </div>
+                            </div>
+                            <div class="card-footer ${card.footer}"></div>
+                        </div>
+                    </div>
+                    <div class="card-caption">
+                        <div class="card-name">${card.name}</div>
+                        <p class="card-note">${card.note}</p>
+                    </div>
+                </article>
+            `;
+        }
+
+        const grid = document.getElementById("cardGrid");
+        grid.innerHTML = cards.map(cardMarkup).join("");
+
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (!prefersReducedMotion) {
+            const frames = document.querySelectorAll(".card-frame");
+
+            frames.forEach((frame) => {
+                const plate = frame.querySelector(".card-plate");
+                const sheen = frame.querySelector(".card-sheen");
+
+                frame.addEventListener("pointermove", (event) => {
+                    const bounds = frame.getBoundingClientRect();
+                    const px = ((event.clientX - bounds.left) / bounds.width) * 100;
+                    const py = ((event.clientY - bounds.top) / bounds.height) * 100;
+                    const rx = ((py - 50) / 50) * -7;
+                    const ry = ((px - 50) / 50) * 9;
+
+                    plate.style.setProperty("--px", `${px}%`);
+                    plate.style.setProperty("--py", `${py}%`);
+                    plate.style.setProperty("--rx", `${rx}deg`);
+                    plate.style.setProperty("--ry", `${ry}deg`);
+                    plate.style.setProperty("--lift", "-4px");
+                    sheen.style.setProperty("--sheen-x", `${(px - 50) * 2.4}%`);
+                });
+
+                frame.addEventListener("pointerleave", () => {
+                    plate.style.setProperty("--px", "50%");
+                    plate.style.setProperty("--py", "50%");
+                    plate.style.setProperty("--rx", "0deg");
+                    plate.style.setProperty("--ry", "0deg");
+                    plate.style.setProperty("--lift", "0px");
+                    sheen.style.setProperty("--sheen-x", "-120%");
+                });
+            });
+        }
+    </script>
+</body>
+</html>

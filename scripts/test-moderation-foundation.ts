@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { isSuspensionActive } from "../src/lib/moderation/service";
+import { isSuspensionActive } from "../apps/web/src/lib/moderation/service";
 import {
     moderationActionSchema,
     moderationListQuerySchema,
-} from "../src/lib/moderation/schema";
+} from "../apps/web/src/lib/moderation/schema";
 
 assert.equal(
     isSuspensionActive({

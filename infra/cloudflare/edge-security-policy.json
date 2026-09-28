@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "profile": "cloudflare-free-safe-launch",
+  "principles": {
+    "defaultEnforcement": "application-first",
+    "botFightMode": "disabled-until-payment-webhook-smoke",
+    "neverTrustClientSecurityHeaders": true
+  },
+  "routeClasses": [
+    {
+      "id": "websocket",
+      "paths": ["/api/socketio/"],
+      "applicationControls": ["exact-origin", "redis-rate-limit", "session-recheck", "turnstile-per-action"],
+      "edgeControls": ["ddos", "managed-waf"],
+      "forbiddenEdgeControls": ["require-referer", "managed-challenge", "datacenter-asn-block"]
+    },
+    {
+      "id": "browser-auth-and-room-entry",
+      "paths": ["/login", "/register", "/forgot-password", "/api/security/captcha-config"],
+      "applicationControls": ["turnstile-per-action", "redis-rate-limit", "origin-check", "session-check"],
+      "edgeControls": ["ddos", "managed-waf", "rate-limit-observe-first"],
+      "forbiddenEdgeControls": ["blanket-datacenter-asn-block"]
+    },
+    {
+      "id": "registered-checkout",
+      "paths": ["/checkout", "/api/payments/checkout/"],
+      "applicationControls": ["authenticated-session", "email-policy", "redis-rate-limit", "idempotency-key", "server-price-snapshot"],
+      "edgeControls": ["ddos", "managed-waf", "rate-limit-observe-first"],
+      "forbiddenEdgeControls": ["client-price-trust", "blanket-datacenter-asn-block"]
+    },
+    {
+      "id": "payment-webhook",
+      "paths": ["/api/payments/webhooks/"],
+      "applicationControls": ["provider-signature", "raw-body", "event-deduplication", "async-inbox", "body-size-limit"],
+      "edgeControls": ["ddos", "managed-waf"],
+      "forbiddenEdgeControls": ["browser-challenge", "referer-check", "origin-check", "session-check", "blanket-datacenter-asn-block"]
+    },
+    {
+      "id": "email-provider-webhook",
+      "paths": ["/api/email/webhooks/ses"],
+      "applicationControls": ["sns-signature", "topic-allowlist", "event-deduplication", "body-size-limit", "redis-rate-limit"],
+      "edgeControls": ["ddos", "managed-waf"],
+      "forbiddenEdgeControls": ["browser-challenge", "referer-check", "origin-check", "session-check", "blanket-datacenter-asn-block"]
+    }
+  ],
+  "candidateRules": [
+    {
+      "id": "bad-user-agent-browser-only",
+      "status": "observe",
+      "actionAfterObservation": "managed-challenge",
+      "scope": "browser-navigation-only",
+      "excludedRouteClasses": ["websocket", "payment-webhook", "email-provider-webhook"]
+    },
+    {
+      "id": "empty-or-bad-referer",
+      "status": "disabled",
+      "reason": "Referer can be legitimately absent and is not an authentication signal."
+    },
+    {
+      "id": "datacenter-network",
+      "status": "observe",
+      "actionAfterObservation": "managed-challenge-sensitive-browser-entry-only",
+      "excludedRouteClasses": ["websocket", "payment-webhook", "email-provider-webhook"]
+    }
+  ]
+}

@@ -3,10 +3,11 @@ import {
     createGuestIdentityToken,
     resolveSocketPlayerIdentity,
     verifyGuestIdentityToken,
-} from "../src/lib/security/player-identity";
+} from "../apps/web/src/lib/security/player-identity";
 
 const issuedAt = Date.parse("2026-03-09T12:00:00.000Z");
 const guestToken = createGuestIdentityToken("guest-test-id", issuedAt);
+const originalDateNow = Date.now;
 
 const verifiedGuest = verifyGuestIdentityToken(guestToken, issuedAt + 5_000);
 assert.deepEqual(verifiedGuest, {
@@ -26,6 +27,7 @@ assert.equal(authIdentity.userId, 17);
 assert.equal(authIdentity.guestToken, null);
 assert.equal(authIdentity.isGuest, false);
 
+Date.now = () => issuedAt + 5_000;
 const guestIdentity = resolveSocketPlayerIdentity(null, guestToken);
 assert.equal(guestIdentity.playerId, "guest:guest-test-id");
 assert.equal(guestIdentity.userId, null);
@@ -37,5 +39,6 @@ assert.match(newGuestIdentity.playerId, /^guest:/);
 assert.equal(newGuestIdentity.userId, null);
 assert.equal(typeof newGuestIdentity.guestToken, "string");
 assert.equal(newGuestIdentity.isGuest, true);
+Date.now = originalDateNow;
 
 console.log("player identity smoke test passed");

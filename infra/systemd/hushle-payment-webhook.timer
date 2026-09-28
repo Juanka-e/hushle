@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Hushle payment webhook worker every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+RandomizedDelaySec=5s
+Persistent=true
+Unit=hushle-payment-webhook.service
+
+[Install]
+WantedBy=timers.target

@@ -6,7 +6,7 @@ import {
     mockCouponCodes,
     mockDiscountCampaigns,
     mockShopItems,
-} from "../src/lib/store/mock-catalog";
+} from "../apps/web/src/lib/store/mock-catalog";
 
 function sqlString(value: string | null): string {
     if (value === null) {
@@ -44,6 +44,9 @@ ${sqlString(item.imageUrl)},
 ${sqlString(item.templateKey)},
 ${sqlJson(item.templateConfig)},
 ${sqlString(item.badgeText)},
+${sqlString(item.availabilityMode ?? "always_on")},
+${sqlDate(item.startsAt ?? null)},
+${sqlDate(item.endsAt ?? null)},
 ${sqlBoolean(item.isFeatured)},
 ${sqlBoolean(item.isActive)},
 ${item.sortOrder},
@@ -63,6 +66,9 @@ INSERT INTO shop_items (
     template_key,
     template_config,
     badge_text,
+    availability_mode,
+    starts_at,
+    ends_at,
     is_featured,
     is_active,
     sort_order,
@@ -80,6 +86,9 @@ ON DUPLICATE KEY UPDATE
     template_key = VALUES(template_key),
     template_config = VALUES(template_config),
     badge_text = VALUES(badge_text),
+    availability_mode = VALUES(availability_mode),
+    starts_at = VALUES(starts_at),
+    ends_at = VALUES(ends_at),
     is_featured = VALUES(is_featured),
     is_active = VALUES(is_active),
     sort_order = VALUES(sort_order),

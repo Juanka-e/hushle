@@ -1,7 +1,7 @@
 import {
     evaluateAdminAccess,
     getAdminAccessPolicy,
-} from "../src/lib/admin/access-policy";
+} from "../apps/web/src/lib/admin/access-policy";
 
 function withEnv<T>(values: Record<string, string | undefined>, run: () => T): T {
     const previous = new Map<string, string | undefined>();

@@ -11,6 +11,31 @@ Bu dokumanin amaci iki seyi standart hale getirmektir:
 
 Bu spec hem gorsel asset tabanli urunler hem de `template + JSON` ile render edilen urunler icin referanstir.
 
+Operasyon akisi, AI promptablonlari ve Hushle kart sabit slot prensibi icin ek rehber:
+
+- `docs/guides/card-design-guide.md`
+
+## Thumbnail Standardi
+
+- Her urun icin `thumbnailUrl` opsiyoneldir ancak buyuk kataloglarda onerilir.
+- Avatar ve frame: kare WebP, onerilen `256x256`, hedef en fazla `80 KB`.
+- Card face ve card back: `3:4` WebP, onerilen `240x320`, hedef en fazla `100 KB`.
+- Thumbnail animasyon, flip veya gameplay metni tasimaz; grid icin statik kapaktir.
+- Asil `imageUrl` detay ve oyun kalitesini korur. Thumbnail bunun yerine gecmez.
+- Admin thumbnail yuklemezse sistem hafif statik fallback uretir; runtime'da
+  thumbnail dosyasi render edip depolayan bir image-processing job'u yoktur.
+
+## Admin Preset Akisi
+
+- Frame, card face ve card back editorleri test edilen iki baslangic preseti sunar.
+- Preset secimi yalniz `templateKey` ve `templateConfig` alanlarini degistirir.
+- Isim, code, fiyat, rarity, yayin penceresi ve aktiflik bilgisi korunur.
+- Preset uygulandiktan sonra admin sagdaki canli preview'da gercek resolver sonucunu
+  kontrol eder; preset kaydetme islemini otomatik baslatmaz.
+- Avatar yalniz image render destekledigi icin template preset gostermez.
+- Preset katalogu `apps/web/src/lib/cosmetics/authoring-presets.ts` dosyasindadir;
+  sayfa icine kopya JSON eklenmemelidir.
+
 ## Kozmetik Turleri
 
 ### 1. Avatar

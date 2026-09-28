@@ -1,0 +1,69 @@
+name: Deploy Production
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Ubuntu 24.04
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create release archive
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > .release-sha
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=.next \
+            --exclude=backups \
+            -czf "$RUNNER_TEMP/hushle-release.tgz" .
+          (
+            cd "$RUNNER_TEMP"
+            sha256sum hushle-release.tgz > hushle-release.tgz.sha256
+          )
+
+      - name: Prepare SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' '${{ secrets.PROD_SSH_PRIVATE_KEY }}' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p '${{ secrets.PROD_PORT }}' '${{ secrets.PROD_HOST }}' >> ~/.ssh/known_hosts
+
+      - name: Upload release archive
+        run: |
+          scp -P '${{ secrets.PROD_PORT }}' "$RUNNER_TEMP/hushle-release.tgz" '${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:${{ secrets.PROD_DEPLOY_PATH }}/hushle-release.tgz'
+          scp -P '${{ secrets.PROD_PORT }}' "$RUNNER_TEMP/hushle-release.tgz.sha256" '${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:${{ secrets.PROD_DEPLOY_PATH }}/hushle-release.tgz.sha256'
+
+      - name: Deploy on server
+        run: |
+          ssh -p '${{ secrets.PROD_PORT }}' '${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}' <<'EOF'
+          set -euo pipefail
+          cd '${{ secrets.PROD_DEPLOY_PATH }}'
+          sha256sum -c hushle-release.tgz.sha256
+          tar -xzf hushle-release.tgz
+          rm -f hushle-release.tgz hushle-release.tgz.sha256
+          chmod +x \
+            scripts/ops/deploy.sh \
+            scripts/ops/mysql-backup.sh \
+            scripts/ops/mysql-restore.sh \
+            scripts/ops/run-payment-job.sh \
+            scripts/ops/install-payment-schedulers.sh
+          ./scripts/ops/deploy.sh
+          EOF

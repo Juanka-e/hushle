@@ -13,6 +13,7 @@ const createClient = (tag: string) => {
         reconnection: false,
         transports: ["websocket"],
         forceNew: true,
+        extraHeaders: { Origin: SERVER_URL },
     });
     socket.on("connect_error", (err) => {
         console.error(`[${tag}] Connection Error:`, err.message);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildShopItemSortUpdates } from "../src/lib/store/shop-admin";
+import { buildShopItemSortUpdates } from "../apps/web/src/lib/store/shop-admin";
 
 const updates = buildShopItemSortUpdates([14, 7, 21, 3]);
 

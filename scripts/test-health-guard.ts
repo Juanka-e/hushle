@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isHealthEndpointAllowed } from "../src/lib/security/health-check";
+import { isHealthEndpointAllowed } from "../apps/web/src/lib/security/health-check";
 
 function buildHeaders(token?: string): Headers {
     const headers = new Headers();

@@ -4,7 +4,7 @@ import {
     isEmailWithinLimit,
     normalizeEmail,
     sanitizeEmail,
-} from "../src/lib/users/email";
+} from "../apps/web/src/lib/users/email";
 
 assert.equal(normalizeEmail("  Test@Example.COM "), "test@example.com");
 assert.equal(sanitizeEmail("  Test@Example.COM "), "Test@Example.COM");

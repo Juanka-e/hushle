@@ -91,7 +91,7 @@ Dashboard, oyun ekranının üzerinde açılan bir **glassmorphism overlay panel
 
 ### Faz 1: Overlay Container ✅
 
-**Dosya:** `src/components/game/dashboard-overlay.tsx`
+**Dosya:** `apps/web/src/components/game/dashboard-overlay.tsx`
 - `isOpen` / `onClose` props ile kontrol
 - Glass-overlay backdrop, glass-panel (85vh, max-w-6xl)
 - ✕ butonu, ESC tuşu, backdrop tıklama ile kapatma
@@ -99,14 +99,14 @@ Dashboard, oyun ekranının üzerinde açılan bir **glassmorphism overlay panel
 
 ### Faz 2: İç Navigasyon Sidebar ✅
 
-**Dosya:** `src/components/game/dashboard-nav.tsx`
+**Dosya:** `apps/web/src/components/game/dashboard-nav.tsx`
 - Lucide ikonlarla 4 tab: Dash, Inv, Shop, Settings + Help
 - Aktif tab border-right vurgusu
 - Mobil variant (DashboardNavMobile) hazır ama henüz bağlanmadı
 
 ### Faz 3: Sağ Profil Sidebar ✅
 
-**Dosya:** `src/components/game/dashboard-profile-sidebar.tsx`
+**Dosya:** `apps/web/src/components/game/dashboard-profile-sidebar.tsx`
 - Harf bazlı avatar, isim, level, XP bar
 - Quick Equip slotları
 - `GET /api/user/dashboard` ile gerçek data çekiyor
@@ -123,30 +123,30 @@ Dashboard, oyun ekranının üzerinde açılan bir **glassmorphism overlay panel
 
 ### Faz 5: Room Page Entegrasyonu ✅
 
-**Dosya:** `src/app/room/[code]/page.tsx`
+**Dosya:** `apps/web/src/app/room/[code]/page.tsx`
 - `showDashboard` state
 - Header'da `LayoutDashboard` butonu (sadece `session?.user`)
 - `<DashboardOverlay>` render ediliyor
 
 ### Faz 6: CSS Güncellemesi ✅
 
-**Dosya:** `src/app/globals.css`
+**Dosya:** `apps/web/src/app/globals.css`
 - `.glass-overlay`, `.glass-panel`, `.animate-fade-in-up` eklendi
 
 ### Faz 7: Admin Kozmetik Yönetimi ✅
 
 **Dosyalar:**
-- `src/app/api/admin/shop-items/route.ts` — GET/POST
-- `src/app/api/admin/shop-items/[id]/route.ts` — GET/PUT/DELETE
-- `src/app/api/admin/shop-items/upload/route.ts` — görsel yükleme
-- `src/app/admin/(dashboard)/shop-items/page.tsx` — admin CRUD sayfası
-- `src/components/admin/admin-sidebar.tsx` — "Kozmetikler" linki eklendi
+- `apps/web/src/app/api/admin/shop-items/route.ts` — GET/POST
+- `apps/web/src/app/api/admin/shop-items/[id]/route.ts` — GET/PUT/DELETE
+- `apps/web/src/app/api/admin/shop-items/upload/route.ts` — görsel yükleme
+- `apps/web/src/app/admin/(dashboard)/shop-items/page.tsx` — admin CRUD sayfası
+- `apps/web/src/components/admin/admin-sidebar.tsx` — "Kozmetikler" linki eklendi
 
 ### Faz 8: Ana Sayfa Dashboard ✅ (8 Mart 2026)
 
 **Dosyalar:**
-- `src/components/game/dashboard-overlay.tsx` — `DashboardLayout` shared bilesenine ayrıldı
-- `src/app/page.tsx` — login kullanıcı: tam sayfa glassmorphism dashboard + compact header (Yeni Oda / Oda Kodu / Duyurular / Admin / Çıkış)
+- `apps/web/src/components/game/dashboard-overlay.tsx` — `DashboardLayout` shared bilesenine ayrıldı
+- `apps/web/src/app/page.tsx` — login kullanıcı: tam sayfa glassmorphism dashboard + compact header (Yeni Oda / Oda Kodu / Duyurular / Admin / Çıkış)
 
 Kullanıcı giriş yaptığında aynı 3-sütun dashboard layout'u (Nav | Content | Profile Sidebar) tam sayfa olarak görüntülenir. Misafir görünümü eskisi gibi basit kart olarak kalır.
 
@@ -260,7 +260,7 @@ Bu plana gore sonraki uygulama dalgasi su alanlari kapsar:
 - `/admin/shop-items` artik image/template ayrimini yonetebiliyor.
 - `GameCard` temasi artik aktif turun authenticated anlatıcısının equip ettigi `card_face` urununden resolve edilip tum ilgili client'lara socket ile yayiliyor.
 - Security:
-  - admin ve store/user API korumasi `src/middleware.ts` uzerinden devam ediyor
+  - admin ve store/user API korumasi `apps/web/src/middleware.ts` uzerinden devam ediyor
   - shop item create/update validator'lari artik ortak zod schema uzerinden calisiyor
   - `npm audit --omit=dev` sonucunda bulunan `multer` zafiyeti kapatildi
 
@@ -268,7 +268,7 @@ Bu plana gore sonraki uygulama dalgasi su alanlari kapsar:
 
 - Room lobby payload now includes a typed `cosmetics` snapshot per player.
 - `Sidebar` renders equipped avatar/frame without extra client fetches; the existing layout stays unchanged.
-- Frame visuals use a sanitized resolver (`src/lib/cosmetics/frame.ts`) so template colors stay whitelist/hex-safe.
+- Frame visuals use a sanitized resolver (`apps/web/src/lib/cosmetics/frame.ts`) so template colors stay whitelist/hex-safe.
 - Socket join now verifies user identity from the session cookie instead of trusting client-sent `authUserId`.
 - Added smoke coverage: `npm run test:frame-theme`.
 
@@ -288,7 +288,7 @@ Bu plana gore sonraki uygulama dalgasi su alanlari kapsar:
 
 ## 9 March 2026 Update - Mock Catalog and Coin Icon Consistency
 
-- Added a single-source mock catalog definition under `src/lib/store/mock-catalog.ts`.
+- Added a single-source mock catalog definition under `apps/web/src/lib/store/mock-catalog.ts`.
 - Added idempotent seed command: `npm run seed:catalog`.
 - Added smoke coverage for mock catalog integrity: `npm run test:catalog`.
 - Normalized coin icons across `scripts/design-prototypes/*` and `scripts/stitichdesign/*` to a single `coin-mark` style.
@@ -336,7 +336,7 @@ Bu plana gore sonraki uygulama dalgasi su alanlari kapsar:
 
 ## 9 March 2026 Update - CSP and Proxy
 
-- Edge guard layer now lives in `src/proxy.ts`; the deprecated `src/middleware.ts` file was removed.
+- Edge guard layer now lives in `apps/web/src/proxy.ts`; the deprecated `apps/web/src/middleware.ts` file was removed.
 - Dashboard-linked pages now receive a per-request CSP nonce.
 - Root layout applies that nonce to:
   - the inline hydration-warning suppression script
@@ -382,7 +382,7 @@ Bu plana gore sonraki uygulama dalgasi su alanlari kapsar:
 
 ## 9 March 2026 Update - Nonce Hydration Mismatch Fix
 
-- `src/app/layout.tsx` icindeki eski inline hydration-warning suppression script'i kaldirildi.
+- `apps/web/src/app/layout.tsx` icindeki eski inline hydration-warning suppression script'i kaldirildi.
 - Layout nonce akisi korunur; `next-themes` icin nonce aktarimi devam eder.
 - Boylece nonce attribute farkindan kaynaklanan hydration mismatch yuzeyi ortadan kaldirildi.
 

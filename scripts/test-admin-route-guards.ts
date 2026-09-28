@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-const adminApiRoot = path.join(process.cwd(), "src", "app", "api", "admin");
+const adminApiRoot = path.join(
+    process.cwd(),
+    "apps",
+    "web",
+    "src",
+    "app",
+    "api",
+    "admin"
+);
 
 function collectRouteFiles(directory: string): string[] {
     const entries = readdirSync(directory);

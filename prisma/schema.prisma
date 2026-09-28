@@ -26,6 +26,14 @@ enum ItemRarity {
   legendary
 }
 
+enum ShopItemAvailabilityMode {
+  always_on
+  scheduled
+  seasonal
+  limited
+  event_only
+}
+
 enum InventorySource {
   purchase
   grant
@@ -57,6 +65,18 @@ enum ModerationActionType {
 enum WalletAdjustmentType {
   credit
   debit
+}
+
+enum WalletLedgerSource {
+  legacy_balance_snapshot
+  account_opening
+  match_reward
+  store_item_purchase
+  store_bundle_purchase
+  coin_grant
+  admin_adjustment
+  payment_topup
+  payment_reversal
 }
 
 enum CoinGrantClaimStatus {
@@ -94,18 +114,166 @@ enum NotificationType {
   moderation
 }
 
+enum MobileAuthTokenKind {
+  access
+  refresh
+}
+
+enum UserAccountStatus {
+  active
+  pending_email_verification
+}
+
+enum EmailMessageClass {
+  transactional
+  marketing
+}
+
+enum EmailOutboxStatus {
+  pending
+  processing
+  sent
+  dead_letter
+}
+
+enum EmailSuppressionReason {
+  hard_bounce
+  complaint
+  manual
+}
+
+enum EmailSuppressionScope {
+  all
+  marketing
+}
+
+enum EmailDeliveryEventType {
+  delivered
+  hard_bounce
+  complaint
+}
+enum PaymentProvider {
+  shopier_v2
+  iyzico
+  paytr
+  stripe
+  lemonsqueezy
+}
+
+enum PaymentOrderStatus {
+  created
+  pending_provider
+  awaiting_payment
+  paid
+  fulfilled
+  failed
+  expired
+  refunded
+  chargeback
+}
+
+enum PaymentProductKind {
+  cosmetic_item
+  cosmetic_bundle
+  coin_pack
+}
+
+enum PaymentAttemptStatus {
+  created
+  requested
+  succeeded
+  failed
+  uncertain
+}
+
+enum PaymentFulfillmentStatus {
+  pending
+  completed
+  failed
+  reversed
+}
+
+enum PaymentWebhookProcessingStatus {
+  pending
+  processing
+  retry
+  processed
+  dead_letter
+}
+
+enum PaymentWebhookOutcome {
+  payment_succeeded
+  payment_failed
+  refund
+  chargeback
+  ignored
+}
+
+enum PaymentReversalOutcome {
+  refund
+  chargeback
+}
+
+enum PaymentReversalStatus {
+  completed
+  manual_review
+}
+
+enum PaymentReversalRequestStatus {
+  pending
+  processing
+  provider_failed
+  provider_review
+  approved
+  rejected
+}
+
+enum PaymentReversalExecutionMode {
+  externally_confirmed
+  provider_api
+}
+
+enum PaymentProviderRefundAttemptStatus {
+  processing
+  succeeded
+  failed
+  uncertain
+}
+
+enum PaymentManualReviewStatus {
+  open
+  resolved
+  waived
+}
+
+enum PaymentReconciliationStatus {
+  open
+  resolved
+  ignored
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   username  String   @unique @db.VarChar(50)
   email     String?  @db.VarChar(191)
   normalizedEmail String? @unique @map("normalized_email") @db.VarChar(191)
   emailVerifiedAt DateTime? @map("email_verified_at")
-  password  String   @db.VarChar(255)
+  emailVerificationRequiredAt DateTime? @map("email_verification_required_at")
+  pendingEmail String? @map("pending_email") @db.VarChar(191)
+  pendingNormalizedEmail String? @unique @map("pending_normalized_email") @db.VarChar(191)
+  pendingEmailRequestedAt DateTime? @map("pending_email_requested_at")
+  accountStatus UserAccountStatus @default(active) @map("account_status")
+  password  String?  @db.VarChar(255)
+  sessionVersion Int @default(0) @map("session_version")
   role      String   @default("user") @db.VarChar(20)
   isSuspended Boolean @default(false) @map("is_suspended")
   suspendedAt DateTime? @map("suspended_at")
   suspendedUntil DateTime? @map("suspended_until")
   suspensionReason String? @map("suspension_reason") @db.VarChar(300)
+  lastSeenAt DateTime? @map("last_seen_at")
+  lastTrustedIp String? @map("last_trusted_ip") @db.VarChar(64)
+  lastUserAgent String? @map("last_user_agent") @db.VarChar(255)
+  registeredTrustedIp String? @map("registered_trusted_ip") @db.VarChar(64)
   createdAt DateTime @default(now()) @map("created_at")
 
   profile      UserProfile?
@@ -120,16 +288,518 @@ model User {
   moderationActionsReceived UserModerationEvent[] @relation("ModerationTarget")
   walletAdjustmentsAuthored WalletAdjustment[] @relation("WalletAdjustmentActor")
   walletAdjustmentsReceived WalletAdjustment[] @relation("WalletAdjustmentTarget")
+  walletLedgerEntriesAuthored WalletLedgerEntry[] @relation("WalletLedgerActor")
   coinGrantClaims          CoinGrantClaim[]
   coinGrantCampaignUsage   CoinGrantCampaignUser[]
   supportTicketsOwned      SupportTicket[]        @relation("SupportTicketOwner")
   supportTicketsAssigned   SupportTicket[]        @relation("SupportTicketAssignee")
   supportMessagesAuthored  SupportTicketMessage[] @relation("SupportMessageAuthor")
   notifications            Notification[]
+  mobileAuthSessions       MobileAuthSession[]
+  emailVerificationTokens  EmailVerificationToken[]
+  passwordResetTokens      PasswordResetToken[]
+  emailChangeTokens        EmailChangeToken[]
+  emailOutboxMessages      EmailOutboxMessage[]
+  emailSuppressions        EmailSuppression[]
+  oauthAccounts            OAuthAccount[]
+  paymentOrders            PaymentOrder[]
+  paymentReversalsAuthored PaymentReversal[] @relation("PaymentReversalActor")
+  paymentReversalRequestsAuthored PaymentReversalRequest[] @relation("PaymentReversalRequestActor")
+  paymentReversalRequestsReviewed PaymentReversalRequest[] @relation("PaymentReversalRequestReviewer")
+  paymentReconciliationsResolved PaymentReconciliationCase[] @relation("PaymentReconciliationResolver")
+  paymentManualReviewsResolved PaymentManualReviewCase[] @relation("PaymentManualReviewResolver")
 
   @@index([emailVerifiedAt])
+  @@index([accountStatus, emailVerificationRequiredAt])
   @@index([isSuspended, suspendedUntil])
+  @@index([lastSeenAt])
   @@map("users")
+}
+
+model PaymentOffer {
+  id                 Int                @id @default(autoincrement())
+  code               String             @unique @db.VarChar(80)
+  productKind        PaymentProductKind @map("product_kind")
+  productReference   String             @map("product_reference") @db.VarChar(120)
+  productVersion     Int                @map("product_version")
+  productName        String             @map("product_name") @db.VarChar(160)
+  description        String?            @db.VarChar(500)
+  unitAmountMinor    Int                @map("unit_amount_minor")
+  currency           String             @db.Char(3)
+  grantSnapshot      Json               @map("grant_snapshot") @db.Json
+  isActive           Boolean            @default(false) @map("is_active")
+  sortOrder          Int                @default(0) @map("sort_order")
+  startsAt           DateTime?           @map("starts_at")
+  endsAt             DateTime?           @map("ends_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@index([startsAt, endsAt])
+  @@map("payment_offers")
+}
+
+model PaymentOrder {
+  id                       String             @id @default(uuid()) @db.Char(36)
+  userId                   Int                @map("user_id")
+  provider                 PaymentProvider
+  providerConfigVersion    Int                @default(1) @map("provider_config_version")
+  status                   PaymentOrderStatus @default(created)
+  idempotencyKey           String             @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint       String             @map("request_fingerprint") @db.Char(64)
+  productKind              PaymentProductKind @map("product_kind")
+  productReference         String             @map("product_reference") @db.VarChar(120)
+  productVersion           Int                @map("product_version")
+  productNameSnapshot      String             @map("product_name_snapshot") @db.VarChar(160)
+  quantity                 Int                @default(1)
+  unitAmountMinor          Int                @map("unit_amount_minor")
+  totalAmountMinor         Int                @map("total_amount_minor")
+  currency                 String             @db.Char(3)
+  grantSnapshot            Json               @map("grant_snapshot") @db.Json
+  providerOrderReference   String?            @map("provider_order_reference") @db.VarChar(191)
+  providerSessionReference String?            @map("provider_session_reference") @db.VarChar(191)
+  providerHostedUrl        String?            @map("provider_hosted_url") @db.VarChar(1000)
+  version                  Int                @default(1)
+  expiresAt                DateTime?          @map("expires_at")
+  paidAt                   DateTime?          @map("paid_at")
+  fulfilledAt              DateTime?          @map("fulfilled_at")
+  failedAt                 DateTime?          @map("failed_at")
+  refundedAt               DateTime?          @map("refunded_at")
+  chargebackAt             DateTime?          @map("chargeback_at")
+  createdAt                DateTime           @default(now()) @map("created_at")
+  updatedAt                DateTime           @updatedAt @map("updated_at")
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  attempts    PaymentAttempt[]
+  fulfillment PaymentFulfillment?
+  webhookEvents PaymentWebhookEvent[]
+  checkoutConsent PaymentCheckoutConsent?
+  checkoutVerification PaymentCheckoutVerification?
+  reversal PaymentReversal?
+  reconciliationCase PaymentReconciliationCase?
+  reversalRequests PaymentReversalRequest[]
+  coinLot PaymentCoinLot?
+
+  @@unique([userId, idempotencyKey])
+  @@unique([provider, providerOrderReference])
+  @@unique([provider, providerSessionReference])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([provider, status, createdAt])
+  @@map("payment_orders")
+}
+
+model PaymentReversal {
+  id                    String                @id @default(uuid()) @db.Char(36)
+  orderId               String                @unique @map("order_id") @db.Char(36)
+  outcome               PaymentReversalOutcome
+  status                PaymentReversalStatus
+  externalReference     String                @map("external_reference") @db.VarChar(191)
+  reason                String                @db.VarChar(500)
+  evidence              Json                  @db.Json
+  requestedByUserId     Int?                  @map("requested_by_user_id")
+  notificationSentAt    DateTime?             @map("notification_sent_at")
+  completedAt           DateTime?             @map("completed_at")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  order       PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  requestedBy User?        @relation("PaymentReversalActor", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  manualReviewCase PaymentManualReviewCase?
+
+  @@index([status, createdAt])
+  @@index([outcome, createdAt])
+  @@index([requestedByUserId, createdAt])
+  @@map("payment_reversals")
+}
+
+model PaymentManualReviewCase {
+  id                 String                    @id @default(uuid()) @db.Char(36)
+  reversalId         String                    @unique @map("reversal_id") @db.Char(36)
+  status             PaymentManualReviewStatus @default(open)
+  reasonCode         String                    @map("reason_code") @db.VarChar(80)
+  unrecoveredCoin    Int?                      @map("unrecovered_coin")
+  resolutionNote     String?                   @map("resolution_note") @db.VarChar(500)
+  resolvedByUserId   Int?                      @map("resolved_by_user_id")
+  resolvedAt         DateTime?                 @map("resolved_at")
+  noticeMessage      String?                   @map("notice_message") @db.VarChar(500)
+  noticeSentAt       DateTime?                 @map("notice_sent_at")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+
+  reversal  PaymentReversal @relation(fields: [reversalId], references: [id], onDelete: Restrict)
+  resolvedBy User?           @relation("PaymentManualReviewResolver", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([reasonCode, createdAt])
+  @@index([resolvedByUserId, resolvedAt])
+  @@map("payment_manual_review_cases")
+}
+
+model PaymentReversalRequest {
+  id                  String                       @id @default(uuid()) @db.Char(36)
+  orderId             String                       @map("order_id") @db.Char(36)
+  outcome             PaymentReversalOutcome
+  status              PaymentReversalRequestStatus @default(pending)
+  executionMode       PaymentReversalExecutionMode  @default(externally_confirmed) @map("execution_mode")
+  externalReference   String                       @map("external_reference") @db.VarChar(191)
+  reason              String                       @db.VarChar(500)
+  requestedByUserId   Int                          @map("requested_by_user_id")
+  reviewedByUserId    Int?                         @map("reviewed_by_user_id")
+  reviewNote          String?                      @map("review_note") @db.VarChar(500)
+  reviewedAt          DateTime?                    @map("reviewed_at")
+  createdAt           DateTime                     @default(now()) @map("created_at")
+  updatedAt           DateTime                     @updatedAt @map("updated_at")
+
+  order       PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  requestedBy User         @relation("PaymentReversalRequestActor", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  reviewedBy  User?        @relation("PaymentReversalRequestReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  providerRefundAttempt PaymentProviderRefundAttempt?
+
+  @@index([orderId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedByUserId, createdAt])
+  @@index([reviewedByUserId, reviewedAt])
+  @@map("payment_reversal_requests")
+}
+
+model PaymentProviderRefundAttempt {
+  id                String                             @id @default(uuid()) @db.Char(36)
+  reversalRequestId String                             @unique @map("reversal_request_id") @db.Char(36)
+  provider          PaymentProvider
+  status            PaymentProviderRefundAttemptStatus @default(processing)
+  amountMinor       Int                                @map("amount_minor")
+  currency          String                             @db.Char(3)
+  referenceNo       String                             @map("reference_no") @db.VarChar(64)
+  providerRefundReference String?                      @map("provider_refund_reference") @db.VarChar(191)
+  errorCode         String?                            @map("error_code") @db.VarChar(80)
+  startedAt         DateTime                           @default(now()) @map("started_at")
+  completedAt       DateTime?                          @map("completed_at")
+  lastCheckedAt     DateTime?                          @map("last_checked_at")
+  createdAt         DateTime                           @default(now()) @map("created_at")
+  updatedAt         DateTime                           @updatedAt @map("updated_at")
+
+  reversalRequest PaymentReversalRequest @relation(fields: [reversalRequestId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, referenceNo])
+  @@unique([provider, providerRefundReference], map: "payment_provider_refund_attempts_provider_ref_key")
+  @@index([status, startedAt])
+  @@index([provider, status, createdAt])
+  @@map("payment_provider_refund_attempts")
+}
+
+model PaymentReconciliationCase {
+  id                 String                      @id @default(uuid()) @db.Char(36)
+  orderId            String                      @unique @map("order_id") @db.Char(36)
+  status             PaymentReconciliationStatus @default(open)
+  reasonCode         String                      @map("reason_code") @db.VarChar(80)
+  attemptCount       Int                         @default(0) @map("attempt_count")
+  providerSnapshot   Json?                       @map("provider_snapshot") @db.Json
+  lastErrorCode      String?                     @map("last_error_code") @db.VarChar(80)
+  lastCheckedAt      DateTime?                   @map("last_checked_at")
+  nextCheckAt        DateTime?                   @map("next_check_at")
+  resolvedAt         DateTime?                   @map("resolved_at")
+  resolvedByUserId   Int?                        @map("resolved_by_user_id")
+  resolutionNote     String?                     @map("resolution_note") @db.VarChar(500)
+  createdAt          DateTime                    @default(now()) @map("created_at")
+  updatedAt          DateTime                    @updatedAt @map("updated_at")
+
+  order      PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  resolvedBy User?        @relation("PaymentReconciliationResolver", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextCheckAt, createdAt])
+  @@index([reasonCode, createdAt])
+  @@index([resolvedByUserId, resolvedAt])
+  @@map("payment_reconciliation_cases")
+}
+
+model PaymentCheckoutConsent {
+  id                           String   @id @default(uuid()) @db.Char(36)
+  orderId                      String   @unique @map("order_id") @db.Char(36)
+  checkoutTermsVersion         String   @map("checkout_terms_version") @db.VarChar(80)
+  privacyNoticeVersion         String   @map("privacy_notice_version") @db.VarChar(80)
+  distanceSalesNoticeVersion   String   @map("distance_sales_notice_version") @db.VarChar(80)
+  buyerDataPolicyVersion       String   @default("buyer-data-v1") @map("buyer_data_policy_version") @db.VarChar(80)
+  acceptedAt                   DateTime @map("accepted_at")
+  requestId                    String?  @map("request_id") @db.VarChar(80)
+  userAgentHash                String?  @map("user_agent_hash") @db.Char(64)
+  createdAt                    DateTime @default(now()) @map("created_at")
+
+  order PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([acceptedAt])
+  @@map("payment_checkout_consents")
+}
+
+model PaymentAttempt {
+  id                 String               @id @default(uuid()) @db.Char(36)
+  orderId            String               @map("order_id") @db.Char(36)
+  attemptNumber      Int                  @map("attempt_number")
+  status             PaymentAttemptStatus @default(created)
+  requestFingerprint String               @map("request_fingerprint") @db.Char(64)
+  providerRequestId  String?              @map("provider_request_id") @db.VarChar(191)
+  errorCode          String?              @map("error_code") @db.VarChar(80)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  order PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, attemptNumber])
+  @@unique([orderId, providerRequestId])
+  @@index([status, createdAt])
+  @@map("payment_attempts")
+}
+
+model PaymentCheckoutVerification {
+  id                       String          @id @default(uuid()) @db.Char(36)
+  orderId                  String          @unique @map("order_id") @db.Char(36)
+  provider                 PaymentProvider
+  providerPaymentReference String          @map("provider_payment_reference") @db.VarChar(191)
+  amountMinor              Int             @map("amount_minor")
+  paidAmountMinor          Int             @map("paid_amount_minor")
+  currency                 String          @db.Char(3)
+  providerPaymentStatus    String          @map("provider_payment_status") @db.VarChar(80)
+  providerRiskStatus       Int?            @map("provider_risk_status")
+  verifiedAt               DateTime        @map("verified_at")
+  createdAt                DateTime        @default(now()) @map("created_at")
+  updatedAt                DateTime        @updatedAt @map("updated_at")
+
+  order PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerPaymentReference], map: "payment_checkout_verifications_provider_ref_key")
+  @@index([provider, verifiedAt], map: "payment_checkout_verifications_provider_verified_idx")
+  @@map("payment_checkout_verifications")
+}
+
+model PaymentFulfillment {
+  id             String                   @id @default(uuid()) @db.Char(36)
+  orderId        String                   @unique @map("order_id") @db.Char(36)
+  status         PaymentFulfillmentStatus @default(pending)
+  fulfillmentKey String                   @unique @map("fulfillment_key") @db.VarChar(191)
+  attemptCount   Int                      @default(0) @map("attempt_count")
+  grantResult    Json?                    @map("grant_result") @db.Json
+  errorCode      String?                  @map("error_code") @db.VarChar(80)
+  completedAt    DateTime?                @map("completed_at")
+  notificationSentAt DateTime?            @map("notification_sent_at")
+  reversedAt     DateTime?                @map("reversed_at")
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  order PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@map("payment_fulfillments")
+}
+
+model PaymentWebhookEvent {
+  id                       String                          @id @default(uuid()) @db.Char(36)
+  provider                 PaymentProvider
+  providerEventId          String                          @map("provider_event_id") @db.VarChar(191)
+  eventType                String                          @map("event_type") @db.VarChar(120)
+  outcome                  PaymentWebhookOutcome
+  bodySha256               String                          @map("body_sha256") @db.Char(64)
+  signatureVersion         String?                         @map("signature_version") @db.VarChar(32)
+  orderId                  String?                         @map("order_id") @db.Char(36)
+  providerOrderReference   String?                         @map("provider_order_reference") @db.VarChar(191)
+  providerPaymentReference String?                         @map("provider_payment_reference") @db.VarChar(191)
+  amountMinor              Int?                            @map("amount_minor")
+  currency                 String?                         @db.Char(3)
+  metadata                 Json?                           @db.Json
+  status                   PaymentWebhookProcessingStatus @default(pending)
+  deliveryCount            Int                             @default(1) @map("delivery_count")
+  attemptCount             Int                             @default(0) @map("attempt_count")
+  availableAt              DateTime                        @default(now()) @map("available_at")
+  claimToken               String?                         @map("claim_token") @db.Char(36)
+  claimedAt                DateTime?                       @map("claimed_at")
+  claimExpiresAt           DateTime?                       @map("claim_expires_at")
+  lastReceivedAt           DateTime                        @default(now()) @map("last_received_at")
+  lastAttemptAt            DateTime?                       @map("last_attempt_at")
+  processedAt              DateTime?                       @map("processed_at")
+  lastErrorCode            String?                         @map("last_error_code") @db.VarChar(80)
+  occurredAt               DateTime?                       @map("occurred_at")
+  createdAt                DateTime                        @default(now()) @map("created_at")
+  updatedAt                DateTime                        @updatedAt @map("updated_at")
+
+  order PaymentOrder? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerEventId])
+  @@index([status, availableAt, createdAt])
+  @@index([status, claimExpiresAt])
+  @@index([provider, providerOrderReference])
+  @@index([orderId, createdAt])
+  @@map("payment_webhook_events")
+}
+
+model OAuthAccount {
+  id                String   @id @default(uuid()) @db.Char(36)
+  userId            Int      @map("user_id")
+  type              String   @db.VarChar(16)
+  provider          String   @db.VarChar(32)
+  providerAccountId String   @map("provider_account_id") @db.VarChar(191)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@index([userId, createdAt])
+  @@map("oauth_accounts")
+}
+
+model MobileAuthSession {
+  id               String    @id @default(uuid()) @db.Char(36)
+  userId           Int       @map("user_id")
+  deviceName       String    @map("device_name") @db.VarChar(80)
+  userAgent        String?   @map("user_agent") @db.VarChar(255)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  lastSeenAt       DateTime  @default(now()) @map("last_seen_at")
+  refreshExpiresAt DateTime  @map("refresh_expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  revokeReason     String?   @map("revoke_reason") @db.VarChar(64)
+
+  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokens MobileAuthToken[]
+
+  @@index([userId, revokedAt, lastSeenAt])
+  @@index([refreshExpiresAt])
+  @@map("mobile_auth_sessions")
+}
+
+model MobileAuthToken {
+  id              String              @id @default(uuid()) @db.Char(36)
+  sessionId       String              @map("session_id") @db.Char(36)
+  kind            MobileAuthTokenKind
+  tokenHash       String              @unique @map("token_hash") @db.Char(64)
+  expiresAt       DateTime            @map("expires_at")
+  consumedAt      DateTime?           @map("consumed_at")
+  revokedAt       DateTime?           @map("revoked_at")
+  rotationCounter Int                 @default(0) @map("rotation_counter")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  session MobileAuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, kind, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("mobile_auth_tokens")
+}
+
+model EmailVerificationToken {
+  id            String    @id @db.Char(36)
+  userId        Int       @map("user_id")
+  tokenHash     String    @unique @map("token_hash") @db.Char(64)
+  emailSnapshot String    @map("email_snapshot") @db.VarChar(191)
+  expiresAt     DateTime  @map("expires_at")
+  consumedAt    DateTime? @map("consumed_at")
+  revokedAt     DateTime? @map("revoked_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id         String    @id @db.Char(36)
+  userId     Int       @map("user_id")
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model EmailChangeToken {
+  id                      String    @id @db.Char(36)
+  userId                  Int       @map("user_id")
+  tokenHash               String    @unique @map("token_hash") @db.Char(64)
+  emailSnapshot           String    @map("email_snapshot") @db.VarChar(191)
+  normalizedEmailSnapshot String    @map("normalized_email_snapshot") @db.VarChar(191)
+  expiresAt               DateTime  @map("expires_at")
+  consumedAt              DateTime? @map("consumed_at")
+  revokedAt               DateTime? @map("revoked_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt, revokedAt, expiresAt])
+  @@index([normalizedEmailSnapshot, expiresAt])
+  @@index([expiresAt])
+  @@map("email_change_tokens")
+}
+
+model EmailOutboxMessage {
+  id               String            @id @db.Char(36)
+  userId           Int?              @map("user_id")
+  deduplicationKey String            @unique @map("deduplication_key") @db.VarChar(191)
+  messageClass     EmailMessageClass @map("message_class")
+  template         String            @db.VarChar(80)
+  recipient        String            @db.VarChar(191)
+  subject          String            @db.VarChar(191)
+  payload          Json              @db.Json
+  status           EmailOutboxStatus @default(pending)
+  attemptCount     Int               @default(0) @map("attempt_count")
+  manualRetryCount Int               @default(0) @map("manual_retry_count")
+  availableAt      DateTime          @default(now()) @map("available_at")
+  lastAttemptAt    DateTime?         @map("last_attempt_at")
+  sentAt           DateTime?         @map("sent_at")
+  lastError        String?           @map("last_error") @db.VarChar(255)
+  claimToken       String?           @map("claim_token") @db.Char(36)
+  claimedAt        DateTime?         @map("claimed_at")
+  claimExpiresAt   DateTime?         @map("claim_expires_at")
+  lastManualRetryAt DateTime?        @map("last_manual_retry_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, availableAt, createdAt])
+  @@index([userId, createdAt])
+  @@index([messageClass, status, createdAt])
+  @@index([status, claimExpiresAt])
+  @@map("email_outbox_messages")
+}
+
+model EmailSuppression {
+  id              String                 @id @default(uuid()) @db.Char(36)
+  userId          Int?                   @map("user_id")
+  normalizedEmail String                 @unique @map("normalized_email") @db.VarChar(191)
+  reason          EmailSuppressionReason
+  scope           EmailSuppressionScope  @default(all)
+  source          String                 @db.VarChar(40)
+  note            String?                @db.VarChar(255)
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([reason, createdAt])
+  @@index([userId, createdAt])
+  @@map("email_suppressions")
+}
+
+model EmailDeliveryEvent {
+  id                String                 @id @default(uuid()) @db.Char(36)
+  provider          String                 @db.VarChar(40)
+  providerEventId   String                 @map("provider_event_id") @db.VarChar(191)
+  eventType         EmailDeliveryEventType @map("event_type")
+  normalizedEmail   String                 @map("normalized_email") @db.VarChar(191)
+  providerMessageId String?                @map("provider_message_id") @db.VarChar(191)
+  occurredAt        DateTime               @map("occurred_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+
+  @@unique([provider, providerEventId])
+  @@index([normalizedEmail, occurredAt])
+  @@index([eventType, occurredAt])
+  @@map("email_delivery_events")
 }
 
 model UserModerationEvent {
@@ -166,8 +836,35 @@ model AuditLog {
   actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
   @@index([resourceType, createdAt])
+  @@index([resourceType, resourceId])
   @@map("audit_logs")
+}
+
+model AuditLogArchive {
+  id                 Int      @id @default(autoincrement())
+  originalAuditLogId Int      @unique @map("original_audit_log_id")
+  actorUserId        Int?     @map("actor_user_id")
+  actorUsername      String?  @map("actor_username") @db.VarChar(50)
+  actorRole          String   @map("actor_role") @db.VarChar(20)
+  action             String   @db.VarChar(80)
+  resourceType       String   @map("resource_type") @db.VarChar(80)
+  resourceId         String?  @map("resource_id") @db.VarChar(120)
+  ipAddress          String?  @map("ip_address") @db.VarChar(64)
+  userAgent          String?  @map("user_agent") @db.VarChar(255)
+  summary            String?  @db.VarChar(255)
+  metadata           Json?    @db.Json
+  originalCreatedAt  DateTime @map("original_created_at")
+  archivedAt         DateTime @default(now()) @map("archived_at")
+
+  @@index([actorUserId, originalCreatedAt])
+  @@index([actorRole, originalCreatedAt])
+  @@index([action, originalCreatedAt])
+  @@index([resourceType, originalCreatedAt])
+  @@index([resourceType, resourceId])
+  @@index([archivedAt])
+  @@map("audit_log_archives")
 }
 
 model SystemSetting {
@@ -210,9 +907,79 @@ model Wallet {
   coinBalance Int      @default(0) @map("coin_balance")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledgerEntries WalletLedgerEntry[]
+  paymentCoinLots PaymentCoinLot[]
 
   @@map("wallets")
+}
+
+model WalletLedgerEntry {
+  id             Int                @id @default(autoincrement())
+  walletId       Int                @map("wallet_id")
+  source         WalletLedgerSource
+  deltaCoin      Int                @map("delta_coin")
+  balanceBefore  Int                @map("balance_before")
+  balanceAfter   Int                @map("balance_after")
+  idempotencyKey String             @unique @map("idempotency_key") @db.VarChar(191)
+  referenceType  String?            @map("reference_type") @db.VarChar(80)
+  referenceId    String?            @map("reference_id") @db.VarChar(120)
+  actorUserId    Int?               @map("actor_user_id")
+  metadata       Json?              @db.Json
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  wallet      Wallet             @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  actorUser   User?              @relation("WalletLedgerActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  adjustment  WalletAdjustment?
+  paymentCoinLotGrant PaymentCoinLot? @relation("PaymentCoinLotGrantLedger")
+  paymentCoinLotReversal PaymentCoinLot? @relation("PaymentCoinLotReversalLedger")
+  paymentCoinLotAllocations PaymentCoinLotAllocation[]
+
+  @@index([walletId, createdAt])
+  @@index([source, createdAt])
+  @@index([referenceType, referenceId])
+  @@index([actorUserId, createdAt])
+  @@map("wallet_ledger_entries")
+}
+
+model PaymentCoinLot {
+  id                    String   @id @default(uuid()) @db.Char(36)
+  orderId               String   @unique @map("order_id") @db.Char(36)
+  walletId              Int      @map("wallet_id")
+  grantLedgerEntryId    Int      @unique @map("grant_ledger_entry_id")
+  reversalLedgerEntryId Int?     @unique @map("reversal_ledger_entry_id")
+  grantedCoin           Int      @map("granted_coin")
+  remainingCoin         Int      @map("remaining_coin")
+  spentCoin             Int      @default(0) @map("spent_coin")
+  reversedCoin          Int      @default(0) @map("reversed_coin")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  order               PaymentOrder      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  wallet              Wallet            @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  grantLedgerEntry    WalletLedgerEntry @relation("PaymentCoinLotGrantLedger", fields: [grantLedgerEntryId], references: [id], onDelete: Restrict)
+  reversalLedgerEntry WalletLedgerEntry? @relation("PaymentCoinLotReversalLedger", fields: [reversalLedgerEntryId], references: [id], onDelete: Restrict)
+  allocations         PaymentCoinLotAllocation[]
+
+  @@index([walletId, createdAt])
+  @@index([walletId, remainingCoin, createdAt])
+  @@map("payment_coin_lots")
+}
+
+model PaymentCoinLotAllocation {
+  id            Int      @id @default(autoincrement())
+  lotId         String   @map("lot_id") @db.Char(36)
+  ledgerEntryId Int      @map("ledger_entry_id")
+  amountCoin    Int      @map("amount_coin")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  lot         PaymentCoinLot   @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  ledgerEntry WalletLedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+
+  @@unique([lotId, ledgerEntryId])
+  @@index([ledgerEntryId])
+  @@index([lotId, createdAt])
+  @@map("payment_coin_lot_allocations")
 }
 
 model WalletAdjustment {
@@ -224,10 +991,12 @@ model WalletAdjustment {
   reason        String               @db.VarChar(500)
   balanceBefore Int                  @map("balance_before")
   balanceAfter  Int                  @map("balance_after")
+  ledgerEntryId Int?                 @unique @map("ledger_entry_id")
   createdAt     DateTime             @default(now()) @map("created_at")
 
   targetUser User  @relation("WalletAdjustmentTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
   actorUser  User? @relation("WalletAdjustmentActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  ledgerEntry WalletLedgerEntry? @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
 
   @@index([targetUserId, createdAt])
   @@index([actorUserId, createdAt])
@@ -385,11 +1154,16 @@ model ShopItem {
   name      String       @db.VarChar(120)
   rarity    ItemRarity   @default(common)
   renderMode CosmeticRenderMode @default(image) @map("render_mode")
+  renderSpecVersion Int  @default(1) @map("render_spec_version")
   priceCoin Int          @map("price_coin")
   imageUrl  String       @map("image_url") @db.Text
+  thumbnailUrl String?   @map("thumbnail_url") @db.Text
   templateKey String?    @map("template_key") @db.VarChar(80)
   templateConfig Json?   @map("template_config")
   badgeText String?      @map("badge_text") @db.VarChar(24)
+  availabilityMode ShopItemAvailabilityMode @default(always_on) @map("availability_mode")
+  startsAt  DateTime?    @map("starts_at")
+  endsAt    DateTime?    @map("ends_at")
   isFeatured Boolean     @default(false) @map("is_featured")
   isActive  Boolean      @default(true) @map("is_active")
   sortOrder Int          @default(0) @map("sort_order")
@@ -407,6 +1181,7 @@ model ShopItem {
   equippedByCardFace UserProfile[] @relation("ProfileCardFace")
 
   @@map("shop_items")
+  @@index([isActive, availabilityMode, startsAt, endsAt, sortOrder])
 }
 
 model ShopBundle {
@@ -502,6 +1277,7 @@ model InventoryItem {
   userId     Int             @map("user_id")
   shopItemId Int             @map("shop_item_id")
   source     InventorySource @default(purchase)
+  renderSnapshot Json?       @map("render_snapshot") @db.Json
   acquiredAt DateTime        @default(now()) @map("acquired_at")
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -536,22 +1312,32 @@ model Purchase {
 }
 
 model MatchResult {
-  id         Int      @id @default(autoincrement())
-  roomCode   String   @map("room_code") @db.VarChar(12)
-  gameType   String   @default("tabu") @map("game_type") @db.VarChar(30)
-  userId     Int      @map("user_id")
-  playerId   String   @map("player_id") @db.VarChar(64)
-  team       String?  @db.VarChar(1)
-  won        Boolean
-  scoreA     Int      @map("score_a")
-  scoreB     Int      @map("score_b")
-  coinEarned Int      @default(0) @map("coin_earned")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id                       Int      @id @default(autoincrement())
+  roomCode                 String   @map("room_code") @db.VarChar(12)
+  matchStartedAt           DateTime @default(now()) @map("match_started_at")
+  matchEndedAt             DateTime? @map("match_ended_at")
+  matchDurationSeconds     Int?     @map("match_duration_seconds")
+  matchFormat              String?  @map("match_format") @db.VarChar(20)
+  matchTarget              Int?     @map("match_target")
+  gameType                 String   @default("tabu") @map("game_type") @db.VarChar(30)
+  userId                   Int      @map("user_id")
+  playerId                 String   @map("player_id") @db.VarChar(64)
+  team                     String?  @db.VarChar(1)
+  won                      Boolean
+  scoreA                   Int      @map("score_a")
+  scoreB                   Int      @map("score_b")
+  coinEarned               Int      @default(0) @map("coin_earned")
+  lineupKey                String?  @map("lineup_key") @db.VarChar(96)
+  lineupPlayerCount        Int      @default(0) @map("lineup_player_count")
+  lineupAuthenticatedCount Int      @default(0) @map("lineup_authenticated_count")
+  lineupGuestCount         Int      @default(0) @map("lineup_guest_count")
+  createdAt                DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([roomCode, userId])
+  @@unique([roomCode, userId, matchStartedAt])
   @@index([userId, createdAt])
+  @@index([userId, lineupKey, createdAt])
   @@map("match_results")
 }
 
@@ -571,12 +1357,15 @@ model GuestProgress {
 
 model Word {
   id         Int    @id @default(autoincrement())
-  wordText   String @unique @map("word_text") @db.VarChar(255)
+  wordText   String @map("word_text") @db.VarChar(255)
+  locale     String @default("tr") @db.VarChar(10)
   difficulty Int    @db.TinyInt
 
   tabooWords     TabooWord[]
   wordCategories WordCategory[]
 
+  @@unique([locale, wordText])
+  @@index([locale, difficulty])
   @@map("words")
 }
 
@@ -597,12 +1386,14 @@ model Category {
   color     String? @db.VarChar(7)
   sortOrder Int     @default(0) @map("sort_order")
   isVisible Boolean @default(true) @map("is_visible")
+  locale    String  @default("tr") @db.VarChar(10)
 
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[] @relation("CategoryTree")
 
   wordCategories WordCategory[]
 
+  @@index([locale, isVisible, sortOrder])
   @@map("categories")
 }
 
@@ -631,5 +1422,22 @@ model Announcement {
   mediaType String?  @map("media_type") @db.VarChar(20)
   createdAt DateTime @default(now()) @map("created_at")
 
+  translations AnnouncementTranslation[]
+
   @@map("announcements")
+}
+
+model AnnouncementTranslation {
+  id             Int    @id @default(autoincrement())
+  announcementId Int    @map("announcement_id")
+  locale         String @db.VarChar(10)
+  title          String @db.VarChar(255)
+  content        String @db.Text
+  contentBlocks  Json?  @map("content_blocks")
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, locale])
+  @@index([locale, announcementId])
+  @@map("announcement_translations")
 }

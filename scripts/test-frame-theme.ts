@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveFrameTheme } from "../src/lib/cosmetics/frame";
+import { resolveFrameTheme } from "../apps/web/src/lib/cosmetics/frame";
 
 const templateTheme = resolveFrameTheme({
     renderMode: "template",

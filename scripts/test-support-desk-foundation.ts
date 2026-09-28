@@ -5,12 +5,12 @@ import {
     supportTicketAdminUpdateSchema,
     supportTicketCreateSchema,
     supportTicketReplySchema,
-} from "../src/lib/support/schema";
+} from "../apps/web/src/lib/support/schema";
 import {
     getSupportStatusAfterAdminMessage,
     getSupportStatusAfterUserReply,
     SUPPORT_TICKET_REPLY_COOLDOWN_SECONDS,
-} from "../src/lib/support/service";
+} from "../apps/web/src/lib/support/service";
 
 const createInput = supportTicketCreateSchema.parse({
     category: "gameplay",

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { writeAuditLog } from "../src/lib/security/audit-log";
+import { writeAuditLog } from "../apps/web/src/lib/security/audit-log";
 
 assert.equal(typeof writeAuditLog, "function");
 

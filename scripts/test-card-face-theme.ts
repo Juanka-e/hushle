@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveCardFaceTheme } from "../src/lib/cosmetics/card-face";
+import { resolveCardFaceTheme } from "../apps/web/src/lib/cosmetics/card-face";
 
 const templateTheme = resolveCardFaceTheme({
     renderMode: "template",

@@ -3,13 +3,13 @@ Critical Findings
   [VULN-001] Admin API Authorization Bypass (Critical)
 
   - Location:
-    - src/app/api/admin/dashboard-stats/route.ts:7
-    - src/app/api/admin/words/route.ts:8,62
-    - src/app/api/admin/words/[id]/route.ts:9,37,106
-    - src/app/api/admin/categories/route.ts:9,31
-    - src/app/api/admin/categories/[id]/route.ts:17,49
-    - src/app/api/admin/announcements/route.ts:8,28
-    - src/app/api/admin/announcements/[id]/route.ts:20,57
+    - apps/web/src/app/api/admin/dashboard-stats/route.ts:7
+    - apps/web/src/app/api/admin/words/route.ts:8,62
+    - apps/web/src/app/api/admin/words/[id]/route.ts:9,37,106
+    - apps/web/src/app/api/admin/categories/route.ts:9,31
+    - apps/web/src/app/api/admin/categories/[id]/route.ts:17,49
+    - apps/web/src/app/api/admin/announcements/route.ts:8,28
+    - apps/web/src/app/api/admin/announcements/[id]/route.ts:20,57
   - Confidence: High
   - Issue: Multiple admin API endpoints completely lack authorization checks. While some endpoints use requireAdminSession(), these endpoints have NO
   authentication/authorization whatsoever.
@@ -38,7 +38,7 @@ Critical Findings
   5. Disrupt game integrity
 
   Evidence:
-  // src/app/api/admin/dashboard-stats/route.ts:7
+  // apps/web/src/app/api/admin/dashboard-stats/route.ts:7
   export async function GET() {
       try {
           // NO AUTHORIZATION CHECK!
@@ -48,7 +48,7 @@ Critical Findings
       }
   }
 
-  // src/app/api/admin/words/route.ts:8
+  // apps/web/src/app/api/admin/words/route.ts:8
   export async function GET(request: NextRequest) {
       // NO AUTHORIZATION CHECK!
       const [words, total] = await Promise.all([...]);
@@ -68,8 +68,8 @@ Critical Findings
   [VULN-002] WebSocket Player Identity Spoofing (Critical)
 
   - Location:
-    - src/lib/socket/game-socket.ts:718-723
-    - src/app/room/[code]/page.tsx:47-52
+    - apps/web/src/lib/socket/game-socket.ts:718-723
+    - apps/web/src/app/room/[code]/page.tsx:47-52
   - Confidence: High
   - Issue: Players can supply their own playerId which is persisted in localStorage on the client. An attacker can modify their localStorage to impersonate
   another player.
@@ -113,7 +113,7 @@ Critical Findings
   ---
   [VULN-003] Match Finalization Reward Fraud (Critical)
 
-  - Location: src/app/api/game/match/finalize/route.ts:13-47
+  - Location: apps/web/src/app/api/game/match/finalize/route.ts:13-47
   - Confidence: High
   - Issue: The match finalization endpoint only verifies that the playerId matches in the room snapshot, but the room snapshot is stored in memory on the
   WebSocket server. An attacker who can spoof a playerId (see VULN-002) can claim rewards for any match participant.
@@ -143,7 +143,7 @@ Critical Findings
   ---
   [VULN-004] Admin Session Disclosure via Middleware (High)
 
-  - Location: src/middleware.ts:20-24
+  - Location: apps/web/src/middleware.ts:20-24
   - Confidence: High
   - Issue: The middleware returns different error messages for /api/admin routes based on authentication status, allowing user enumeration. Additionally,
   the middleware checks are bypassable if the matcher patterns don't cover all routes.
@@ -187,7 +187,7 @@ Critical Findings
   ---
   [VULN-006] WebSocket Authorization Bypass Potential (High)
 
-  - Location: src/lib/socket/game-socket.ts:1290-1308
+  - Location: apps/web/src/lib/socket/game-socket.ts:1290-1308
   - Confidence: Medium
   - Issue: WebSocket authentication relies solely on JWT token validation from cookies. If cookies are stolen (XSS, MITM), an attacker can fully impersonate
    a user.
@@ -229,7 +229,7 @@ Critical Findings
   ---
   [VULN-009] User Enumeration via Login (Medium)
 
-  - Location: src/lib/auth.ts:20-23
+  - Location: apps/web/src/lib/auth.ts:20-23
   - Confidence: Medium
   - Issue: Different responses for "user not found" vs "invalid password" could enable user enumeration.
 
@@ -251,8 +251,8 @@ Critical Findings
   [VULN-010] Missing Rate Limiting on Sensitive Endpoints (Medium)
 
   - Location:
-    - src/app/api/auth/register/route.ts
-    - src/app/api/store/purchase/route.ts
+    - apps/web/src/app/api/auth/register/route.ts
+    - apps/web/src/app/api/store/purchase/route.ts
   - Confidence: Medium
   - Issue: No rate limiting on registration or purchase operations, allowing:
     - Account creation spam
@@ -276,7 +276,7 @@ Critical Findings
 
   [VERIFY-003] Database Connection Security
 
-  - Location: src/lib/prisma.ts
+  - Location: apps/web/src/lib/prisma.ts
   - Question: Are database credentials properly secured? Is connection pooling configured safely?
 
   ---
@@ -764,7 +764,7 @@ Critical Findings
 ## Remediation Status (9 March 2026)
 
 ### Fixed in current code
-- Added route-level `requireAdminSession()` checks to all remaining `src/app/api/admin/*` route handlers.
+- Added route-level `requireAdminSession()` checks to all remaining `apps/web/src/app/api/admin/*` route handlers.
 - Hardened announcement create/update/read flow:
   - announcement HTML is sanitized server-side before storage
   - legacy/public announcement output is sanitized before render
@@ -859,7 +859,7 @@ Critical Findings
   - request IP and user-agent
   - short summary
   - bounded primitive metadata payload
-- Added a shared audit helper at `src/lib/security/audit-log.ts`.
+- Added a shared audit helper at `apps/web/src/lib/security/audit-log.ts`.
 - Added audit writes for admin mutations:
   - announcements create / update / delete
   - shop items create / update / delete / upload
@@ -894,8 +894,8 @@ Critical Findings
 ## Remediation Status (9 March 2026 - Nonce CSP and Proxy Migration)
 
 ### Fixed in current code
-- Replaced deprecated `src/middleware.ts` with `src/proxy.ts` for Next.js 16 compatibility.
-- Added nonce-based CSP generation in `src/lib/security/content-security-policy.ts`.
+- Replaced deprecated `apps/web/src/middleware.ts` with `apps/web/src/proxy.ts` for Next.js 16 compatibility.
+- Added nonce-based CSP generation in `apps/web/src/lib/security/content-security-policy.ts`.
 - HTML page requests now receive:
   - per-request nonce
   - `Content-Security-Policy` response header
@@ -956,7 +956,7 @@ Critical Findings
 ### Admin panel external access
 - I did not find a direct unauthenticated or non-admin bypass into the current admin panel.
 - Current protection is layered:
-  - `src/proxy.ts` blocks `/admin/*` and `/api/admin/*` for non-admin sessions
+  - `apps/web/src/proxy.ts` blocks `/admin/*` and `/api/admin/*` for non-admin sessions
   - admin API routes also use `requireAdminSession()` server-side
 - Practical result:
   - a normal user cannot reach admin data or admin mutations just by calling the routes directly
@@ -972,7 +972,7 @@ Critical Findings
 ### Store / coin bypass review
 - I did not find a client-side coin bypass in the current purchase flow.
 - The client does not send the final price or resulting balance as trusted input.
-- Server-side flow computes everything again in `src/lib/economy.ts`:
+- Server-side flow computes everything again in `apps/web/src/lib/economy.ts`:
   - resolves active discount campaign
   - resolves optional coupon
   - clamps discount amount
@@ -1127,6 +1127,15 @@ Critical Findings
 - AI raporunda kritik diye yazilan Prisma `fields.usageLimit` iddiasi repo icinde smoke test ile yanlislandi
   - `test:promotion-field-references`
 
+## 8 August 2026 Update - Adaptive Turnstile Launch Policy
+
+- Varsayilan yeni Turnstile modu `managed` oldu; mevcut kaydedilmis operator ayarlari korunur.
+- Sayfa acilisinda token uretilmez. Kullanici niyetinde config ve provider scripti prewarm edilir, token submit sirasinda alinir.
+- Siteverify exact action, production hostname allowlist, 2048 karakter token siniri ve 5 saniye timeout ile fail-closed calisir.
+- Production preflight `TURNSTILE_ALLOWED_HOSTNAMES` icinde public site hostname'ini zorunlu tutar.
+- Redis rate limit, Turnstile karari ve ekonomi guardrail'leri birbirinden bagimsiz kalir; captcha icin uygulama ici cezalandirici skor eklenmemistir.
+- Operasyon ve test sozlesmesi: `docs/security/adaptive-turnstile-policy.md`.
+
 ## 15 March 2026 Update - Captcha Provider Policy
 
 - Captcha politikasi tek aktif provider modeline cekildi.
@@ -1143,3 +1152,38 @@ Critical Findings
 - Admin panel captcha karti sadeleştirildi:
   - fail mode secicisi kaldirildi
   - provider secimi + korunan akislar + turnstile mode + readiness + production policy bilgisi korunuyor
+## Realtime Oyun Payload Sertleştirmesi (30 Temmuz 2026)
+
+- Genel `oyunDurumuGuncelle` olayı yalnız whitelist ile oluşturulan public state
+  gönderir. `aktifKart`, socket id'leri, dahili anlatıcı/gözetmen kimlikleri ve
+  `creatorId` bu payload'a girmez.
+- Kart yalnız sunucunun rol ve takım kontrolünden sonra `yeniTurBilgisi` veya
+  `kartGuncelle` ile yetkili oyuncuya gönderilir.
+- Lobi oyuncu listesi socket id, IP, user id, identity type ve username snapshot
+  içermez. Kalıcı `playerId`, host/kick/self eşleştirmesi için public oyun
+  kimliği olarak kalır ve tek başına yetki sağlamaz.
+- Oyun başlatma, yönetici devri ve oyuncu atma payload'ları Zod ile doğrulanır.
+  Eksik veya bozuk F12/socket payload'ları handler destructuring hatası
+  üretemez.
+- Aktif maç yeniden başlatılamaz veya takımlar F12 üzerinden karıştırılamaz.
+  Kelime aksiyonları oda bazlı lock ile seri işlenir.
+- Redis oda kilitleri sahiplik token'ı ve atomik compare-and-delete ile bırakılır;
+  süresi dolan eski bir işlem yeni sahibin kilidini silemez.
+- Kategori ID'leri hem ayar güncellemesinde hem oyun başlangıcında sunucunun
+  görünür kategori whitelist'iyle kesiştirilir. Takım değişimleri de kapasite
+  yarışlarını önlemek için oda bazında seri işlenir.
+- Bütün kritik yetkiler istemci görünümünden bağımsız olarak sunucuda güncel
+  socket üyeliği ve `creatorPlayerId`/rol üzerinden tekrar doğrulanır.
+
+Regresyon kapısı:
+
+```powershell
+npm run test:room-socket-security
+```
+
+### Geçici transitive bağımlılık sabitlemeleri
+
+- Next.js `16.2.12` güncel sürümü eski PostCSS ve Sharp sürümlerini taşıdığı için
+  kök `package.json` içinde PostCSS `8.5.25` ve Sharp `0.35.3` override edilir.
+- Override'lar kaldırılmadan önce `npm audit --omit=dev --audit-level=high`,
+  production build ve multiplayer Playwright paketi yeniden çalıştırılmalıdır.

@@ -1,0 +1,19 @@
+[Unit]
+Description=Hushle payment webhook inbox worker
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=hushle
+Group=hushle
+WorkingDirectory=/srv/hushle/app
+Environment=APP_DIR=/srv/hushle/app
+Environment=ENV_FILE=/srv/hushle/app/.env.production
+Environment=PAYMENT_JOB_TIMEOUT_SECONDS=600
+ExecStart=/srv/hushle/app/scripts/ops/run-payment-job.sh payment-webhook
+TimeoutStartSec=11min
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

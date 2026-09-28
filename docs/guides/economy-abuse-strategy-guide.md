@@ -243,11 +243,32 @@ Oyuncu su hissi almali:
 
 1. guest coin kazanmaz
 2. odul sadece anlamli ve tamamlanmis maclara yazilir
-3. gunluk max coin kazanci olur
+3. dusuk sert global cap yerine once yuksek `safety ceiling` kullanilir
 4. tekrar eden oyuncu gruplarinda odul kademeli azalir
 5. ayni IP/subnet sadece yumusak suphe sinyali olur
-6. supheli pattern audit'e duser
-7. admin wallet adjustment imkani korunur
+6. invasive fingerprint ilk surumde kullanilmaz
+7. supheli pattern audit'e duser
+8. admin wallet adjustment imkani korunur
+
+## XP, Level Ve Fiyatlandirma Iliskisi
+
+Ekonomi yalniz coin uzerinden tasinmamalidir.
+
+Saglikli ayrim:
+
+- coin -> satin alma ekonomisi
+- XP -> kalici ilerleme
+- level -> prestij ve milestone odul kati
+
+Bu nedenle:
+
+- her level'da yuksek coin verme yanlistir
+- coin pacing store ladder'ina gore kurulur
+- XP pacing oyuncunun uzun vadeli devam hissine gore kurulur
+
+Ek planning referansi:
+
+- `docs/guides/economy-progression-and-pricing-guide.md`
 
 ## Daha Sonra Degerlendirilecekler
 
@@ -257,6 +278,9 @@ Oyuncu su hissi almali:
 - profil banner
 - sezonluk ilerleme sistemi
 - targeted comeback economy kampanyalari
+
+Bu alanlar icin ek planning rehberi:
+- `docs/guides/night-market-and-missions-strategy-guide.md`
 
 ## Uygulama Oncesi Sorulacak Sorular
 

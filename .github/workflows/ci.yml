@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, develop]
@@ -13,10 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
           cache: "npm"
@@ -34,6 +39,14 @@ jobs:
 
       - name: ESLint
         run: npm run lint
+
+      - name: Test mobile API foundation
+        run: npm run test:mobile-api
+
+      - name: Test SES feedback webhook security
+        run: |
+          npm run test:ses-feedback-webhook
+          npm run test:ses-feedback-route
 
   # ─── 2. Build Check ───────────────────────────────────────────────
   build:
@@ -65,24 +78,154 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --include=dev
 
-      - name: Generate Prisma Client & push schema
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Generate Prisma Client & deploy migrations
         run: |
           npx prisma generate
-          npx prisma db push --skip-generate
+          npx prisma migrate deploy
+
+      - name: Test Prisma migration contract
+        run: npm run test:prisma-migrations
+
+      - name: Test wallet ledger concurrency
+        run: npm run test:wallet-ledger-integration
+        env:
+          WALLET_LEDGER_INTEGRATION_TEST: "true"
+
+      - name: Test payment fulfillment concurrency
+        run: |
+          npm run test:economy-grant-contract
+          npm run test:payment-fulfillment-integration
+        env:
+          PAYMENT_FULFILLMENT_INTEGRATION_TEST: "true"
+
+      - name: Test payment provider adapters and checkout orchestration
+        run: |
+          npm run test:payment-iyzico-adapter
+          npm run test:payment-iyzico-buyer-data
+          npm run test:payment-iyzico-checkout-integration
+          npm run test:payment-iyzico-webhook
+          npm run test:payment-iyzico-owner-surface
+          npm run test:payment-stripe-adapter
+          npm run test:payment-shopier-adapter
+          npm run test:payment-shopier-refund
+          npm run test:payment-shopier-live-acceptance
+          npm run test:payment-shopier-webhook
+          npm run test:payment-paytr-refund
+          npm run test:payment-paytr-refund-acceptance
+          npm run test:payment-paytr-checkout-integration
+          npm run test:payment-shopier-checkout-integration
+        env:
+          PAYTR_CHECKOUT_INTEGRATION_TEST: "true"
+          IYZICO_CHECKOUT_INTEGRATION_TEST: "true"
+          SHOPIER_CHECKOUT_INTEGRATION_TEST: "true"
+
+      - name: Test payment webhook processors
+        run: |
+          npm run test:payment-paytr-webhook-integration
+          npm run test:payment-iyzico-webhook-integration
+          npm run test:payment-iyzico-owner-callback-integration
+          npm run test:payment-shopier-webhook-integration
+        env:
+          PAYTR_WEBHOOK_PROCESSOR_INTEGRATION_TEST: "true"
+          IYZICO_WEBHOOK_PROCESSOR_INTEGRATION_TEST: "true"
+          IYZICO_OWNER_CALLBACK_INTEGRATION_TEST: "true"
+          SHOPIER_WEBHOOK_PROCESSOR_INTEGRATION_TEST: "true"
+
+      - name: Test payment reconciliation and reversal
+        run: |
+          npm run test:payment-iyzico-reconciliation-integration
+          npm run test:payment-shopier-reconciliation-integration
+          npm run test:payment-reconciliation-reversal
+          npm run test:payment-reconciliation-reversal-integration
+          npm run test:payment-provider-refund-integration
+        env:
+          IYZICO_RECONCILIATION_INTEGRATION_TEST: "true"
+          SHOPIER_RECONCILIATION_INTEGRATION_TEST: "true"
+          PAYMENT_REVERSAL_INTEGRATION_TEST: "true"
+          PAYMENT_PROVIDER_REFUND_INTEGRATION_TEST: "true"
+
+      - name: Test paid coin provenance and manual review
+        run: |
+          npm run test:payment-coin-lot
+          npm run test:payment-manual-review
+          npm run test:payment-coin-lot-integration
+        env:
+          PAYMENT_COIN_LOT_INTEGRATION_TEST: "true"
+
+      - name: Test payment scheduler observability
+        run: |
+          npm run test:payment-operations-readiness
+          npm run test:payment-operations-readiness-redis
+          npm run test:payment-scheduler-deployment
+          npm run test:payment-scheduler-deployment-shell
+          npm run test:payment-activation-evidence
+          npm run test:payment-checkout-rollout
+          npm run test:payment-checkout-control-integration
+          bash -n scripts/ops/run-payment-job.sh
+          bash -n scripts/ops/check-payment-health.sh
+          bash -n scripts/ops/install-payment-schedulers.sh
+        env:
+          REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci"
+          PAYMENT_CHECKOUT_CONTROL_INTEGRATION_TEST: "true"
 
       - name: Build Next.js
         run: npm run build
+
+      - name: Test admin payment operations UI
+        run: npm run test:payment-operations-admin-e2e
+        env:
+          PAYMENT_OPERATIONS_ADMIN_E2E: "true"
+          ADMIN_ACCESS_MODE: "public_login"
+          ADMIN_ACCESS_FAIL_CLOSED: "false"
+
+      - name: Test admin integration readiness UI
+        run: npm run test:payment-integrations-admin-e2e
+        env:
+          PAYMENT_INTEGRATIONS_ADMIN_E2E: "true"
+          ADMIN_ACCESS_MODE: "public_login"
+          ADMIN_ACCESS_FAIL_CLOSED: "false"
+
+      - name: Test payment checkout UI
+        run: npm run test:payment-checkout-e2e
+        env:
+          PAYMENT_CHECKOUT_E2E: "true"
+
+      - name: Test Iyzico owner checkout surface
+        run: npm run test:payment-iyzico-owner-e2e
+
+      - name: Test strict state-change origin policy
+        run: npm run test:request-origin-integration
+
+      - name: Test web launch readiness
+        run: npm run test:web-launch-readiness
+        env:
+          WEB_LAUNCH_DB_E2E: "true"

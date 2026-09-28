@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { coinGrantCampaignWriteSchema, coinGrantCodeBatchCreateSchema } from "../src/lib/coin-grants/schema";
-import { buildGeneratedCoinGrantCodes, normalizeCoinGrantCode } from "../src/lib/coin-grants/service";
+import { coinGrantCampaignWriteSchema, coinGrantCodeBatchCreateSchema } from "../apps/web/src/lib/coin-grants/schema";
+import { buildGeneratedCoinGrantCodes, normalizeCoinGrantCode } from "../apps/web/src/lib/coin-grants/service";
 
 const campaign = coinGrantCampaignWriteSchema.parse({
     code: "creator_drop",

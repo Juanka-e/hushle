@@ -5,7 +5,7 @@ import {
     paginateItems,
     replaceSelection,
     toggleSelection,
-} from "../src/lib/admin/admin-table";
+} from "../apps/web/src/lib/admin/admin-table";
 
 const paginated = paginateItems([1, 2, 3, 4, 5], 2, 2);
 assert.deepEqual(paginated.items, [3, 4]);

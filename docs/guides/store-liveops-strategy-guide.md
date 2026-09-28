@@ -144,6 +144,9 @@ Kapsam:
 - teklif suresi
 - oyuncuya ozel indirim mantigi
 
+Ek planning rehberi:
+- `docs/guides/night-market-and-missions-strategy-guide.md`
+
 ### `feature/economy-abuse-hardening`
 
 Kapsam:
@@ -157,6 +160,10 @@ Kapsam:
 ## Gece Pazari Stratejisi
 
 Gece pazari normal magazanin sadece kopyasi olmamali. Oyuncuya ozel, sinirli sureli ve heyecanli bir yuzey olmali.
+
+Uygulama zamanlamasi acisindan ek not:
+- once economy abuse guardrail'leri ve motivasyon katmanlari yeterli seviyeye gelmeli
+- gorev sistemi ve coin disi kimlik odulleri ile birlikte dusunulmeli
 
 ### Gece Pazari Hedefleri
 

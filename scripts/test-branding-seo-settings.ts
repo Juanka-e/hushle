@@ -11,6 +11,9 @@ import {
 } from "@/lib/system-settings/schema";
 
 function main() {
+    const previousGoogleVerification = process.env.GOOGLE_SITE_VERIFICATION;
+    process.env.GOOGLE_SITE_VERIFICATION = "search-console-test-token";
+
     const settings = normalizeSystemSettings({
         ...DEFAULT_SYSTEM_SETTINGS,
         branding: {
@@ -47,6 +50,10 @@ function main() {
     assert.equal(titleConfig?.template, "%s | Tabu Arena");
     assert.equal(rootMetadata.openGraph?.siteName, "Tabu Arena");
     assert.equal(rootMetadata.twitter?.creator, "@tabuarena");
+    assert.equal(
+        (rootMetadata.verification as { google?: string } | undefined)?.google,
+        "search-console-test-token"
+    );
     assert.equal(iconsConfig?.icon?.[0]?.url, "http://localhost:3000/brand/favicon.ico");
     assert.equal(iconsConfig?.icon?.[0]?.type, "image/x-icon");
     assert.equal(iconsConfig?.apple, undefined);
@@ -54,6 +61,12 @@ function main() {
     assert.equal(roomMetadata.openGraph?.title, "Tabu Arena | Online Oyun");
     assert.equal(isAutomaticBrandingPreviewUrl("/og/tabu-arena.png"), true);
     assert.equal(isAutomaticBrandingPreviewUrl("https://cdn.example.com/tabu.png"), false);
+
+    if (previousGoogleVerification === undefined) {
+        delete process.env.GOOGLE_SITE_VERIFICATION;
+    } else {
+        process.env.GOOGLE_SITE_VERIFICATION = previousGoogleVerification;
+    }
 
     console.log("branding seo settings smoke test passed");
 }

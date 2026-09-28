@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="tr">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TABU â€” In-Game Overlay Prototip</title>
+    <title>TABU — In-Game Overlay Prototip</title>
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@600;700;800;900&display=swap"
         rel="stylesheet">
@@ -26,9 +26,9 @@
             width: 100vw;
         }
 
-        /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-           REAL GAME LAYOUT â€” 3-column (sidebar|main|sidebar)
-           â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+        /* ═══════════════════════════════════════════
+           REAL GAME LAYOUT — 3-column (sidebar|main|sidebar)
+           ═══════════════════════════════════════════ */
         .game-layout {
             display: flex;
             height: 100vh;
@@ -40,7 +40,7 @@
             filter: brightness(.4) blur(2px);
         }
 
-        /* â”€â”€â”€ Team Sidebars â”€â”€â”€ */
+        /* ─── Team Sidebars ─── */
         .sidebar {
             width: 280px;
             display: flex;
@@ -228,7 +228,7 @@
             color: #94a3b8;
         }
 
-        /* â”€â”€â”€ Main Content â”€â”€â”€ */
+        /* ─── Main Content ─── */
         .main-area {
             flex: 1;
             display: flex;
@@ -279,7 +279,7 @@
             color: #94a3b8;
         }
 
-        /* â”€â”€â”€ LOBBY CONTENT (center card) â”€â”€â”€ */
+        /* ─── LOBBY CONTENT (center card) ─── */
         .lobby-center {
             flex: 1;
             display: flex;
@@ -415,7 +415,7 @@
             transform: translateY(-1px);
         }
 
-        /* â”€â”€â”€ USER NAV BAR (for logged-in users) â”€â”€â”€ */
+        /* ─── USER NAV BAR (for logged-in users) ─── */
         .user-nav-strip {
             position: absolute;
             top: 16px;
@@ -482,9 +482,9 @@
             color: #a78bfa;
         }
 
-        /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        /* ═══════════════════════════════════════════
            OVERLAY PANELS
-           â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+           ═══════════════════════════════════════════ */
         .overlay-backdrop {
             position: fixed;
             inset: 0;
@@ -568,7 +568,7 @@
             padding: 24px;
         }
 
-        /* â”€â”€â”€ Dashboard Overlay â”€â”€â”€ */
+        /* ─── Dashboard Overlay ─── */
         .dash-stats {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -684,7 +684,7 @@
             font-weight: 600;
         }
 
-        /* â”€â”€â”€ Store Overlay â”€â”€â”€ */
+        /* ─── Store Overlay ─── */
         .store-balance {
             display: flex;
             align-items: center;
@@ -876,7 +876,7 @@
             gap: 4px;
         }
 
-        /* â”€â”€â”€ Profile Overlay â”€â”€â”€ */
+        /* ─── Profile Overlay ─── */
         .profile-header-card {
             display: flex;
             align-items: center;
@@ -1025,7 +1025,7 @@
             margin-top: 6px;
         }
 
-        /* â”€â”€â”€ Scrollbar â”€â”€â”€ */
+        /* ─── Scrollbar ─── */
         .overlay-body::-webkit-scrollbar {
             width: 5px;
         }
@@ -1097,16 +1097,16 @@
 
 <body class="dark">
 
-    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    <!-- ═══════════════════════════════════════════
      REAL GAME UI (Background)
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+     ═══════════════════════════════════════════ -->
     <div class="game-layout" id="gameLayout">
 
-        <!-- â”€â”€â”€ Team A Sidebar (Red) â”€â”€â”€ -->
+        <!-- ─── Team A Sidebar (Red) ─── -->
         <aside class="sidebar sidebar-a">
             <div class="sidebar-header">
                 <div class="team-badge">A</div>
-                <span>TakÄ±m A</span>
+                <span>Takım A</span>
                 <div class="team-score">24</div>
             </div>
             <div class="player-list">
@@ -1114,9 +1114,9 @@
                     <div class="player-avatar">EP</div>
                     <div>
                         <div class="player-name">Erdal</div>
-                        <div class="player-role">AnlatÄ±cÄ±</div>
+                        <div class="player-role">Anlatıcı</div>
                     </div>
-                    <div class="player-crown">ğŸ‘‘</div>
+                    <div class="player-crown">👑</div>
                 </div>
                 <div class="player-item">
                     <div class="player-avatar">AK</div>
@@ -1134,11 +1134,11 @@
                 </div>
             </div>
             <div class="sidebar-footer">
-                <button class="switch-team-btn">â†” <span>TakÄ±m DeÄŸiÅŸtir</span></button>
+                <button class="switch-team-btn">↔ <span>Takım Değiştir</span></button>
             </div>
         </aside>
 
-        <!-- â”€â”€â”€ Main Area â”€â”€â”€ -->
+        <!-- ─── Main Area ─── -->
         <div class="main-area">
 
             <!-- User Nav (top-left for logged-in) -->
@@ -1150,16 +1150,16 @@
                         <div class="user-chip-coins"><span class="coin-mark" aria-hidden="true"></span> 2,450</div>
                     </div>
                 </div>
-                <button class="nav-btn" onclick="openPanel('dashboard')">ğŸ“Š Dashboard</button>
-                <button class="nav-btn" onclick="openPanel('store')">ğŸ›ï¸ MaÄŸaza</button>
-                <button class="nav-btn" onclick="openPanel('profile')">ğŸ‘¤ Profil</button>
+                <button class="nav-btn" onclick="openPanel('dashboard')">📊 Dashboard</button>
+                <button class="nav-btn" onclick="openPanel('store')">🛍️ Mağaza</button>
+                <button class="nav-btn" onclick="openPanel('profile')">👤 Profil</button>
             </div>
 
             <!-- Header Buttons (top-right) -->
             <div class="header-btns">
-                <button class="hdr-btn" title="Duyurular">ğŸ“¢</button>
-                <button class="hdr-btn" title="Kurallar">ğŸ“–</button>
-                <button class="hdr-btn" title="Tema">ğŸŒ™</button>
+                <button class="hdr-btn" title="Duyurular">📢</button>
+                <button class="hdr-btn" title="Kurallar">📖</button>
+                <button class="hdr-btn" title="Tema">🌙</button>
             </div>
 
             <!-- Lobby Content -->
@@ -1170,39 +1170,39 @@
                     <div class="room-code-display">
                         <div class="room-code-box">
                             XKBR
-                            <button class="copy-btn" title="Kopyala">ğŸ“‹</button>
+                            <button class="copy-btn" title="Kopyala">📋</button>
                         </div>
                     </div>
 
                     <div class="settings-grid">
                         <div class="setting-item">
-                            <div class="setting-label">â± SÃ¼re</div>
+                            <div class="setting-label">⏱ Süre</div>
                             <div class="setting-value">60s</div>
                         </div>
                         <div class="setting-item">
-                            <div class="setting-label">ğŸ¯ Mod</div>
+                            <div class="setting-label">🎯 Mod</div>
                             <div class="setting-value">Tur</div>
                         </div>
                         <div class="setting-item">
-                            <div class="setting-label">ğŸ”„ Tur</div>
+                            <div class="setting-label">🔄 Tur</div>
                             <div class="setting-value">2</div>
                         </div>
                     </div>
 
                     <div style="text-align:center;font-size:.8rem;color:#94a3b8;margin-bottom:16px;">
-                        ğŸ‘¥ 6 Oyuncu â€” TakÄ±mlar dengeli
+                        👥 6 Oyuncu — Takımlar dengeli
                     </div>
 
-                    <button class="start-btn">â–¶ Oyunu BaÅŸlat</button>
+                    <button class="start-btn">▶ Oyunu Başlat</button>
                 </div>
             </div>
         </div>
 
-        <!-- â”€â”€â”€ Team B Sidebar (Blue) â”€â”€â”€ -->
+        <!-- ─── Team B Sidebar (Blue) ─── -->
         <aside class="sidebar sidebar-b">
             <div class="sidebar-header">
                 <div class="team-badge">B</div>
-                <span>TakÄ±m B</span>
+                <span>Takım B</span>
                 <div class="team-score">18</div>
             </div>
             <div class="player-list">
@@ -1210,7 +1210,7 @@
                     <div class="player-avatar">MK</div>
                     <div>
                         <div class="player-name">Mehmet</div>
-                        <div class="player-role">GÃ¶zetmen</div>
+                        <div class="player-role">Gözetmen</div>
                     </div>
                 </div>
                 <div class="player-item">
@@ -1229,19 +1229,19 @@
                 </div>
             </div>
             <div class="sidebar-footer">
-                <button class="switch-team-btn">â†” <span>TakÄ±m DeÄŸiÅŸtir</span></button>
+                <button class="switch-team-btn">↔ <span>Takım Değiştir</span></button>
             </div>
         </aside>
     </div>
 
-    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    <!-- ═══════════════════════════════════════════
      DASHBOARD OVERLAY
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+     ═══════════════════════════════════════════ -->
     <div class="overlay-backdrop" id="overlay-dashboard">
         <div class="overlay-panel">
             <div class="overlay-header">
-                <div class="overlay-title">ğŸ“Š Dashboard</div>
-                <button class="close-btn" onclick="closePanel('dashboard')">âœ•</button>
+                <div class="overlay-title">📊 Dashboard</div>
+                <button class="close-btn" onclick="closePanel('dashboard')">✕</button>
             </div>
             <div class="overlay-body">
                 <div class="dash-stats">
@@ -1249,58 +1249,58 @@
                         <div class="ds-icon"><span class="coin-mark" aria-hidden="true"></span></div>
                         <div class="ds-label">Coin</div>
                         <div class="ds-val ds-coin">2,450</div>
-                        <div class="ds-sub">Son maÃ§tan +120</div>
+                        <div class="ds-sub">Son maçtan +120</div>
                     </div>
                     <div class="dash-stat">
-                        <div class="ds-icon">ğŸ®</div>
-                        <div class="ds-label">Toplam MaÃ§</div>
+                        <div class="ds-icon">🎮</div>
+                        <div class="ds-label">Toplam Maç</div>
                         <div class="ds-val ds-match">47</div>
                         <div class="ds-sub">Bu hafta 12</div>
                     </div>
                     <div class="dash-stat">
-                        <div class="ds-icon">ğŸ†</div>
+                        <div class="ds-icon">🏆</div>
                         <div class="ds-label">Winrate</div>
                         <div class="ds-val ds-win">%68</div>
                         <div class="ds-sub">32 galibiyet</div>
                     </div>
                     <div class="dash-stat">
-                        <div class="ds-icon">ğŸ”¥</div>
-                        <div class="ds-label">En Ä°yi Seri</div>
+                        <div class="ds-icon">🔥</div>
+                        <div class="ds-label">En İyi Seri</div>
                         <div class="ds-val ds-streak">5</div>
                         <div class="ds-sub">Aktif: 3</div>
                     </div>
                 </div>
 
                 <div class="dash-section">
-                    <div class="dash-section-title">ğŸ“‹ Son 5 MaÃ§</div>
+                    <div class="dash-section-title">📋 Son 5 Maç</div>
                     <div class="match-row"><span class="mr-code">XKBR</span><span
-                            class="mr-result mr-win">KazandÄ±</span><span class="mr-score">45 â€” 32</span><span
+                            class="mr-result mr-win">Kazandı</span><span class="mr-score">45 — 32</span><span
                             class="mr-coins">+120 <span class="coin-mark" aria-hidden="true"></span></span></div>
                     <div class="match-row"><span class="mr-code">PLMN</span><span
-                            class="mr-result mr-win">KazandÄ±</span><span class="mr-score">38 â€” 25</span><span
+                            class="mr-result mr-win">Kazandı</span><span class="mr-score">38 — 25</span><span
                             class="mr-coins">+120 <span class="coin-mark" aria-hidden="true"></span></span></div>
                     <div class="match-row"><span class="mr-code">QRTF</span><span
-                            class="mr-result mr-loss">Kaybetti</span><span class="mr-score">20 â€” 34</span><span
+                            class="mr-result mr-loss">Kaybetti</span><span class="mr-score">20 — 34</span><span
                             class="mr-coins">+40 <span class="coin-mark" aria-hidden="true"></span></span></div>
                     <div class="match-row"><span class="mr-code">MGZE</span><span
-                            class="mr-result mr-win">KazandÄ±</span><span class="mr-score">42 â€” 38</span><span
+                            class="mr-result mr-win">Kazandı</span><span class="mr-score">42 — 38</span><span
                             class="mr-coins">+120 <span class="coin-mark" aria-hidden="true"></span></span></div>
                     <div class="match-row"><span class="mr-code">DVLA</span><span
-                            class="mr-result mr-loss">Kaybetti</span><span class="mr-score">18 â€” 29</span><span
+                            class="mr-result mr-loss">Kaybetti</span><span class="mr-score">18 — 29</span><span
                             class="mr-coins">+40 <span class="coin-mark" aria-hidden="true"></span></span></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    <!-- ═══════════════════════════════════════════
      STORE OVERLAY
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+     ═══════════════════════════════════════════ -->
     <div class="overlay-backdrop" id="overlay-store">
         <div class="overlay-panel" style="max-width:1000px">
             <div class="overlay-header">
-                <div class="overlay-title">ğŸ›ï¸ MaÄŸaza</div>
-                <button class="close-btn" onclick="closePanel('store')">âœ•</button>
+                <div class="overlay-title">🛍️ Mağaza</div>
+                <button class="close-btn" onclick="closePanel('store')">✕</button>
             </div>
             <div class="overlay-body">
                 <div class="store-balance">
@@ -1311,81 +1311,81 @@
                             <div class="store-bal-val">2,450</div>
                         </div>
                     </div>
-                    <div class="store-note">ğŸ’¡ Kozmetikler oyun dengesini etkilemez</div>
+                    <div class="store-note">💡 Kozmetikler oyun dengesini etkilemez</div>
                 </div>
 
                 <div class="store-tabs">
-                    <button class="store-tab active" onclick="filterStore('all',this)">ğŸ·ï¸ TÃ¼mÃ¼</button>
-                    <button class="store-tab" onclick="filterStore('avatar',this)">ğŸ­ Avatar</button>
-                    <button class="store-tab" onclick="filterStore('frame',this)">ğŸ–¼ï¸ Ã‡erÃ§eve</button>
-                    <button class="store-tab" onclick="filterStore('cardback',this)">ğŸƒ Kart ArkasÄ±</button>
+                    <button class="store-tab active" onclick="filterStore('all',this)">🏷️ Tümü</button>
+                    <button class="store-tab" onclick="filterStore('avatar',this)">🎭 Avatar</button>
+                    <button class="store-tab" onclick="filterStore('frame',this)">🖼️ Çerçeve</button>
+                    <button class="store-tab" onclick="filterStore('cardback',this)">🃏 Kart Arkası</button>
                 </div>
 
                 <div class="store-grid">
                     <div class="store-item" data-cat="avatar">
-                        <div class="si-img si-avatar"><span>ğŸ‘‘</span><span
+                        <div class="si-img si-avatar"><span>👑</span><span
                                 class="si-rarity rr-legendary">Legendary</span></div>
                         <div class="si-body">
-                            <div class="si-name">AltÄ±n Kral</div>
-                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 800</span><button class="si-buy">SatÄ±n
+                            <div class="si-name">Altın Kral</div>
+                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 800</span><button class="si-buy">Satın
                                     Al</button></div>
                         </div>
                     </div>
                     <div class="store-item" data-cat="avatar">
-                        <div class="si-img si-avatar"><span>âš”ï¸</span><span class="si-rarity rr-epic">Epic</span></div>
+                        <div class="si-img si-avatar"><span>⚔️</span><span class="si-rarity rr-epic">Epic</span></div>
                         <div class="si-body">
-                            <div class="si-name">AltÄ±n SavaÅŸÃ§Ä±</div>
-                            <div class="si-footer"><span class="si-owned">âœ… KuÅŸanÄ±lmÄ±ÅŸ</span></div>
+                            <div class="si-name">Altın Savaşçı</div>
+                            <div class="si-footer"><span class="si-owned">✅ Kuşanılmış</span></div>
                         </div>
                     </div>
                     <div class="store-item" data-cat="avatar">
-                        <div class="si-img si-avatar"><span>ğŸ§™</span><span class="si-rarity rr-epic">Epic</span></div>
+                        <div class="si-img si-avatar"><span>🧙</span><span class="si-rarity rr-epic">Epic</span></div>
                         <div class="si-body">
-                            <div class="si-name">BÃ¼yÃ¼cÃ¼</div>
-                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 600</span><button class="si-buy">SatÄ±n
+                            <div class="si-name">Büyücü</div>
+                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 600</span><button class="si-buy">Satın
                                     Al</button></div>
                         </div>
                     </div>
                     <div class="store-item" data-cat="frame">
                         <div class="si-img si-frame"><span
-                                style="border:3px solid #fbbf24;border-radius:10px;padding:6px;box-shadow:0 0 12px rgba(251,191,36,.4)">âœ¨</span><span
+                                style="border:3px solid #fbbf24;border-radius:10px;padding:6px;box-shadow:0 0 12px rgba(251,191,36,.4)">✨</span><span
                                 class="si-rarity rr-legendary">Legendary</span></div>
                         <div class="si-body">
-                            <div class="si-name">AltÄ±n Ã‡erÃ§eve</div>
-                            <div class="si-footer"><span class="si-owned">âœ… KuÅŸanÄ±lmÄ±ÅŸ</span></div>
+                            <div class="si-name">Altın Çerçeve</div>
+                            <div class="si-footer"><span class="si-owned">✅ Kuşanılmış</span></div>
                         </div>
                     </div>
                     <div class="store-item" data-cat="frame">
                         <div class="si-img si-frame"><span
-                                style="border:3px solid #a78bfa;border-radius:10px;padding:6px;box-shadow:0 0 12px rgba(167,139,250,.4)">ğŸ’œ</span><span
+                                style="border:3px solid #a78bfa;border-radius:10px;padding:6px;box-shadow:0 0 12px rgba(167,139,250,.4)">💜</span><span
                                 class="si-rarity rr-epic">Epic</span></div>
                         <div class="si-body">
-                            <div class="si-name">Mor ParÄ±ltÄ±</div>
-                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 500</span><button class="si-buy">SatÄ±n
+                            <div class="si-name">Mor Parıltı</div>
+                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 500</span><button class="si-buy">Satın
                                     Al</button></div>
                         </div>
                     </div>
                     <div class="store-item" data-cat="cardback">
-                        <div class="si-img si-cardback"><span>ğŸŒˆ</span><span
+                        <div class="si-img si-cardback"><span>🌈</span><span
                                 class="si-rarity rr-legendary">Legendary</span></div>
                         <div class="si-body">
                             <div class="si-name">Holografik</div>
-                            <div class="si-footer"><span class="si-owned">âœ… KuÅŸanÄ±lmÄ±ÅŸ</span></div>
+                            <div class="si-footer"><span class="si-owned">✅ Kuşanılmış</span></div>
                         </div>
                     </div>
                     <div class="store-item" data-cat="cardback">
-                        <div class="si-img si-cardback"><span>ğŸ”¥</span><span class="si-rarity rr-epic">Epic</span></div>
+                        <div class="si-img si-cardback"><span>🔥</span><span class="si-rarity rr-epic">Epic</span></div>
                         <div class="si-body">
                             <div class="si-name">Alev Deseni</div>
-                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 750</span><button class="si-buy">SatÄ±n
+                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 750</span><button class="si-buy">Satın
                                     Al</button></div>
                         </div>
                     </div>
                     <div class="store-item" data-cat="avatar">
-                        <div class="si-img si-avatar"><span>ğŸ‰</span><span class="si-rarity rr-rare">Rare</span></div>
+                        <div class="si-img si-avatar"><span>🐉</span><span class="si-rarity rr-rare">Rare</span></div>
                         <div class="si-body">
                             <div class="si-name">Ejderha</div>
-                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 400</span><button class="si-buy">SatÄ±n
+                            <div class="si-footer"><span class="si-price"><span class="coin-mark" aria-hidden="true"></span> 400</span><button class="si-buy">Satın
                                     Al</button></div>
                         </div>
                     </div>
@@ -1394,61 +1394,61 @@
         </div>
     </div>
 
-    <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    <!-- ═══════════════════════════════════════════
      PROFILE OVERLAY
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+     ═══════════════════════════════════════════ -->
     <div class="overlay-backdrop" id="overlay-profile">
         <div class="overlay-panel">
             <div class="overlay-header">
-                <div class="overlay-title">ğŸ‘¤ Profil</div>
-                <button class="close-btn" onclick="closePanel('profile')">âœ•</button>
+                <div class="overlay-title">👤 Profil</div>
+                <button class="close-btn" onclick="closePanel('profile')">✕</button>
             </div>
             <div class="overlay-body">
                 <div class="profile-header-card">
                     <div class="prof-avatar">E</div>
                     <div class="prof-info">
                         <h2>Erdal</h2>
-                        <div class="prof-bio">Tabu ustasÄ± ğŸ¯</div>
+                        <div class="prof-bio">Tabu ustası 🎯</div>
                         <div class="prof-badges">
                             <span class="prof-badge prof-badge-gold"><span class="coin-mark" aria-hidden="true"></span> 2,450</span>
-                            <span class="prof-badge">ğŸ† %68 Win</span>
-                            <span class="prof-badge">ğŸ® 47 MaÃ§</span>
+                            <span class="prof-badge">🏆 %68 Win</span>
+                            <span class="prof-badge">🎮 47 Maç</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="prof-form">
                     <div class="prof-field">
-                        <div class="prof-label">GÃ¶rÃ¼nen Ad</div>
+                        <div class="prof-label">Görünen Ad</div>
                         <input class="prof-input" value="Erdal" maxlength="60">
                     </div>
                     <div class="prof-field">
-                        <div class="prof-label">KÄ±sa Bio</div>
-                        <textarea class="prof-input prof-textarea" maxlength="300">Tabu ustasÄ± ğŸ¯</textarea>
+                        <div class="prof-label">Kısa Bio</div>
+                        <textarea class="prof-input prof-textarea" maxlength="300">Tabu ustası 🎯</textarea>
                     </div>
                     <button class="prof-save">Profili Kaydet</button>
                 </div>
 
                 <div class="dash-section">
-                    <div class="dash-section-title">ğŸ’ KuÅŸanÄ±lmÄ±ÅŸ Kozmetikler</div>
+                    <div class="dash-section-title">🎒 Kuşanılmış Kozmetikler</div>
                     <div class="prof-equipped-grid">
                         <div class="prof-eq-card">
-                            <div class="prof-eq-icon">âš”ï¸</div>
-                            <div class="prof-eq-name">AltÄ±n SavaÅŸÃ§Ä±</div>
+                            <div class="prof-eq-icon">⚔️</div>
+                            <div class="prof-eq-name">Altın Savaşçı</div>
                             <div class="prof-eq-type">Epic Avatar</div>
-                            <div class="prof-eq-status">âœ… Aktif</div>
+                            <div class="prof-eq-status">✅ Aktif</div>
                         </div>
                         <div class="prof-eq-card">
-                            <div class="prof-eq-icon">âœ¨</div>
-                            <div class="prof-eq-name">AltÄ±n Ã‡erÃ§eve</div>
+                            <div class="prof-eq-icon">✨</div>
+                            <div class="prof-eq-name">Altın Çerçeve</div>
                             <div class="prof-eq-type">Legendary Frame</div>
-                            <div class="prof-eq-status">âœ… Aktif</div>
+                            <div class="prof-eq-status">✅ Aktif</div>
                         </div>
                         <div class="prof-eq-card">
-                            <div class="prof-eq-icon">ğŸŒˆ</div>
+                            <div class="prof-eq-icon">🌈</div>
                             <div class="prof-eq-name">Holografik</div>
                             <div class="prof-eq-type">Legendary Card Back</div>
-                            <div class="prof-eq-status">âœ… Aktif</div>
+                            <div class="prof-eq-status">✅ Aktif</div>
                         </div>
                     </div>
                 </div>

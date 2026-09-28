@@ -1,0 +1,1 @@
+30 4 * * 0 cd /srv/hushle/app && /usr/bin/env bash scripts/ops/mysql-restore-smoke.sh >> /var/log/hushle-mysql-restore-smoke.log 2>&1

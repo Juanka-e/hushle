@@ -72,8 +72,9 @@ Mevcut `ShopItem` modeli asagidaki alanlarla genisletilmeli:
   - enum: `avatar | frame | card_back | card_face | bundle`
 - `renderMode`
   - enum: `image | template`
-- `previewImageUrl`
-  - magazada gosterilecek kapak gorseli
+- `thumbnailUrl`
+  - magazada, envanterde ve discovery alaninda gosterilecek hafif kapak gorseli
+  - asil asset veya immutable satin alma snapshot'inin parcasi degildir
 - `assetUrl`
   - dosya tabanli urunlerde gercek asset yolu
 - `templateKey`
@@ -86,6 +87,17 @@ Mevcut `ShopItem` modeli asagidaki alanlarla genisletilmeli:
   - zamanli kampanyalar icin baslangic
 - `availableTo`
   - zamanli kampanyalar icin bitis
+
+### Thumbnail-first render karari
+
+- Grid kartlari `thumbnailUrl` varsa yalniz bu optimize asset'i lazy-load eder.
+- Thumbnail yoksa motion/flip calistirmayan statik bir fallback kullanilir.
+- Tam template renderer yalniz kullanici detay/onizleme modalini actiginda mount edilir.
+- Magaza ve envanter ilk 24 urunu render eder; devam eden urunler kullanici
+  "Daha fazla goster" dediginde 24'luk partilerle eklenir.
+- `thumbnailUrl` sunum/cache alanidir. Gameplay ve satin alma kimligi halen
+  `renderMode`, `renderSpecVersion`, `imageUrl`, `templateKey` ve
+  `templateConfig` snapshot'i ile korunur.
 
 ### UserProfile genisletmesi
 
@@ -291,8 +303,8 @@ Mock veri sadece ekrani doldurmak icin yazilmayacak; gelecekteki API ile ayni se
 
 Template tabanli urunlerde ise:
 
-- `src/lib/cosmetics/templates/*`
-- `src/components/game/cosmetics/*`
+- `apps/web/src/lib/cosmetics/templates/*`
+- `apps/web/src/components/game/cosmetics/*`
 
 ### Mock catalog
 
@@ -440,38 +452,38 @@ Teslim sonucu:
 
 - `prisma/schema.prisma`
 - `prisma/seed.ts` veya `scripts/seed-cosmetics.ts`
-- `src/lib/economy.ts`
+- `apps/web/src/lib/economy.ts`
 
 ### User API
 
-- `src/app/api/user/dashboard/route.ts`
-- `src/app/api/user/me/route.ts`
-- `src/app/api/user/profile/route.ts`
-- `src/app/api/user/inventory/route.ts`
+- `apps/web/src/app/api/user/dashboard/route.ts`
+- `apps/web/src/app/api/user/me/route.ts`
+- `apps/web/src/app/api/user/profile/route.ts`
+- `apps/web/src/app/api/user/inventory/route.ts`
 
 ### Store API
 
-- `src/app/api/store/items/route.ts`
-- `src/app/api/store/purchase/route.ts`
-- `src/app/api/store/equip/route.ts`
-- `src/app/api/store/offers/route.ts`
-- `src/app/api/store/coupon/*`
+- `apps/web/src/app/api/store/items/route.ts`
+- `apps/web/src/app/api/store/purchase/route.ts`
+- `apps/web/src/app/api/store/equip/route.ts`
+- `apps/web/src/app/api/store/offers/route.ts`
+- `apps/web/src/app/api/store/coupon/*`
 
 ### Admin API
 
-- `src/app/api/admin/shop-items/*`
-- `src/app/api/admin/discount-campaigns/*`
-- `src/app/api/admin/coupons/*`
+- `apps/web/src/app/api/admin/shop-items/*`
+- `apps/web/src/app/api/admin/discount-campaigns/*`
+- `apps/web/src/app/api/admin/coupons/*`
 
 ### Render katmani
 
-- `src/lib/cosmetics/*`
-- `src/components/game/cosmetics/*`
-- `src/components/game/game-card.tsx`
-- `src/components/game/sidebar.tsx`
-- `src/components/game/dashboard-profile-sidebar.tsx`
-- `src/components/game/dashboard-pages/inventory-content.tsx`
-- `src/components/game/dashboard-pages/shop-content.tsx`
+- `apps/web/src/lib/cosmetics/*`
+- `apps/web/src/components/game/cosmetics/*`
+- `apps/web/src/components/game/game-card.tsx`
+- `apps/web/src/components/game/sidebar.tsx`
+- `apps/web/src/components/game/dashboard-profile-sidebar.tsx`
+- `apps/web/src/components/game/dashboard-pages/inventory-content.tsx`
+- `apps/web/src/components/game/dashboard-pages/shop-content.tsx`
 
 ## Teknik Riskler
 

@@ -1,0 +1,20 @@
+{
+  "name": "@hushle/platform-auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@hushle/platform-cache": "0.1.0",
+    "@hushle/platform-db": "0.1.0",
+    "bcryptjs": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

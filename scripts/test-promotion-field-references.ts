@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { prisma } from "../src/lib/prisma";
+import { prisma } from "../apps/web/src/lib/prisma";
 
 assert.equal(Boolean(prisma.discountCampaign.fields), true);
 assert.equal("usageLimit" in prisma.discountCampaign.fields, true);

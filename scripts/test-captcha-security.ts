@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
-import { DEFAULT_SYSTEM_SETTINGS, normalizeSystemSettings } from "../src/lib/system-settings/schema";
+import { DEFAULT_SYSTEM_SETTINGS, normalizeSystemSettings } from "../apps/web/src/lib/system-settings/schema";
 import {
     getEffectiveCaptchaFailMode,
     getPublicCaptchaConfigForAction,
     isCaptchaRequiredForAction,
     verifyCaptchaForAction,
-} from "../src/lib/security/captcha";
+} from "../apps/web/src/lib/security/captcha";
 
 async function main(): Promise<void> {
     const defaults = normalizeSystemSettings({});
     assert.equal(isCaptchaRequiredForAction(defaults, "register"), false);
     assert.equal(defaults.security.captcha.provider, "turnstile");
     assert.equal(defaults.security.captcha.failMode, "hard_fail");
-    assert.equal(defaults.security.captcha.turnstileMode, "invisible");
+    assert.equal(defaults.security.captcha.turnstileMode, "managed");
 
     const enforcedSettings = normalizeSystemSettings({
         security: {

@@ -1,515 +1,409 @@
-# Cosmetic Authoring Spec
+# Hushle Card Design Guide
 
-Son guncelleme: 9 March 2026
+Son guncelleme: 3 July 2026
 
 ## Amac
 
-Bu dokumanin amaci iki seyi standart hale getirmektir:
+Bu rehberin amaci, Hushle icin kart on/arka tasarimlarini:
 
-1. Yapay zekaya verilecek kozmetik tasarim brief'leri tutarli olsun.
-2. Uretilen kozmetik veya template efektleri admin panelden guvenli sekilde eklenebilsin.
+1. AI ile hizli uretebilir hale getirmek
+2. admin panelden risksiz eklenebilir hale getirmek
+3. ileride tasarim sistemi degisse bile eski satin alimlari bozmadan yasatmak
 
-Bu spec hem gorsel asset tabanli urunler hem de `template + JSON` ile render edilen urunler icin referanstir.
+Bu rehber operasyon odaklidir. Teknik sinirlar ve JSON kurallari icin ana referans:
 
-## Kozmetik Turleri
+- `docs/dashboard-ui/cosmetic-authoring-spec.md`
+- `docs/guides/card-template-registry-plan.md`
+- `docs/guides/card-editor-plan.md`
 
-### 1. Avatar
-- Render mode: `image`
-- Kullanim yeri: oyuncu kutusu, profil, dashboard sidebar
-- Su an template desteklenmez
+## Mevcut Durum
 
-### 2. Frame
-- Render mode: `image` veya `template`
-- Kullanim yeri: oyuncu avatar cevresi, sidebar, profil
-- Desteklenen farklilastirma:
-  - ring style
-  - pattern
-  - glow
-  - motion
+Kart kozmetik sistemi su an zaten bu omurgaya sahip:
 
-### 3. Card Face
-- Render mode: `image` veya `template`
-- Kullanim yeri: aktif oyun kartinin on yuzu
-- Desteklenen farklilastirma:
-  - palette
-  - pattern
-  - glow
-  - motion
-  - overlay opacity
+- `renderMode`: `image` veya `template`
+- `templateKey`: stil ailesi kimligi
+- `templateConfig`: tasarimin degiskenleri
+- `renderSpecVersion`: renderer davranisinin surumu
 
-### 4. Card Back
-- Render mode: `image` veya `template`
-- Kullanim yeri: transition screen, ileride kart arkasi preview
-- Desteklenen farklilastirma:
-  - palette
-  - pattern
-  - glow
-  - motion
-  - overlay opacity
+Bu iyi haber. Yani yeni kart tasarimlari eklemek icin oyunun ana kart komponentini her seferinde bastan yazmak zorunda degiliz.
 
----
+## En Onemli Prensip
 
-## Gorsel Asset Kurallari
+Kartta her sey degismemeli. Sadece tema degismeli.
 
-### Avatar Asset
-- Onerilen canvas: `512x512`
-- Format: `PNG`, `WebP`, `SVG`
-- Arka plan:
-  - tercihen transparan
-  - zorunlu ise tek parca temiz arka plan
-- Safe area:
-  - asil karakter veya ikon `384x384` icinde kalmali
-  - kenarlarda minimum `48px` bosluk birakilmali
+Sabit kalmasi gereken alanlar:
 
-### Frame Asset
-- Onerilen canvas: `768x768`
-- Format: `PNG`, `WebP`, `SVG`
-- Orta acik alan:
-  - ic bosluk avatarin ustunu kapatmamalidir
-  - ic guvenli pencere: merkezde yaklasik `520x520`
-- Cizim mantigi:
-  - koseler guclu olabilir
-  - merkez acik kalmali
-  - alpha channel temiz olmali
+- ana kelime alani
+- yasakli kelimeler listesi
+- sag ust zorluk ikonu
+- temel okunurluk hiyerarsisi
 
-### Card Face Asset
-- Onerilen canvas: `900x1200`
-- Aspect ratio: `3:4`
-- Format: `PNG`, `WebP`, `SVG`
-- Safe area:
-  - ust badge alani: ustten `120px`
-  - ana kelime alani: merkezde `620x220`
-  - alt taboo listesi alani: alttan `220px` yukari kadar okunabilirlik korunmali
-- Tasarim kurali:
-  - kelime ve taboo text kontrasti her zaman yuksek olmali
-  - arka plan deseni text okunurlugunu bozmamali
+Degisebilecek alanlar:
 
-### Card Back Asset
-- Onerilen canvas: `900x1200`
-- Aspect ratio: `3:4`
-- Format: `PNG`, `WebP`, `SVG`
-- Safe area:
-  - merkez rozet/ikon alani: `360x360`
-  - ust title badge alani: ustten `120px`
-  - alt dekorasyon alanlari kenarlara yakin olabilir
+- renk paleti
+- border karakteri
+- arka plan pattern'i
+- glow
+- motion
+- overlay image
+- header/footer karakteri
 
----
+Bu ayrim kritik. Cunku Hushle oyun mantigi metin okunurlugune bagli; kartin kendisi bir "skin", bilgi duzeni degil.
 
-## Template JSON Kurallari
+## Kod Tarafinda Bugunku Sabit Slotlar
 
-### Kok yapi
+Bugun oyun karti bu sabit iskeletle render ediliyor:
 
-Root her zaman bir JSON object olmalidir.
+- `apps/web/src/components/game/game-card.tsx`
+  - ust header
+  - sag ust zorluk ikonu
+  - ortada `card.word`
+  - altta `card.taboo`
+- `apps/web/src/lib/cosmetics/card-face.ts`
+  - kart on yuz theme resolver
+- `apps/web/src/lib/cosmetics/card-back.ts`
+  - kart arka yuz theme resolver
 
-Desteklenen nesting:
-- maksimum derinlik: `3`
-- object basina maksimum key: `24`
-- array basina maksimum eleman: `12`
+Yani AI veya admin panel yeni bir kart cikardiginda aslinda su anki sistem "layout degistirmiyor", "tema enjekte ediyor".
 
-Desteklenen deger tipleri:
-- `string`
-- `number`
-- `boolean`
-- `null`
-- scalar array
-- nested object
+Bu su anda dogru yon.
 
-Desteklenmeyenler:
-- function benzeri stringler isletilmez
-- HTML veya script bir anlam tasimaz
-- object array desteklenmez
+## Ne Yapmaliyiz
 
-### Desteklenen ana bloklar
+Kisa cevap:
 
-#### `palette`
-Renk ailesini tanimlar.
+- kart layout engine'i sabit kalmali
+- kart theme engine'i buyumeli
+- yeni tasarimlar `templateKey + templateConfig + renderSpecVersion` ile gelmeli
+
+Boylece:
+
+- bugunku satin alimlar bozulmaz
+- yarin daha zengin template sistemi eklenebilir
+- ileride cok daha cesitli kart aileleri desteklenebilir
+
+## Onerilen Mimari
+
+Kart tasarimlarini 3 katmana ayir:
+
+### 1. Layout Layer
+
+Oyunun zorunlu bilgi yerlesimi.
 
 Ornek:
-```json
-{
-  "palette": {
-    "primary": "#22c55e",
-    "secondary": "#bbf7d0",
-    "surface": "#0f172a",
-    "border": "#6ee7b7",
-    "word": "#ffffff",
-    "taboo": "#fca5a5",
-    "footer": "#dcfce7",
-    "title": "#ffffff",
-    "detail": "#cbd5e1"
-  }
-}
-```
 
-Not:
-- Tum renkler hex olmalidir.
-- Guvenli format: `#RGB` veya `#RRGGBB`
+- `difficultyBadge`
+- `wordBlock`
+- `tabooList`
+- `footerStrip`
 
-#### `pattern`
-Desen tipini tanimlar.
+Bu katman oyun UX'ine ait oldugu icin kolay kolay degismemeli.
 
-Desteklenen `pattern.type` degerleri:
-- `none`
-- `grid`
-- `dots`
-- `diagonal`
-- `chevrons`
-- `rings`
-- `noise`
+### 2. Theme Layer
 
-Desteklenen alanlar:
-- `type`
-- `opacity`
-- `scale`
+Kartin stil dili.
 
 Ornek:
-```json
-{
-  "pattern": {
-    "type": "rings",
-    "opacity": 0.22,
-    "scale": 16
-  }
-}
-```
 
-#### `glow`
-Parlama ve etki yogunlugunu tanimlar.
+- `palette`
+- `pattern`
+- `glow`
+- `motion`
+- `overlay`
+- `frame-like border behavior`
 
-Desteklenen alanlar:
-- `color`
-- `blur`
-- `opacity`
+Bu katman admin panel ve AI ile surekli genisleyebilir.
+
+### 3. Spec Layer
+
+Renderer'in o temayi nasil yorumladigi.
+
+Bunu `renderSpecVersion` temsil eder.
 
 Ornek:
-```json
-{
-  "glow": {
-    "color": "#4ade80",
-    "blur": 28,
-    "opacity": 0.24
-  }
-}
-```
 
-#### `motion`
-Animasyon karakterini tanimlar.
+- `renderSpecVersion = 1`
+  - bugunku basic theme parser
+- `renderSpecVersion = 2`
+  - ekstra decorative slots
+- `renderSpecVersion = 3`
+  - template regions, layered masks, richer motion budget
 
-Desteklenen `motion.preset` degerleri:
-- `none`
-- `pulse`
-- `drift`
-- `shimmer`
+Bu sayede eski urunler `v1` gibi kalir, yeni urunler `v2/v3` ile calisir.
 
-Desteklenen alanlar:
-- `preset`
-- `speedMs`
+Bugunku implementasyon durumu:
 
-Ornek:
-```json
-{
-  "motion": {
-    "preset": "shimmer",
-    "speedMs": 3600
-  }
-}
-```
+- yalniz v1 parser'i desteklenir
+- resolver requested/effective version ve fallback bilgisini tasir
+- bilinmeyen snapshot version'i oyunu bozmak yerine v1'e duser
+- admin API, renderer eklenmeden v2/v3 item kaydetmez
+- yeni version acma sirasi
+  `docs/architecture/release-compatibility-and-versioning.md` icindedir
 
-#### `frame`
-Sadece frame template'lerinde kullanilir.
+## Neden Versiyonlama Sart
 
-Desteklenen `frame.style` degerleri:
-- `solid`
-- `double`
-- `ornate`
+Asagidaki durumlar ileride kesin olacak:
 
-Desteklenen alanlar:
-- `style`
-- `thickness`
-- `radius`
+- yeni pattern tipleri eklenecek
+- daha cesitli decorative elementler eklenecek
+- image + template hibrit urunler artacak
+- belki seasonal kart aileleri gelecek
 
-Ornek:
-```json
-{
-  "frame": {
-    "style": "ornate",
-    "thickness": 3,
-    "radius": 20
-  }
-}
-```
+Eger versiyonlama olmazsa:
 
-#### `overlay`
-Card face ve card back image blend yogunlugunu tanimlar.
+- eski urunler yeni renderer altinda farkli gozukebilir
+- satin alinmis kartlar kirilabilir
+- admin panelde eski JSON'lar yeni semayla carpisabilir
 
-Desteklenen alanlar:
-- `opacity`
+Bu yuzden kural:
 
-Ornek:
-```json
-{
-  "overlay": {
-    "opacity": 0.24
-  }
-}
-```
+- mevcut urunlerin `renderSpecVersion` degeri korunur
+- yeni renderer davranisi gerekiyorsa yeni version acilir
+- var olan satin alim kayitlari migrasyon zorunluluguna itilmez
 
----
+## AI Ile Kart Tasarimi Uretme Akisi
 
-## Tip Bazli JSON Rehberi
+AI'a direkt "bana guzel kart yap" demek kotu sonuc verir.
 
-### Frame Template Ornegi
-```json
-{
-  "palette": {
-    "primary": "#22c55e",
-    "secondary": "#bbf7d0"
-  },
-  "pattern": {
-    "type": "rings",
-    "opacity": 0.22,
-    "scale": 14
-  },
-  "glow": {
-    "color": "#4ade80",
-    "blur": 24,
-    "opacity": 0.24
-  },
-  "frame": {
-    "style": "ornate",
-    "thickness": 3,
-    "radius": 20
-  },
-  "motion": {
-    "preset": "pulse",
-    "speedMs": 4200
-  }
-}
-```
-
-### Card Face Template Ornegi
-```json
-{
-  "palette": {
-    "primary": "#8b5cf6",
-    "secondary": "#ddd6fe",
-    "surface": "#1e1b4b",
-    "border": "#c4b5fd",
-    "word": "#ffffff",
-    "taboo": "#fda4af",
-    "footer": "#ede9fe"
-  },
-  "pattern": {
-    "type": "noise",
-    "opacity": 0.18,
-    "scale": 16
-  },
-  "glow": {
-    "color": "#a855f7",
-    "blur": 28,
-    "opacity": 0.2
-  },
-  "motion": {
-    "preset": "shimmer",
-    "speedMs": 3400
-  }
-}
-```
-
-### Card Back Template Ornegi
-```json
-{
-  "palette": {
-    "surface": "#111827",
-    "border": "#38bdf8",
-    "primary": "#22d3ee",
-    "secondary": "#93c5fd",
-    "title": "#f8fafc",
-    "detail": "#cbd5e1"
-  },
-  "pattern": {
-    "type": "chevrons",
-    "opacity": 0.2,
-    "scale": 18
-  },
-  "glow": {
-    "color": "#38bdf8",
-    "blur": 30,
-    "opacity": 0.22
-  },
-  "motion": {
-    "preset": "drift",
-    "speedMs": 6200
-  },
-  "overlay": {
-    "opacity": 0.24
-  }
-}
-```
-
----
-
-## Animasyon ve Efekt Butcesi
-
-UI'nin dagilmamasi icin su sinirlar korunmali:
-
-- Ayni anda tek kozmetikte maksimum:
-  - `1 pattern`
-  - `1 glow`
-  - `1 motion preset`
-- Asiri hizli animasyon kullanma:
-  - minimum `1800ms`
-  - onerilen aralik `3200ms - 7200ms`
-- Pattern opacity:
-  - ideal aralik `0.12 - 0.26`
-- Glow blur:
-  - frame icin ideal `18 - 28`
-  - card icin ideal `24 - 36`
-
----
-
-## AI Prompt Kurali
-
-Yapay zekaya tasarim cikarirken su format kullanilmali:
+Her zaman su formatta brief ver:
 
 ```text
-Urun tipi: frame
-Tema: neon archive / sci-fi museum / elite reward
-Rarity: legendary
-Ana renkler: #22d3ee, #93c5fd, #0f172a
-Istenen his: premium, temiz, teknolojik, tek bakista ayirt edilebilir
-Kacinilacaklar: generic gradient, fazla parlak bloom, metin okunurlugunu bozan pattern
-Teslim:
-1. JSON templateConfig
-2. kisa templateKey onerisi
-3. bu efektin oyunda nasil gorunecegine dair 2-3 cumle
-Kurallar:
-- desteklenen pattern tiplerinden birini kullan
-- motion preset sadece none/pulse/drift/shimmer
-- frame style sadece solid/double/ornate
-- JSON 3 nested seviyeyi gecmesin
-```
-
----
-
-## Admin Panelden Ekleme Akisi
-
-### Image tabanli urun
-1. `/admin/shop-items` ac
-2. `type` sec
-3. `renderMode = image`
-4. gorsel yukle veya URL gir
-5. merchandizing alanlarini belirle:
-   - `sortOrder`: magazadaki ana sira
-   - `isFeatured`: sag dashboard `Shop Radar` havuzuna girsin mi?
-   - `badgeText`: gerekiyorsa `YENI`, `LIMITLI`, `PREMIUM`
-6. `templateKey` ve `templateConfig` bos birak
-7. kaydet
-
-### Template tabanli urun
-1. `/admin/shop-items` ac
-2. `type` sec
-3. `renderMode = template`
-4. `templateKey` gir
-5. bu dokumandaki uygun JSON'u `templateConfig` alanina yapistir
-6. merchandizing alanlarini belirle:
-   - `sortOrder`
-   - `isFeatured`
-   - `badgeText`
-7. `Ornek Doldur` ile baslangic json'u al, sonra ozellestir
-8. kaydet
-
-### Canli preview
-- `/admin/shop-items` modal'i artik kaydetmeden once canli preview gosterir.
-- Preview mantigi, oyun tarafinda kullanilan ayni resolver'lari kullanir:
-  - `frame`
-  - `card_face`
-  - `card_back`
-- Bu nedenle admin panelde gordugun stil, oyunda cikacak gorunume yakindir.
-- JSON gecersiz ise preview sag panelinde hata mesaji gorunur ve fallback preview devam eder.
-- Preview alaninda iki seviye vardir:
-  - `Stage`: urunun oyun ici karakteri
-  - `Shop Card Snapshot`: magazadaki merchandising gorunumu
-
----
-
-## Merchandising Kurallari
-
-### `sortOrder`
-- Tum magaza grid'i bu alana gore siralanir.
-- Daha kucuk deger daha yukari demektir.
-- Onerilen artis: `10, 20, 30...`
-- Yeni urun eklerken araya girebilmek icin bosluk birak.
-
-### `isFeatured`
-- `true` ise urun dashboard sag panelindeki `Shop Radar` havuzuna girebilir.
-- `Shop Radar` tum featured urunleri ayni anda gostermez; kullanicinin sahip olmadigi featured urunlerden secim yapar.
-- Bu nedenle featured flag, "magazada one cikan urun havuzu" anlamina gelir.
-
-### `badgeText`
-- Maksimum `24` karakter.
-- Onerilen kullanimlar:
-  - `YENI`
-  - `LIMITLI`
-  - `PREMIUM`
-  - `SEZON`
-- Rozet, hem magaza kartinda hem `Shop Radar` rail'inde gorunur.
-- Her urunde rozet kullanma; sadece dikkat cekmek istedigin urunlerde kullan.
-
----
-
-## Naming Kurallari
-
-### `code`
-- benzersiz olmali
-- regex:
-  - `^[a-z0-9_-]+$`
-- onerilen format:
-  - `ember_vault_back`
-  - `royal_ring_frame`
-  - `signal_noise_face`
-
-### `templateKey`
-- kisa, tekrar kullanilabilir, stil ailesini anlatsin
-- onerilen format:
-  - `ember_vault`
-  - `royal_ring`
-  - `signal_grid`
-  - `frost_archive`
-
----
-
-## Tasarim Kalite Kurallari
-
-- Kozmetik tek bakista ayirt edilebilir olmali.
-- Sadece renk tonu degistiren kopya urun cikarma.
-- Her rarity farkli siluet veya etki karakteri tasimali.
-- `legendary` urunler:
-  - daha belirgin ikincil renk
-  - daha zengin pattern
-  - glow + motion kombinasyonu
-- `common` urunler:
-  - sade
-  - dusuk pattern opacity
-  - motion yok veya cok hafif
-
----
-
-## Mevcut Teknik Sinirlar
-
-Su an sistem bunlari destekler:
-- nested template JSON
+Urun tipi: card_face
+Marka: Hushle
+Rarity: epic
+Tasarim amaci: premium ama okunakli oyun karti
+Sabit alanlar:
+- sag ust zorluk ikonu
+- ortada ana kelime
+- altta yasakli kelimeler listesi
+Degisebilecek alanlar:
+- palette
 - pattern
 - glow
 - motion
-- frame style
-- image overlay opacity
+- overlay
+Istenen his:
+- modern
+- ayirt edilebilir
+- oyun icinde okunakli
+Kacinilacaklar:
+- metin altinda asiri hareket
+- kontrasti dusuren texture
+- generic mobil oyun gradienti
+Teslim:
+1. templateKey oner
+2. renderSpecVersion oner
+3. JSON templateConfig ver
+4. 2-3 cumlelik tasarim aciklamasi yaz
+Kurallar:
+- sadece destekli pattern tiplerini kullan
+- sadece destekli motion presetlerini kullan
+- HTML/CSS/JS uretme
+- layout degistirme, sadece tema uret
+```
 
-Su an sistem bunlari desteklemez:
-- particle system
-- custom shader
-- arbitrary CSS injection
-- JS tabanli ozel animasyon
-- object array tabanli procedural shape listesi
+## AI Promptablonlari
 
-Bu sinir bilincli konuldu; amac admin paneli guvenli tutmak ve XSS/CSS injection yuzeyi acmamaktir.
+### Card Face Promptablonu
+
+```text
+Hushle icin card_face template tasarla.
+Bu bir oyun karti kozmetigi; layout sabit kalacak.
+Sadece tema katmanini tasarla.
+
+Rarity: legendary
+Tema: celestial archive
+Ana renkler: #0f172a, #38bdf8, #e0f2fe, #f59e0b
+Istenen his: premium, temiz, modern, hafif gizemli
+Sabit alanlar:
+- top-right difficulty icon
+- centered main word
+- forbidden words list below
+- footer strip
+Kacinilacaklar:
+- text readability loss
+- noisy full-surface texture
+- childish gradients
+
+Teslim:
+1. templateKey
+2. renderSpecVersion
+3. templateConfig JSON
+4. neden oyunda iyi calisacagina dair kisa not
+```
+
+### Card Back Promptablonu
+
+```text
+Hushle icin card_back template tasarla.
+Bu yuzde bilgi yok; marka karakteri ve premium hissi onemli.
+
+Rarity: epic
+Tema: storm vault
+Ana renkler: #111827, #7c3aed, #c4b5fd, #f8fafc
+Istenen his: guclu, teknolojik, temiz
+Kacinilacaklar:
+- ortada anlamsiz logo yigini
+- asiri glow
+- dusuk kontrast
+
+Teslim:
+1. templateKey
+2. renderSpecVersion
+3. templateConfig JSON
+4. kart on yuzuyle nasil eslesecegine dair kisa not
+```
+
+## Admin Panelden Ekleme Kurali
+
+Admin panelde su alanlar zaten var:
+
+- `type`
+- `renderMode`
+- `renderSpecVersion`
+- `imageUrl`
+- `templateKey`
+- `templateConfig`
+
+Kart tasarimi eklerken operasyon sirasi:
+
+1. once tasarimin `card_face` mi `card_back` mi oldugunu netlestir
+2. image mi template mi karar ver
+3. `code` ve `templateKey` isimlerini kalici olacak sekilde sec
+4. ilk denemede yeni renderer yazma; mevcut spec icinde kal
+5. admin preview'da kontrol et
+6. oyun kartinda okunurluk testi yap
+7. inventory ve shop gorunumlerinde de kontrol et
+
+## Naming Kurallari
+
+Kodlar gecici dusunulmemeli.
+
+Oneri:
+
+- urun kodu: `celestial_archive_face`
+- template key: `celestial_archive`
+- eslesik back: `celestial_archive_back`
+
+Kural:
+
+- ayni stil ailesi ayni `templateKey` kokunden turemeli
+- `code` urune ozgu olmali
+- `templateKey` stil ailesine ozgu olmali
+
+## Hangi Durumda `image`, Hangi Durumda `template`
+
+`template` kullan:
+
+- hizli iterasyon istiyorsan
+- renk/pattern/glow/motion ile fark yaratabiliyorsan
+- AI'dan JSON tabanli varyasyon almak istiyorsan
+- admin panelden kolay yonetim istiyorsan
+
+`image` kullan:
+
+- cicek, bulut, altin isleme, mascot gibi ozel cizim gerekiyorsa
+- siluet ve dekoratif detaylar kritikse
+- standart pattern seti yetersiz kaliyorsa
+
+Pratikte en saglikli yol:
+
+- temel sistem `template-first`
+- premium ozel setler `image + template hybrid hissi`
+
+Bugunku sistemde image urunler overlay gibi davraniyor; bu da yeterince esnek.
+
+## Cicek, Bulut, Ozel Gorsel Oge Nasil Eklenir
+
+Bunun iki yolu var:
+
+### 1. Image Tabanli
+
+En temiz yol.
+
+- kart yuzune veya arkasina ozel ilustrasyonlu asset hazirlanir
+- admin panelde `renderMode = image`
+- `imageUrl` ile eklenir
+- text safe area korunur
+
+Bu yontem:
+
+- cicek
+- bulut
+- altin ornament
+- kagit dokusu
+- anime benzeri shape language
+
+gibi detaylar icin en uygunudur.
+
+### 2. Template Tabanli
+
+Sadece soyutlastirilmis versiyonlarda uygundur.
+
+Ornek:
+
+- bulut hissi icin yumusak `noise`
+- cicek hissi icin rings/dots tabanli ritim
+- luxe his icin glow + ornate border mantigi
+
+Ama literal "cicek cizimi" veya "bulut illustrasyonu" icin template tek basina yeterli degil.
+
+## Uzun Vadeli Esneklik
+
+Evet, bu yapidan daha sonra kolayca cikabiliriz; dogru yonetirsek versiyonlama sorun cikarmaz.
+
+Bunun icin kural seti:
+
+- eski itemlari silme yerine pasife al
+- mevcut `templateKey` anlamini geriye donuk bozma
+- yeni yorumlama gerekiyorsa `renderSpecVersion` artir
+- gerekirse yeni decorative capability'leri sadece yeni version'da ac
+
+Bu sayede kullanicinin gecmiste aldigi urun:
+
+- envanterde kalir
+- ayni kimlikle render edilir
+- yeni sistem ciksa bile kirilmaz
+
+## Onay Checklist'i
+
+Yeni kart tasarimini yayina almadan once:
+
+1. `GameCard` uzerinde masaustu test et
+2. mobil genislikte test et
+3. zorluk ikonunun kaybolmadigini kontrol et
+4. ana kelime kontrastini kontrol et
+5. yasakli kelime listesinin okunurlugunu kontrol et
+6. shop preview ile oyun ici preview arasinda bariz fark olmadigini kontrol et
+7. narrator ve takim oyuncusu akislarinda bilgi sizmasi olmadigini kontrol et
+8. flip kapaliyken kartin dogru default yuzu gosterdigini kontrol et
+
+## Sonraki Teknik Adim
+
+Kart sistemi sinirsiz ceside yaklasacaksa bir sonraki mantikli evrim:
+
+1. kart face/back icin resmi bir `template registry` eklemek
+2. her `templateKey` icin desteklenen varyant alanlarini tanimlamak
+3. admin panelde serbest JSON yerine yari-yapilandirilmis editor vermek
+4. `renderSpecVersion` bazli preview farklarini gostermek
+5. AI prompt ciktisini direkt iceri alacak bir import workflow hazirlamak
+
+Bugun icin sonuc net:
+
+- kart tasarim sistemi yapilmadi degil
+- cekirdek altyapi yapildi
+- buyuk "template catalog / AI authoring flow" parcasi eksik kalmisti
+- bu rehber o eksigi kapatmak icin yazildi
+
+## Prototip Dosyalari
+
+Dokulu ve sahneli kart denemeleri icin:
+
+- `scripts/design-prototypes/card-designs.html`
+- `scripts/design-prototypes/card-designs-extended.html`
+- `scripts/design-prototypes/card-design-textured.html`
+
+Not:
+
+- `card-design-textured.html` artik arka plan sahnesi degil, dogrudan kart materyaline odaklanir.
+- hedef dil: folyo, lak, keten, inci, kadife, karbon, holo gibi daha premium ve koleksiyonluk hisler.

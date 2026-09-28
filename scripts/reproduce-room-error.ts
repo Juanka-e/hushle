@@ -19,7 +19,11 @@ async function testRoomJoin() {
     let roomCode = "";
 
     // 1. Creator joins and creates room
-    const creator = io(SERVER_URL, { path: PATH, transports: ["websocket"] });
+    const creator = io(SERVER_URL, {
+        path: PATH,
+        transports: ["websocket"],
+        extraHeaders: { Origin: SERVER_URL },
+    });
 
     await new Promise<void>((resolve, reject) => {
         creator.on("connect", () => {
@@ -43,7 +47,11 @@ async function testRoomJoin() {
 
     // 2. Joiner tries to join
     console.log("Joiner connecting to:", roomCode);
-    const joiner = io(SERVER_URL, { path: PATH, transports: ["websocket"] });
+    const joiner = io(SERVER_URL, {
+        path: PATH,
+        transports: ["websocket"],
+        extraHeaders: { Origin: SERVER_URL },
+    });
 
     await new Promise<void>((resolve, reject) => {
         joiner.on("connect", () => {

@@ -4,6 +4,7 @@ import { io } from "socket.io-client";
 const socket = io("http://127.0.0.1:3000", {
     path: "/api/socketio",
     transports: ["polling"], // Force polling first to test connectivity
+    extraHeaders: { Origin: "http://127.0.0.1:3000" },
 });
 
 socket.on("connect", () => {

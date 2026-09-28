@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveSafeCallbackUrl } from "../src/lib/security/safe-callback-url";
+import { resolveSafeCallbackUrl } from "../apps/web/src/lib/security/safe-callback-url";
 
 const baseOrigin = "https://tabu.example.com";
 

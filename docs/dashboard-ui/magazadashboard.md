@@ -125,7 +125,7 @@
 
 ## Hotfix - Hydration Error (March 2, 2026)
 
-- Issue: Theme toggle icon in `src/app/page.tsx` rendered different SVG trees on server/client (`Sun` vs `Moon`), causing hydration mismatch.
+- Issue: Theme toggle icon in `apps/web/src/app/page.tsx` rendered different SVG trees on server/client (`Sun` vs `Moon`), causing hydration mismatch.
 - Root cause: Conditional icon render used a theme value that differs before/after hydration.
 - Fix: Rendered both icons with CSS dark-mode transitions and removed theme-conditional JSX branching.
 - Verification: `npm run lint` and `npm run build` both pass after the change.
@@ -243,17 +243,17 @@ Stitch tasarim dosyalarindaki (7 HTML) glassmorphism overlay tasarimi React/Next
 Oyun ecrani uzerinde acilan 3-sutunlu overlay: sol icon nav, orta icerik, sag profil sidebar.
 
 ### Yeni Dosyalar
-- `src/components/game/dashboard-overlay.tsx` — ana overlay container
-- `src/components/game/dashboard-nav.tsx` — sol icon sidebar (Dash/Inv/Shop/Settings)
-- `src/components/game/dashboard-profile-sidebar.tsx` — sag profil: avatar, XP, Quick Equip
-- `src/components/game/dashboard-pages/dash-content.tsx` — stat kartlari + son aktivite
-- `src/components/game/dashboard-pages/inventory-content.tsx` — envanter + preview + equip
-- `src/components/game/dashboard-pages/shop-content.tsx` — magaza + daily offers + bundles
-- `src/components/game/dashboard-pages/settings-content.tsx` — profil/oyun/gizlilik ayarlari
+- `apps/web/src/components/game/dashboard-overlay.tsx` — ana overlay container
+- `apps/web/src/components/game/dashboard-nav.tsx` — sol icon sidebar (Dash/Inv/Shop/Settings)
+- `apps/web/src/components/game/dashboard-profile-sidebar.tsx` — sag profil: avatar, XP, Quick Equip
+- `apps/web/src/components/game/dashboard-pages/dash-content.tsx` — stat kartlari + son aktivite
+- `apps/web/src/components/game/dashboard-pages/inventory-content.tsx` — envanter + preview + equip
+- `apps/web/src/components/game/dashboard-pages/shop-content.tsx` — magaza + daily offers + bundles
+- `apps/web/src/components/game/dashboard-pages/settings-content.tsx` — profil/oyun/gizlilik ayarlari
 
 ### Degisiklikler
-- `src/app/globals.css` — `.glass-overlay`, `.glass-panel`, `.animate-fade-in-up` eklendi
-- `src/app/room/[code]/page.tsx` — `showDashboard` state + LayoutDashboard butonu + overlay render
+- `apps/web/src/app/globals.css` — `.glass-overlay`, `.glass-panel`, `.animate-fade-in-up` eklendi
+- `apps/web/src/app/room/[code]/page.tsx` — `showDashboard` state + LayoutDashboard butonu + overlay render
 - `docs/dashboard.md` — detayli dokumantasyon
 
 ### Entegrasyon
@@ -277,7 +277,7 @@ Admin panelden kozmetik CRUD islemleri yapilabilir hale getirildi.
 - `/admin/shop-items` — kozmetik yonetim sayfasi (tablo, filtre, modal, gorsel yukleme)
 
 ### Degisiklikler
-- `src/components/admin/admin-sidebar.tsx` — "Kozmetikler" nav linki eklendi
+- `apps/web/src/components/admin/admin-sidebar.tsx` — "Kozmetikler" nav linki eklendi
 
 ### Kozmetik Ekleme Akisi
 1. Admin → `/admin/shop-items` → "Yeni Ekle"
@@ -293,8 +293,8 @@ Admin panelden kozmetik CRUD islemleri yapilabilir hale getirildi.
 Login olan kullanicinin ana sayfasi (`/`) in-game overlay ile ayni glassmorphism 3-sutun dashboard layout'una donusturuldu.
 
 ### Degisiklikler
-- `src/components/game/dashboard-overlay.tsx` — `DashboardLayout` shared bilesenine ayrildi
-- `src/app/page.tsx` — login kullanici: tam sayfa dashboard + compact header bar
+- `apps/web/src/components/game/dashboard-overlay.tsx` — `DashboardLayout` shared bilesenine ayrildi
+- `apps/web/src/app/page.tsx` — login kullanici: tam sayfa dashboard + compact header bar
   - Header: Logo + Yeni Oda + Oda Kodu + Duyurular + Tema + Admin + Cikis
   - Body: `DashboardLayout` (Nav | Content | Profile Sidebar)
   - Misafir gorunumu: degismedi (eski basit kart)
@@ -317,7 +317,7 @@ page.tsx (login user)
 - **Sorun:** `items.slice is not a function` hatasi — `/api/store/items` `{ items: [...] }` donduruyor ama kod `setItems(await res.json())` yapiyor.
 - **Problem:** Response objesi dogrudan array olarak kullaniliyordu.
 - **Cozum:** `Array.isArray(data) ? data : data.items ?? []` ile her iki formata uyum saglandi.
-- **Dosya:** `src/components/game/dashboard-pages/shop-content.tsx`
+- **Dosya:** `apps/web/src/components/game/dashboard-pages/shop-content.tsx`
 ## 8 Mart 2026 Plan Referansi
 
 Bu dokuman mevcut durum ve yapilan isler icin tutulur.
@@ -432,7 +432,7 @@ Bu planda netlestirilen ana kararlar:
 ## Card Back Transition Slice (9 March 2026)
 
 ### Tamamlananlar
-- `card_back` icin ayri resolver eklendi: `src/lib/cosmetics/card-back.ts`.
+- `card_back` icin ayri resolver eklendi: `apps/web/src/lib/cosmetics/card-back.ts`.
 - Gecis ekrani artik giris yapan kullanicinin equip ettigi `card_back` temasini gosterebiliyor.
 - `scripts/test-card-back-theme.ts` smoke testi ve `npm run test:card-back` komutu eklendi.
 
@@ -494,7 +494,7 @@ Bu planda netlestirilen ana kararlar:
 ## Mock Catalog Seed ve Coin Ikon Standardi (9 March 2026)
 
 ### Mock catalog
-- `src/lib/store/mock-catalog.ts` eklendi; shop item, bundle, discount ve coupon mock verileri tek yerde toplandi.
+- `apps/web/src/lib/store/mock-catalog.ts` eklendi; shop item, bundle, discount ve coupon mock verileri tek yerde toplandi.
 - `scripts/seed-store-catalog.ts` eklendi; katalog verisi Prisma CLI `db execute` ile idempotent olarak local DB'ye yaziliyor.
 - `scripts/test-mock-catalog.ts` eklendi; kod tekilligi, bundle referanslari ve image asset dosyalari dogrulaniyor.
 - Yeni komutlar:
@@ -633,7 +633,7 @@ Bu planda netlestirilen ana kararlar:
   - user agent
   - summary
   - primitive metadata
-- Ortak helper: `src/lib/security/audit-log.ts`
+- Ortak helper: `apps/web/src/lib/security/audit-log.ts`
 
 ### Loglanan admin islemleri
 - announcement create / update / delete
@@ -670,8 +670,8 @@ Bu planda netlestirilen ana kararlar:
 ## Proxy ve Nonce CSP Hardening (9 March 2026)
 
 ### Tamamlananlar
-- Next.js 16 uyumlulugu icin edge guard katmani `src/proxy.ts` dosyasina tasindi.
-- `src/middleware.ts` kaldirildi; build warning temizlendi.
+- Next.js 16 uyumlulugu icin edge guard katmani `apps/web/src/proxy.ts` dosyasina tasindi.
+- `apps/web/src/middleware.ts` kaldirildi; build warning temizlendi.
 - HTML page request'lerinde artik per-request nonce uretiliyor.
 - Root layout nonce degerini `x-nonce` header'i ile okuyup iki kritik inline script yuzeyine uyguluyor:
   - hydration warning suppression script
@@ -776,7 +776,7 @@ Bu planda netlestirilen ana kararlar:
 - Grid sirasini backend `sortOrder` belirlemeye devam eder; admin tam kontrol sahibidir.
 
 ### Hydration hotfix
-- `src/app/layout.tsx` icindeki inline nonce script'i kaldirildi.
+- `apps/web/src/app/layout.tsx` icindeki inline nonce script'i kaldirildi.
 - `nonce=""` / `nonce="..."` uyusmazligindan dogan hydration hatasi kapanmis oldu.
 - CSP nonce akisi bozulmadi; `next-themes` nonce ile calismaya devam eder.
 

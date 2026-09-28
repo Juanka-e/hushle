@@ -6,10 +6,11 @@ import {
     mockCouponCodes,
     mockDiscountCampaigns,
     mockShopItems,
-} from "../src/lib/store/mock-catalog";
+} from "../apps/web/src/lib/store/mock-catalog";
 
 const itemCodes = new Set<string>();
 const itemSortOrders = new Set<number>();
+const webPublicRoot = path.join(process.cwd(), "apps", "web", "public");
 for (const item of mockShopItems) {
     assert.equal(itemCodes.has(item.code), false, `Duplicate shop item code: ${item.code}`);
     itemCodes.add(item.code);
@@ -22,7 +23,7 @@ for (const item of mockShopItems) {
     }
 
     if (item.renderMode === "image") {
-        const assetPath = path.join(process.cwd(), "public", item.imageUrl.replace(/^\//, ""));
+        const assetPath = path.join(webPublicRoot, item.imageUrl.replace(/^\//, ""));
         assert.equal(fs.existsSync(assetPath), true, `Missing asset for ${item.code}: ${assetPath}`);
     }
 }

@@ -1,0 +1,24 @@
+{
+  "name": "@hushle/platform-email",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@hushle/platform-db": "0.1.0",
+    "nodemailer": "^9.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/nodemailer": "^7.0.11",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

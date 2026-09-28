@@ -35,6 +35,11 @@ Production hedefi:
 - MySQL: `127.0.0.1:3306` veya private interface
 - Redis/Valkey: `127.0.0.1` veya private interface
 
+Docker istisnasi:
+- app ayri container icindeyse `HOST=0.0.0.0` olmali
+- bu tek basina public exposure anlamina gelmez
+- guvenlik kosulu, app portunun host'a publish edilmemesi ve sadece private Docker network uzerinden Nginx tarafindan erisilmesidir
+
 ## 3. Neden Backend Portu Public Olmamali?
 
 Node/Next portu dogrudan disariya acik olursa:
@@ -64,6 +69,20 @@ Bu dogru degil.
 Pratikte daha olasi sonuc:
 - `UntrustedHost` hatasi
 - login/session akisinin bozulmasi
+
+### Local Development Notu
+
+Development ortaminda `localhost` veya benzeri local origin'lerde Auth.js host guveni pratik olarak acik olmalidir.
+
+Bu projede karar:
+
+- `NODE_ENV !== "production"` iken local dev host'lari otomatik trusted kabul edilir
+- production'da ise `AUTH_TRUST_HOST=true` acikca verilmelidir
+
+Yani:
+
+- local development'ta `AUTH_TRUST_HOST` zorunlu degil
+- production'da zorunlu karar alanidir
 
 Dogru guvenlik modeli:
 
@@ -145,6 +164,67 @@ Minimum beklenti:
 - `Host` gecmeli
 - `X-Forwarded-Proto` gecmeli
 - websocket upgrade header'lari gecmeli
+
+## 6.2 Cloudflare Origin Certificate Akisi
+
+Cloudflare kullanilacaksa pratik model:
+
+1. DNS Cloudflare uzerinden yonetilir
+2. sunucuda public giris yine Nginx olur
+3. Cloudflare Origin Certificate uretilir
+4. cert ve key repo'ya commit edilmez
+5. Nginx container'ina read-only mount edilir
+
+Bu repo icindeki beklenen yol:
+
+- `nginx/ssl/origin-cert.pem`
+- `nginx/ssl/origin-key.pem`
+
+Cloudflare SSL/TLS modu:
+- `Full (strict)`
+
+Onemli:
+- `.pem` dosyalarini uygulama koduna koyma
+- sadece Nginx katmanina mount et
+- app container SSL terminate etmesin
+
+## 6.1 `TRUST_PROXY` Karari
+
+Bu projede `TRUST_PROXY`, uygulamanin su header'lara guvenip guvenmeyecegini belirler:
+
+- `X-Forwarded-For`
+- `X-Real-IP`
+
+Bu bilgi su alanlari etkiler:
+- request rate limit anahtarlari
+- audit log IP kaydi
+- bazi operasyonel gozlemleme alanlari
+
+Dogru kullanim:
+
+```env
+TRUST_PROXY=true
+```
+
+Ama bu sadece su sartlarda dogrudur:
+
+1. backend public degil
+2. Nginx tek giris noktasi
+3. Nginx bu header'lari kendisi set ediyor
+4. firewall ile raw app portu kapali
+
+Yanlis kullanim:
+- backend hala publicken `TRUST_PROXY=true`
+
+Bu durumda biri backend'i dogrudan vurup spoofed `X-Forwarded-For` gonderebilir.
+Sonuc:
+- audit IP kirlenir
+- rate limit anahtarlari yanlislasir
+- gelecekte IP gorunurlugu gibi operasyonel kararlar bozulur
+
+Guvenli kural:
+- `Nginx + private backend` ise `TRUST_PROXY=true`
+- aksi halde `TRUST_PROXY=false`
 
 ## 7. Firewall / Port Politikasi
 
@@ -252,6 +332,50 @@ Deploy oncesi kontrol:
 9. `HEALTHCHECK_TOKEN` set
 10. canonical host disinda istekler redirect veya reject oluyor
 
+## 12.1 Prisma On Windows
+
+Windows local development'ta `prisma db push` sonundaki otomatik generate asamasi bazen:
+
+- `EPERM`
+- `query_engine-windows.dll.node` rename hatasi
+
+uretebilir.
+
+Bu tipik olarak engine dosyasinin bir baska process tarafindan kullaniliyor olmasindan kaynaklanir.
+
+Bu repo icin yalniz gecici local prototipte kullanilan akim:
+
+1. `npm run db:push:local`
+   - `prisma db push --skip-generate`
+2. `npm run db:generate`
+   - `prisma generate`
+
+Toplu akim:
+
+```bash
+npm run db:sync
+```
+
+Merge edilecek kalici schema degisikliklerinde `db push` kullanilmaz. Migration
+`npm run db:migrate:dev -- --name <acik-ad>` ile uretilir; production'da
+`npm run db:migrate:deploy` ile uygulanir. Baseline ve release proseduru icin
+`docs/deploy/database-migrations.md` izlenir.
+
+Bu sayede:
+
+- schema sync ayri yapilir
+- generate ayri yapilir
+- Windows'taki gereksiz `EPERM` gürültüsü azalir
+Not:
+- Bu repo icin --no-engine akisi tercih edilmiyor.
+- Local MySQL development icin klasik prisma generate kullanilmali.
+- EPERM gorursen en sik neden dev server veya baska bir process''in Prisma engine dosyasini kilitlemesidir.
+- Bu durumda:
+  1. dev server''i durdur
+  2. 
+pm run db:generate calistir
+  3. dev server''i yeniden baslat
+
 ## 13. En Sik Yanlislar
 
 1. `AUTH_TRUST_HOST=false` yapip guvenligi arttirdigini sanmak
@@ -281,3 +405,4 @@ Bu proje icin guvenli production modeli:
 6. Health endpoint token ile korunmus
 
 Bu model, host trust ve reverse proxy konusunu en dusuk operasyonel riskle yonetir.
+

@@ -1,4 +1,4 @@
-﻿# AI Agents Security Review
+# AI Agents Security Review
 
 > Son guncelleme: 15 March 2026
 > Branch: `fix/security-review-remediation`
@@ -14,11 +14,11 @@
 ## Dogrulanan Bulgular
 
 ### [SEC-001] Untrusted `callbackUrl` ile client-side redirect sink (High) - Fixed
-- **Konum:** `src/app/login/page.tsx`, `src/app/admin/login/page.tsx`
+- **Konum:** `apps/web/src/app/login/page.tsx`, `apps/web/src/app/admin/login/page.tsx`
 - **Guven:** High
 - **Sorun:** `callbackUrl` query parametresi dogrudan istemci yonlendirme sink'ine gidiyordu.
 - **Etki:** Login sonrasi acik redirect veya guvensiz URL sink davranisi olusabilirdi.
-- **Duzeltme:** `src/lib/security/safe-callback-url.ts` eklendi. Sadece internal/same-origin path'ler kabul ediliyor.
+- **Duzeltme:** `apps/web/src/lib/security/safe-callback-url.ts` eklendi. Sadece internal/same-origin path'ler kabul ediliyor.
 - **Durum:** Fixed
 
 ## Bu Branch'te Tamamlanan Savunma Iyilestirmeleri
@@ -44,7 +44,7 @@
 - **Durum:** Completed
 
 ### [HARDEN-003] `/api/support/*` ve `/api/coin-grants/*` proxy origin korumasi kapsamina alindi
-- **Konum:** `src/proxy.ts`
+- **Konum:** `apps/web/src/proxy.ts`
 - **Not:** Bu review'de bunu ayri bir yuksek guven acik olarak raporlamadim. Buna ragmen state-changing endpoint'ler merkezi origin gate altina alindi.
 - **Durum:** Completed
 

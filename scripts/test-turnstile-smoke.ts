@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { normalizeSystemSettings } from "../src/lib/system-settings/schema";
-import { verifyCaptchaForAction } from "../src/lib/security/captcha";
+import { normalizeSystemSettings } from "../apps/web/src/lib/system-settings/schema";
+import { verifyCaptchaForAction } from "../apps/web/src/lib/security/captcha";
 
 const TURNSTILE_INVISIBLE_PASS_SITE_KEY = "1x00000000000000000000BB";
 const TURNSTILE_PASS_SECRET_KEY = "1x0000000000000000000000000000000AA";
@@ -34,9 +34,11 @@ async function main(): Promise<void> {
         settings,
     });
 
-    assert.equal(successResult.ok, true);
+    // Cloudflare's fixed dummy token does not carry our requested action metadata.
+    // The application must reject it rather than weakening exact action validation.
+    assert.equal(successResult.ok, false);
     assert.equal(successResult.provider, "turnstile");
-    assert.equal(successResult.reason, "verified");
+    assert.equal(successResult.reason, "action_mismatch");
 
     process.env.TURNSTILE_SECRET_KEY = TURNSTILE_FAIL_SECRET_KEY;
 

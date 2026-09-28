@@ -1,0 +1,216 @@
+<svg width="1680" height="1600" viewBox="0 0 1680 1600" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="page" x1="840" y1="0" x2="840" y2="1600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#05080E"/>
+      <stop offset="1" stop-color="#0B111A"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="22" stdDeviation="22" flood-color="#020617" flood-opacity="0.46"/>
+    </filter>
+    <linearGradient id="obsidianCard" x1="0" y1="0" x2="0" y2="390">
+      <stop stop-color="#0A1120"/>
+      <stop offset="0.54" stop-color="#111B2F"/>
+      <stop offset="1" stop-color="#0A0F17"/>
+    </linearGradient>
+    <linearGradient id="pearlCard" x1="0" y1="0" x2="0" y2="390">
+      <stop stop-color="#FFF9FC"/>
+      <stop offset="0.56" stop-color="#FFF4F7"/>
+      <stop offset="1" stop-color="#FEF1F2"/>
+    </linearGradient>
+    <linearGradient id="linenCard" x1="0" y1="0" x2="0" y2="390">
+      <stop stop-color="#F3EAD5"/>
+      <stop offset="0.56" stop-color="#ECDCBE"/>
+      <stop offset="1" stop-color="#E2D2AF"/>
+    </linearGradient>
+    <linearGradient id="foilCard" x1="0" y1="0" x2="0" y2="390">
+      <stop stop-color="#151B30"/>
+      <stop offset="0.56" stop-color="#1D233C"/>
+      <stop offset="1" stop-color="#151928"/>
+    </linearGradient>
+    <linearGradient id="velvetCard" x1="0" y1="0" x2="0" y2="390">
+      <stop stop-color="#351216"/>
+      <stop offset="0.5" stop-color="#26111A"/>
+      <stop offset="1" stop-color="#120D12"/>
+    </linearGradient>
+    <linearGradient id="carbonCard" x1="0" y1="0" x2="0" y2="390">
+      <stop stop-color="#0E131C"/>
+      <stop offset="0.56" stop-color="#151B25"/>
+      <stop offset="1" stop-color="#0B0F16"/>
+    </linearGradient>
+    <linearGradient id="vellumCard" x1="0" y1="0" x2="0" y2="390">
+      <stop stop-color="#FBFEFF"/>
+      <stop offset="0.56" stop-color="#F3F8FF"/>
+      <stop offset="1" stop-color="#EDF4FF"/>
+    </linearGradient>
+    <linearGradient id="holoCard" x1="0" y1="0" x2="0" y2="390">
+      <stop stop-color="#0F2941"/>
+      <stop offset="0.56" stop-color="#103149"/>
+      <stop offset="1" stop-color="#0C2032"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1680" height="1600" fill="url(#page)"/>
+  <circle cx="220" cy="170" r="180" fill="#1E293B" fill-opacity="0.18"/>
+  <circle cx="1490" cy="140" r="120" fill="#7C3AED" fill-opacity="0.1"/>
+  <circle cx="1370" cy="1320" r="180" fill="#0EA5E9" fill-opacity="0.08"/>
+
+  <text x="90" y="96" fill="#F8FAFC" font-size="46" font-family="Arial, sans-serif" font-weight="800">Hushle Material Card Lab</text>
+  <text x="90" y="136" fill="#94A3B8" font-size="22" font-family="Arial, sans-serif">Kartin kendi malzemesi premium hissettirsin: folyo, keten, inci, holo, karbon, kadife.</text>
+
+  <!-- helper function mimicked manually -->
+  <!-- Row 1 -->
+  <g transform="translate(90 210)">
+    <g filter="url(#shadow)">
+      <rect width="320" height="470" rx="30" fill="url(#obsidianCard)" stroke="#67E8F9" stroke-opacity="0.22"/>
+      <rect x="14" y="14" width="292" height="442" rx="24" stroke="rgba(255,255,255,0.12)"/>
+      <rect width="320" height="118" rx="30" fill="url(#obsidianCard)"/>
+      <rect width="320" height="118" rx="30" fill="url(#obsidianHead)"/>
+      <defs><linearGradient id="obsidianHead" x1="0" y1="0" x2="320" y2="118"><stop stop-color="#25154E"/><stop offset="0.52" stop-color="#102D48"/><stop offset="1" stop-color="#08101A"/></linearGradient></defs>
+      <text x="160" y="45" text-anchor="middle" fill="#CFFAFE" font-size="11" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">HUSHLE</text>
+      <text x="160" y="84" text-anchor="middle" fill="#ECFEFF" font-size="28" font-family="Arial, sans-serif" font-weight="900" letter-spacing="5">EJDERHA</text>
+      <circle cx="280" cy="34" r="14" fill="white" fill-opacity="0.1"/>
+      <text x="280" y="39" text-anchor="middle" fill="#ECFEFF" font-size="11" font-family="Arial, sans-serif" font-weight="900">✦</text>
+      <g fill="#ECFEFF" font-size="14" font-family="Arial, sans-serif" font-weight="800">
+        <text x="34" y="185">×  ATES</text><text x="34" y="225">×  KANAT</text><text x="34" y="265">×  EFSANE</text><text x="34" y="305">×  KALE</text><text x="34" y="345">×  UCMAK</text>
+      </g>
+      <rect y="454" width="320" height="16" fill="url(#obsidianFoot)"/>
+      <defs><linearGradient id="obsidianFoot" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#22D3EE"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs>
+    </g>
+    <text x="0" y="505" fill="#F8FAFC" font-size="22" font-family="Arial, sans-serif" font-weight="800">Obsidian Prism</text>
+    <text x="0" y="536" fill="#94A3B8" font-size="16" font-family="Arial, sans-serif">Siyah cam + neon prizma kenari.</text>
+  </g>
+
+  <g transform="translate(480 210)">
+    <g filter="url(#shadow)">
+      <rect width="320" height="470" rx="30" fill="url(#pearlCard)" stroke="white" stroke-opacity="0.35"/>
+      <rect width="320" height="118" rx="30" fill="url(#pearlHead)"/>
+      <defs><linearGradient id="pearlHead" x1="0" y1="0" x2="320" y2="118"><stop stop-color="#38BDF8"/><stop offset="0.52" stop-color="#FB7185"/><stop offset="1" stop-color="#F9A8D4"/></linearGradient></defs>
+      <text x="160" y="45" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">HUSHLE</text>
+      <text x="160" y="84" text-anchor="middle" fill="white" font-size="28" font-family="Arial, sans-serif" font-weight="900" letter-spacing="5">LOKUM</text>
+      <circle cx="280" cy="34" r="14" fill="white" fill-opacity="0.18"/>
+      <text x="280" y="39" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900">✷</text>
+      <g fill="#334155" font-size="14" font-family="Arial, sans-serif" font-weight="800">
+        <text x="34" y="185">×  TATLI</text><text x="34" y="225">×  SEKER</text><text x="34" y="265">×  PEMBE</text><text x="34" y="305">×  KUTU</text><text x="34" y="345">×  YEMEK</text>
+      </g>
+      <rect y="454" width="320" height="16" fill="url(#pearlFoot)"/>
+      <defs><linearGradient id="pearlFoot" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#38BDF8"/><stop offset="1" stop-color="#FB7185"/></linearGradient></defs>
+    </g>
+    <text x="0" y="505" fill="#F8FAFC" font-size="22" font-family="Arial, sans-serif" font-weight="800">Pearl Bloom</text>
+    <text x="0" y="536" fill="#94A3B8" font-size="16" font-family="Arial, sans-serif">Inci parlakligi + yumusak lak.</text>
+  </g>
+
+  <g transform="translate(870 210)">
+    <g filter="url(#shadow)">
+      <rect width="320" height="470" rx="30" fill="url(#linenCard)" stroke="#FDE68A" stroke-opacity="0.22"/>
+      <rect width="320" height="118" rx="30" fill="url(#linenHead)"/>
+      <defs><linearGradient id="linenHead" x1="0" y1="0" x2="320" y2="118"><stop stop-color="#4E3422"/><stop offset="0.52" stop-color="#87603B"/><stop offset="1" stop-color="#B58A56"/></linearGradient></defs>
+      <text x="160" y="45" text-anchor="middle" fill="#FFF8EB" font-size="11" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">HUSHLE</text>
+      <text x="160" y="84" text-anchor="middle" fill="#FFF8EB" font-size="24" font-family="Arial, sans-serif" font-weight="900" letter-spacing="3">ANSIKLOPEDI</text>
+      <circle cx="280" cy="34" r="14" fill="white" fill-opacity="0.14"/>
+      <text x="280" y="39" text-anchor="middle" fill="#FFF8EB" font-size="11" font-family="Arial, sans-serif" font-weight="900">✧</text>
+      <g fill="#4F3820" font-size="14" font-family="Arial, sans-serif" font-weight="800">
+        <text x="34" y="185">×  KITAP</text><text x="34" y="225">×  BILGI</text><text x="34" y="265">×  CILT</text><text x="34" y="305">×  RAF</text><text x="34" y="345">×  OKUMAK</text>
+      </g>
+      <rect y="454" width="320" height="16" fill="url(#linenFoot)"/>
+      <defs><linearGradient id="linenFoot" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#6B4D2D"/><stop offset="1" stop-color="#D2A86D"/></linearGradient></defs>
+    </g>
+    <text x="0" y="505" fill="#F8FAFC" font-size="22" font-family="Arial, sans-serif" font-weight="800">Linen Archive</text>
+    <text x="0" y="536" fill="#94A3B8" font-size="16" font-family="Arial, sans-serif">Mat kumas hissi veren zeki bir klasik.</text>
+  </g>
+
+  <g transform="translate(1260 210)">
+    <g filter="url(#shadow)">
+      <rect width="320" height="470" rx="30" fill="url(#foilCard)" stroke="#F5D27B" stroke-opacity="0.38"/>
+      <rect width="320" height="118" rx="30" fill="url(#foilHead)"/>
+      <defs><linearGradient id="foilHead" x1="0" y1="0" x2="320" y2="118"><stop stop-color="#EED08A"/><stop offset="1" stop-color="#B98B33"/></linearGradient></defs>
+      <text x="160" y="45" text-anchor="middle" fill="#493512" font-size="11" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">HUSHLE</text>
+      <text x="160" y="84" text-anchor="middle" fill="#493512" font-size="28" font-family="Arial, sans-serif" font-weight="900" letter-spacing="5">TAC</text>
+      <circle cx="280" cy="34" r="14" fill="white" fill-opacity="0.24"/>
+      <text x="280" y="39" text-anchor="middle" fill="#493512" font-size="11" font-family="Arial, sans-serif" font-weight="900">✹</text>
+      <g fill="#F3DEB0" font-size="14" font-family="Arial, sans-serif" font-weight="800">
+        <text x="34" y="185">×  KRAL</text><text x="34" y="225">×  ALTIN</text><text x="34" y="265">×  BAS</text><text x="34" y="305">×  SARAY</text><text x="34" y="345">×  MUCEVHER</text>
+      </g>
+      <rect y="454" width="320" height="16" fill="url(#foilFoot)"/>
+      <defs><linearGradient id="foilFoot" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#C38B2A"/><stop offset="1" stop-color="#F0D07F"/></linearGradient></defs>
+    </g>
+    <text x="0" y="505" fill="#F8FAFC" font-size="22" font-family="Arial, sans-serif" font-weight="800">Foil Crown</text>
+    <text x="0" y="536" fill="#94A3B8" font-size="16" font-family="Arial, sans-serif">Altin folyo + mine zemin.</text>
+  </g>
+
+  <!-- Row 2 -->
+  <g transform="translate(90 850)">
+    <g filter="url(#shadow)">
+      <rect width="320" height="470" rx="30" fill="url(#velvetCard)" stroke="#FDBA74" stroke-opacity="0.22"/>
+      <rect width="320" height="118" rx="30" fill="url(#velvetHead)"/>
+      <defs><linearGradient id="velvetHead" x1="0" y1="0" x2="320" y2="118"><stop stop-color="#9A3412"/><stop offset="0.52" stop-color="#EF5B22"/><stop offset="1" stop-color="#F59E0B"/></linearGradient></defs>
+      <text x="160" y="45" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">HUSHLE</text>
+      <text x="160" y="84" text-anchor="middle" fill="white" font-size="28" font-family="Arial, sans-serif" font-weight="900" letter-spacing="5">VOLKAN</text>
+      <circle cx="280" cy="34" r="14" fill="white" fill-opacity="0.18"/>
+      <text x="280" y="39" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900">✦</text>
+      <g fill="#FFEDD5" font-size="14" font-family="Arial, sans-serif" font-weight="800">
+        <text x="34" y="185">×  LAV</text><text x="34" y="225">×  ATES</text><text x="34" y="265">×  DAG</text><text x="34" y="305">×  DUMAN</text><text x="34" y="345">×  PATLAMA</text>
+      </g>
+      <rect y="454" width="320" height="16" fill="url(#velvetFoot)"/>
+      <defs><linearGradient id="velvetFoot" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#F97316"/><stop offset="1" stop-color="#EF4444"/></linearGradient></defs>
+    </g>
+    <text x="0" y="505" fill="#F8FAFC" font-size="22" font-family="Arial, sans-serif" font-weight="800">Velvet Ember</text>
+    <text x="0" y="536" fill="#94A3B8" font-size="16" font-family="Arial, sans-serif">Koyu kadife ve kor yansimasi.</text>
+  </g>
+
+  <g transform="translate(480 850)">
+    <g filter="url(#shadow)">
+      <rect width="320" height="470" rx="30" fill="url(#carbonCard)" stroke="white" stroke-opacity="0.14"/>
+      <rect width="320" height="118" rx="30" fill="url(#carbonHead)"/>
+      <defs><linearGradient id="carbonHead" x1="0" y1="0" x2="320" y2="118"><stop stop-color="#0F172A"/><stop offset="0.52" stop-color="#374151"/><stop offset="1" stop-color="#111827"/></linearGradient></defs>
+      <text x="160" y="45" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">HUSHLE</text>
+      <text x="160" y="84" text-anchor="middle" fill="white" font-size="28" font-family="Arial, sans-serif" font-weight="900" letter-spacing="5">PILOT</text>
+      <circle cx="280" cy="34" r="14" fill="white" fill-opacity="0.1"/>
+      <text x="280" y="39" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900">◈</text>
+      <g fill="#E2E8F0" font-size="14" font-family="Arial, sans-serif" font-weight="800">
+        <text x="34" y="185">×  KOKPIT</text><text x="34" y="225">×  KANAT</text><text x="34" y="265">×  YAKIT</text><text x="34" y="305">×  ROTA</text><text x="34" y="345">×  HIZ</text>
+      </g>
+      <rect y="454" width="320" height="16" fill="url(#carbonFoot)"/>
+      <defs><linearGradient id="carbonFoot" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#475569"/><stop offset="1" stop-color="#EF4444"/></linearGradient></defs>
+    </g>
+    <text x="0" y="505" fill="#F8FAFC" font-size="22" font-family="Arial, sans-serif" font-weight="800">Carbon Drive</text>
+    <text x="0" y="536" fill="#94A3B8" font-size="16" font-family="Arial, sans-serif">Karbon fiber + satin metal.</text>
+  </g>
+
+  <g transform="translate(870 850)">
+    <g filter="url(#shadow)">
+      <rect width="320" height="470" rx="30" fill="url(#vellumCard)" stroke="#BAE6FD" stroke-opacity="0.26"/>
+      <rect width="320" height="118" rx="30" fill="url(#vellumHead)"/>
+      <defs><linearGradient id="vellumHead" x1="0" y1="0" x2="320" y2="118"><stop stop-color="#81C8F1"/><stop offset="0.52" stop-color="#9CD7F7"/><stop offset="1" stop-color="#D4EFFF"/></linearGradient></defs>
+      <text x="160" y="45" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">HUSHLE</text>
+      <text x="160" y="84" text-anchor="middle" fill="white" font-size="28" font-family="Arial, sans-serif" font-weight="900" letter-spacing="5">AURORA</text>
+      <circle cx="280" cy="34" r="14" fill="white" fill-opacity="0.2"/>
+      <text x="280" y="39" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900">✳</text>
+      <g fill="#334155" font-size="14" font-family="Arial, sans-serif" font-weight="800">
+        <text x="34" y="185">×  KUTUP</text><text x="34" y="225">×  ISIK</text><text x="34" y="265">×  YESIL</text><text x="34" y="305">×  GECE</text><text x="34" y="345">×  GOKYUZU</text>
+      </g>
+      <rect y="454" width="320" height="16" fill="url(#vellumFoot)"/>
+      <defs><linearGradient id="vellumFoot" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#7DD3FC"/><stop offset="1" stop-color="#C4B5FD"/></linearGradient></defs>
+    </g>
+    <text x="0" y="505" fill="#F8FAFC" font-size="22" font-family="Arial, sans-serif" font-weight="800">Vellum Mist</text>
+    <text x="0" y="536" fill="#94A3B8" font-size="16" font-family="Arial, sans-serif">Kagit + sisli boya yumuşakligi.</text>
+  </g>
+
+  <g transform="translate(1260 850)">
+    <g filter="url(#shadow)">
+      <rect width="320" height="470" rx="30" fill="url(#holoCard)" stroke="#67E8F9" stroke-opacity="0.22"/>
+      <rect width="320" height="118" rx="30" fill="url(#holoHead)"/>
+      <defs><linearGradient id="holoHead" x1="0" y1="0" x2="320" y2="118"><stop stop-color="#1AA0D0"/><stop offset="0.56" stop-color="#37B5DF"/><stop offset="1" stop-color="#0E7490"/></linearGradient></defs>
+      <text x="160" y="45" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900" letter-spacing="4">HUSHLE</text>
+      <text x="160" y="84" text-anchor="middle" fill="white" font-size="28" font-family="Arial, sans-serif" font-weight="900" letter-spacing="5">MERCAN</text>
+      <circle cx="280" cy="34" r="14" fill="white" fill-opacity="0.16"/>
+      <text x="280" y="39" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="900">✦</text>
+      <g fill="#E0F2FE" font-size="14" font-family="Arial, sans-serif" font-weight="800">
+        <text x="34" y="185">×  DENIZ</text><text x="34" y="225">×  RENK</text><text x="34" y="265">×  BALIK</text><text x="34" y="305">×  KAYALIK</text><text x="34" y="345">×  SU ALTI</text>
+      </g>
+      <rect y="454" width="320" height="16" fill="url(#holoFoot)"/>
+      <defs><linearGradient id="holoFoot" x1="0" y1="0" x2="320" y2="0"><stop stop-color="#22D3EE"/><stop offset="1" stop-color="#38BDF8"/></linearGradient></defs>
+    </g>
+    <text x="0" y="505" fill="#F8FAFC" font-size="22" font-family="Arial, sans-serif" font-weight="800">Holo Tide</text>
+    <text x="0" y="536" fill="#94A3B8" font-size="16" font-family="Arial, sans-serif">Dalgali holografik mavi shell.</text>
+  </g>
+</svg>

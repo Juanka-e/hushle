@@ -1,5 +1,5 @@
-import { notificationListQuerySchema, notificationParamsSchema } from "../src/lib/notifications/schema";
-import { shouldCreateSupportStatusNotification } from "../src/lib/notifications/service";
+import { notificationListQuerySchema, notificationParamsSchema } from "../apps/web/src/lib/notifications/schema";
+import { shouldCreateSupportStatusNotification } from "../apps/web/src/lib/notifications/service";
 
 const unreadQuery = notificationListQuerySchema.parse({
     limit: "30",

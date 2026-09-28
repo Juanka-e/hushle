@@ -3,7 +3,7 @@ import {
     getTemplateNumber,
     getTemplateString,
     normalizeTemplateConfig,
-} from "../src/lib/cosmetics/template-config";
+} from "../apps/web/src/lib/cosmetics/template-config";
 
 const normalized = normalizeTemplateConfig({
     palette: {

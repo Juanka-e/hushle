@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveRoomCardThemes } from "../src/lib/cosmetics/room-card-themes";
+import { resolveRoomCardThemes } from "../apps/web/src/lib/cosmetics/room-card-themes";
 
 const emptyThemes = resolveRoomCardThemes(null);
 
@@ -8,6 +8,7 @@ assert.equal(emptyThemes.cardBackTheme, null);
 
 const resolvedThemes = resolveRoomCardThemes({
     cardFace: {
+        renderSpecVersion: 1,
         renderMode: "template",
         imageUrl: "",
         templateKey: "signal_grid",
@@ -25,6 +26,7 @@ const resolvedThemes = resolveRoomCardThemes({
         rarity: "epic",
     },
     cardBack: {
+        renderSpecVersion: 999,
         renderMode: "image",
         imageUrl: "/cosmetics/mock/card-backs/ember-vault.svg",
         templateKey: null,
@@ -35,7 +37,12 @@ const resolvedThemes = resolveRoomCardThemes({
 
 assert.equal(resolvedThemes.cardFaceTheme?.accentColor, "#22c55e");
 assert.equal(resolvedThemes.cardFaceTheme?.motionPreset, "pulse");
+assert.equal(resolvedThemes.cardFaceTheme?.renderSpecVersion, 1);
+assert.equal(resolvedThemes.cardFaceTheme?.usedRenderSpecFallback, false);
 assert.equal(resolvedThemes.cardBackTheme?.overlayImageUrl, "/cosmetics/mock/card-backs/ember-vault.svg");
 assert.equal(resolvedThemes.cardBackTheme?.overlayOpacity, 0.24);
+assert.equal(resolvedThemes.cardBackTheme?.requestedRenderSpecVersion, 999);
+assert.equal(resolvedThemes.cardBackTheme?.renderSpecVersion, 1);
+assert.equal(resolvedThemes.cardBackTheme?.usedRenderSpecFallback, true);
 
 console.log("room-card theme smoke test passed");

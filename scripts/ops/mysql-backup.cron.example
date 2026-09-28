@@ -1,0 +1,1 @@
+15 3 * * * cd /srv/hushle/app && /usr/bin/env bash scripts/ops/mysql-backup.sh >> /var/log/hushle-mysql-backup.log 2>&1

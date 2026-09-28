@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="tr">
 
 <head>
@@ -42,7 +42,7 @@
             min-height: 100vh;
         }
 
-        /* â”€â”€â”€ Ambient â”€â”€â”€ */
+        /* ─── Ambient ─── */
         .ambient {
             position: fixed;
             inset: 0;
@@ -76,7 +76,7 @@
             right: -50px;
         }
 
-        /* â”€â”€â”€ Top Nav â”€â”€â”€ */
+        /* ─── Top Nav ─── */
         .nav {
             position: sticky;
             top: 0;
@@ -187,7 +187,7 @@
             transform: translateY(-1px);
         }
 
-        /* â”€â”€â”€ Main â”€â”€â”€ */
+        /* ─── Main ─── */
         main {
             position: relative;
             z-index: 1;
@@ -196,7 +196,7 @@
             padding: 32px 24px;
         }
 
-        /* â”€â”€â”€ Welcome â”€â”€â”€ */
+        /* ─── Welcome ─── */
         .welcome {
             padding: 28px 32px;
             border-radius: 20px;
@@ -225,7 +225,7 @@
             gap: 10px;
         }
 
-        /* â”€â”€â”€ Grid â”€â”€â”€ */
+        /* ─── Grid ─── */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -289,7 +289,7 @@
             margin-bottom: 6px;
         }
 
-        /* â”€â”€â”€ Sections â”€â”€â”€ */
+        /* ─── Sections ─── */
         .section-grid {
             display: grid;
             grid-template-columns: 2fr 1fr;
@@ -315,7 +315,7 @@
             gap: 8px;
         }
 
-        /* â”€â”€â”€ Match History â”€â”€â”€ */
+        /* ─── Match History ─── */
         .match-row {
             display: flex;
             align-items: center;
@@ -368,7 +368,7 @@
             font-weight: 600;
         }
 
-        /* â”€â”€â”€ Quick Actions â”€â”€â”€ */
+        /* ─── Quick Actions ─── */
         .action-card {
             display: block;
             padding: 20px;
@@ -408,7 +408,7 @@
             margin-top: 4px;
         }
 
-        /* â”€â”€â”€ Inventory Mini â”€â”€â”€ */
+        /* ─── Inventory Mini ─── */
         .inventory-row {
             display: flex;
             align-items: center;
@@ -506,16 +506,16 @@
         <div class="b b2"></div>
     </div>
 
-    <!-- â•â•â•â•â•â•â• NAV â•â•â•â•â•â•â• -->
+    <!-- ═══════ NAV ═══════ -->
     <nav class="nav">
         <div class="nav-logo">TABU</div>
         <div class="nav-links">
             <a class="nav-link active" href="#">Dashboard</a>
             <a class="nav-link" href="#">Profil</a>
-            <a class="nav-link" href="#">MaÄŸaza</a>
+            <a class="nav-link" href="#">Mağaza</a>
         </div>
         <div class="nav-right">
-            <button class="btn-play">ğŸ® Oyna</button>
+            <button class="btn-play">🎮 Oyna</button>
             <div class="nav-user">
                 <div class="nav-avatar">EP</div>
                 <div>
@@ -526,16 +526,16 @@
         </div>
     </nav>
 
-    <!-- â•â•â•â•â•â•â• MAIN â•â•â•â•â•â•â• -->
+    <!-- ═══════ MAIN ═══════ -->
     <main>
         <!-- Welcome -->
         <div class="welcome">
             <div>
-                <h1>HoÅŸ geldin, Erdal ğŸ‘‹</h1>
-                <p>Son 7 gÃ¼nde 12 maÃ§ oynadÄ±n â€” gÃ¼zel performans!</p>
+                <h1>Hoş geldin, Erdal 👋</h1>
+                <p>Son 7 günde 12 maç oynadın — güzel performans!</p>
             </div>
             <div class="welcome-actions">
-                <button class="btn-play" style="padding:12px 28px;font-size:.9rem;">â• Yeni Oda</button>
+                <button class="btn-play" style="padding:12px 28px;font-size:.9rem;">➕ Yeni Oda</button>
             </div>
         </div>
 
@@ -545,23 +545,23 @@
                 <div class="stat-icon"><span class="coin-mark" aria-hidden="true"></span></div>
                 <div class="stat-label">Coin Bakiyesi</div>
                 <div class="stat-value">2,450</div>
-                <div class="stat-sub">Son maÃ§tan +120</div>
+                <div class="stat-sub">Son maçtan +120</div>
             </div>
             <div class="stat-card stat-match">
-                <div class="stat-icon">ğŸ®</div>
-                <div class="stat-label">Toplam MaÃ§</div>
+                <div class="stat-icon">🎮</div>
+                <div class="stat-label">Toplam Maç</div>
                 <div class="stat-value">47</div>
                 <div class="stat-sub">Bu hafta 12</div>
             </div>
             <div class="stat-card stat-win">
-                <div class="stat-icon">ğŸ†</div>
+                <div class="stat-icon">🏆</div>
                 <div class="stat-label">Winrate</div>
                 <div class="stat-value">%68</div>
                 <div class="stat-sub">32 galibiyet</div>
             </div>
             <div class="stat-card stat-streak">
-                <div class="stat-icon">ğŸ”¥</div>
-                <div class="stat-label">En Ä°yi Seri</div>
+                <div class="stat-icon">🔥</div>
+                <div class="stat-label">En İyi Seri</div>
                 <div class="stat-value">5</div>
                 <div class="stat-sub">Aktif seri: 3</div>
             </div>
@@ -571,35 +571,35 @@
         <div class="section-grid">
             <!-- Match History -->
             <div class="panel">
-                <div class="panel-title">ğŸ“‹ Son MaÃ§lar</div>
+                <div class="panel-title">📋 Son Maçlar</div>
                 <div class="match-row">
                     <span class="match-code">XKBR</span>
-                    <span class="match-result match-win">KazandÄ±</span>
-                    <span class="match-score">45 â€” 32</span>
+                    <span class="match-result match-win">Kazandı</span>
+                    <span class="match-score">45 — 32</span>
                     <span class="match-coins">+120 <span class="coin-mark" aria-hidden="true"></span></span>
                 </div>
                 <div class="match-row">
                     <span class="match-code">PLMN</span>
-                    <span class="match-result match-win">KazandÄ±</span>
-                    <span class="match-score">38 â€” 25</span>
+                    <span class="match-result match-win">Kazandı</span>
+                    <span class="match-score">38 — 25</span>
                     <span class="match-coins">+120 <span class="coin-mark" aria-hidden="true"></span></span>
                 </div>
                 <div class="match-row">
                     <span class="match-code">QRTF</span>
                     <span class="match-result match-loss">Kaybetti</span>
-                    <span class="match-score">20 â€” 34</span>
+                    <span class="match-score">20 — 34</span>
                     <span class="match-coins">+40 <span class="coin-mark" aria-hidden="true"></span></span>
                 </div>
                 <div class="match-row">
                     <span class="match-code">MGZE</span>
-                    <span class="match-result match-win">KazandÄ±</span>
-                    <span class="match-score">42 â€” 38</span>
+                    <span class="match-result match-win">Kazandı</span>
+                    <span class="match-score">42 — 38</span>
                     <span class="match-coins">+120 <span class="coin-mark" aria-hidden="true"></span></span>
                 </div>
                 <div class="match-row">
                     <span class="match-code">DVLA</span>
                     <span class="match-result match-loss">Kaybetti</span>
-                    <span class="match-score">18 â€” 29</span>
+                    <span class="match-score">18 — 29</span>
                     <span class="match-coins">+40 <span class="coin-mark" aria-hidden="true"></span></span>
                 </div>
             </div>
@@ -608,45 +608,45 @@
             <div style="display:flex;flex-direction:column;gap:20px;">
                 <!-- Quick Actions -->
                 <div class="panel">
-                    <div class="panel-title">âš¡ HÄ±zlÄ± Ä°ÅŸlem</div>
+                    <div class="panel-title">⚡ Hızlı İşlem</div>
                     <div class="action-card">
                         <div class="action-label">Oyun</div>
-                        <div class="action-title">Yeni Oda OluÅŸtur</div>
-                        <div class="action-desc">Tek tÄ±kla oyun baÅŸlat</div>
+                        <div class="action-title">Yeni Oda Oluştur</div>
+                        <div class="action-desc">Tek tıkla oyun başlat</div>
                     </div>
                     <div class="action-card">
                         <div class="action-label">Oyun</div>
-                        <div class="action-title">Odaya KatÄ±l</div>
-                        <div class="action-desc">Kodla lobiye geÃ§</div>
+                        <div class="action-title">Odaya Katıl</div>
+                        <div class="action-desc">Kodla lobiye geç</div>
                     </div>
                     <div class="action-card">
                         <div class="action-label">Kozmetik</div>
-                        <div class="action-title">MaÄŸazaya Git</div>
-                        <div class="action-desc">Avatar ve Ã§erÃ§eve al</div>
+                        <div class="action-title">Mağazaya Git</div>
+                        <div class="action-desc">Avatar ve çerçeve al</div>
                     </div>
                 </div>
 
                 <!-- Equipped Items -->
                 <div class="panel">
-                    <div class="panel-title">ğŸ’ KuÅŸanÄ±lmÄ±ÅŸ</div>
+                    <div class="panel-title">🎒 Kuşanılmış</div>
                     <div class="inventory-row">
-                        <div class="inv-icon" style="background:rgba(245,158,11,.12);">ğŸ­</div>
+                        <div class="inv-icon" style="background:rgba(245,158,11,.12);">🎭</div>
                         <div>
-                            <div class="inv-name">AltÄ±n SavaÅŸÃ§Ä±</div>
+                            <div class="inv-name">Altın Savaşçı</div>
                             <div class="inv-detail">Epic Avatar</div>
                         </div>
                         <div class="inv-equipped">Aktif</div>
                     </div>
                     <div class="inventory-row">
-                        <div class="inv-icon" style="background:rgba(139,92,246,.12);">ğŸ–¼ï¸</div>
+                        <div class="inv-icon" style="background:rgba(139,92,246,.12);">🖼️</div>
                         <div>
-                            <div class="inv-name">AltÄ±n Ã‡erÃ§eve</div>
+                            <div class="inv-name">Altın Çerçeve</div>
                             <div class="inv-detail">Rare Frame</div>
                         </div>
                         <div class="inv-equipped">Aktif</div>
                     </div>
                     <div class="inventory-row">
-                        <div class="inv-icon" style="background:rgba(236,72,153,.12);">ğŸƒ</div>
+                        <div class="inv-icon" style="background:rgba(236,72,153,.12);">🃏</div>
                         <div>
                             <div class="inv-name">Holografik</div>
                             <div class="inv-detail">Legendary Card Back</div>

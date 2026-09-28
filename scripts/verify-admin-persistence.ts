@@ -20,6 +20,7 @@ async function testAdminPersistence() {
     const socket1 = io(SERVER_URL, {
         path: PATH,
         transports: ["websocket", "polling"],
+        extraHeaders: { Origin: SERVER_URL },
         // reconnection: false, // Removed
     });
 
@@ -85,6 +86,7 @@ async function testAdminPersistence() {
         const socket2 = io(SERVER_URL, {
             path: PATH,
             transports: ["websocket", "polling"],
+            extraHeaders: { Origin: SERVER_URL },
             // reconnection: false,
         });
 

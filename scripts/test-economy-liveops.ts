@@ -3,8 +3,8 @@ import {
     applyStorePriceMultiplier,
     getStoreLiveopsState,
     resolveMatchRewardCoin,
-} from "../src/lib/system-settings/economy";
-import { normalizeSystemSettings } from "../src/lib/system-settings/schema";
+} from "../apps/web/src/lib/system-settings/economy";
+import { normalizeSystemSettings } from "../apps/web/src/lib/system-settings/schema";
 
 const defaultSettings = normalizeSystemSettings({});
 assert.equal(defaultSettings.economy.matchCoinMultiplier, 1);

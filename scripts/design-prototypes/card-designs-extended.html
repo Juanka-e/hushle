@@ -1,524 +1,582 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extended Tabu Card Prototypes - V2</title>
+    <title>Hushle Extended Card Skins</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Outfit:wght@400;700;900&family=Space+Mono:wght@400;700&family=Playfair+Display:wght@700&family=Permanent+Marker&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800;900&family=Space+Grotesk:wght@400;500;700&family=Bricolage+Grotesque:wght@700;800&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        /* Base Flip & 3D Settings */
-        .perspective-1000 { perspective: 1000px; }
-        .transform-style-3d { transform-style: preserve-3d; }
-        .backface-hidden { backface-visibility: hidden; }
-        .rotate-y-180 { transform: rotateY(180deg); }
-        .group:hover .group-hover\:rotate-y-180 { transform: rotateY(180deg); }
-
-        /* Custom Patterns & Effects */
-        .pattern-grid {
-            background-image: linear-gradient(#cbd5e1 1px, transparent 1px),
-                            linear-gradient(90deg, #cbd5e1 1px, transparent 1px);
-            background-size: 20px 20px;
+        body {
+            font-family: "Space Grotesk", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 24%),
+                radial-gradient(circle at 90% 10%, rgba(14, 165, 233, 0.12), transparent 18%),
+                linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
         }
 
-        .pattern-dots {
-            background-image: radial-gradient(#94a3b8 1px, transparent 1px);
-            background-size: 10px 10px;
+        .font-display { font-family: "Outfit", sans-serif; }
+        .font-bricolage { font-family: "Bricolage Grotesque", sans-serif; }
+        .font-mono { font-family: "IBM Plex Mono", monospace; }
+
+        .scene {
+            perspective: 1800px;
         }
 
-        .hazard-stripes {
-            background: repeating-linear-gradient(
-                45deg,
-                #FACC15,
-                #FACC15 10px,
-                #000 10px,
-                #000 20px
-            );
-        }
-
-        .carbon-fiber {
-            background: radial-gradient(black 15%, transparent 16%) 0 0,
-                        radial-gradient(black 15%, transparent 16%) 8px 8px,
-                        radial-gradient(rgba(255,255,255,.1) 15%, transparent 20%) 0 1px,
-                        radial-gradient(rgba(255,255,255,.1) 15%, transparent 20%) 8px 9px;
-            background-color: #282828;
-            background-size: 16px 16px;
-        }
-
-        @keyframes border-flow {
-            0% { background-position: 0% 50%; }
-            100% { background-position: 100% 50%; }
-        }
-
-        .animate-border-flow {
-            background-size: 200% 200%;
-            animation: border-flow 2s linear infinite;
-        }
-
-        .neon-text-shadow {
-            text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #ff00de, 0 0 30px #ff00de, 0 0 40px #ff00de;
-        }
-
-        .glitch-clip {
-            clip-path: polygon(0 0, 100% 0, 100% 85%, 90% 100%, 0 100%);
-        }
-            .coin-mark {
-            display: inline-flex;
-            width: 1.05em;
-            height: 1.05em;
-            border-radius: 999px;
-            vertical-align: -0.16em;
-            margin: 0 0.12em;
-            background: radial-gradient(circle at 30% 30%, #fde68a 0%, #f59e0b 55%, #b45309 100%);
-            box-shadow: inset 0 1px 1px rgba(255,255,255,.55), inset 0 -2px 4px rgba(120,53,15,.35), 0 1px 2px rgba(15,23,42,.22);
+        .flip-card {
             position: relative;
-            flex-shrink: 0;
+            width: min(100%, 18.5rem);
+            height: 27rem;
+            transform-style: preserve-3d;
+            transition: transform 0.72s cubic-bezier(.2,.8,.2,1);
+            will-change: transform;
         }
-        .coin-mark::after {
-            content: '';
+
+        .flip-card.is-flipped {
+            transform: rotateY(180deg);
+        }
+
+        .card-side {
+            position: absolute;
+            inset: 0;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            overflow: hidden;
+        }
+
+        .card-back {
+            transform: rotateY(180deg);
+        }
+
+        .card-shell {
+            position: relative;
+            display: flex;
+            height: 100%;
+            flex-direction: column;
+            overflow: hidden;
+            border-radius: 1.55rem;
+        }
+
+        .difficulty-dot {
+            display: inline-flex;
+            width: 1.9rem;
+            height: 1.9rem;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            font-size: 0.84rem;
+            font-weight: 900;
+        }
+
+        .taboo-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-radius: 1rem;
+            padding: 0.75rem 0.95rem;
+        }
+
+        .hover-shell::before,
+        .hover-shell::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            transition: opacity 0.35s ease-out, transform 0.35s ease-out;
+        }
+
+        .hover-shell::before {
+            opacity: 0;
+            background: var(--overlay, none);
+        }
+
+        .hover-shell::after {
+            opacity: 0;
+            background: linear-gradient(115deg, transparent 18%, rgba(255,255,255,0.26) 45%, transparent 70%);
+            transform: translateX(-120%);
+        }
+
+        .card-wrap:hover .hover-shell::before {
+            opacity: var(--overlay-opacity, 0);
+        }
+
+        .card-wrap:hover .hover-shell::after {
+            opacity: 1;
+            transform: translateX(120%);
+            transition-duration: 0.8s;
+        }
+
+        .card-wrap:hover .tilt-soft {
+            transform: translateY(-8px) rotateX(5deg) rotateY(-5deg);
+        }
+
+        .card-wrap:hover .tilt-right {
+            transform: translateY(-8px) rotateX(4deg) rotateY(6deg);
+        }
+
+        .card-wrap:hover .lift-shadow {
+            box-shadow: var(--hover-shadow);
+        }
+
+        .card-wrap:hover .pulse-ring {
+            outline-color: var(--ring-color, transparent);
+            outline-width: 2px;
+            outline-style: solid;
+        }
+
+        .motion-note {
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+        }
+
+        .decor-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .decor-cloud,
+        .decor-flower {
+            position: absolute;
+            opacity: 0.78;
+        }
+
+        .decor-cloud {
+            width: 5.2rem;
+            height: 2.2rem;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.22);
+            box-shadow:
+                1.15rem -0.35rem 0 0 rgba(255,255,255,0.18),
+                2.35rem 0.2rem 0 -0.2rem rgba(255,255,255,0.18),
+                0.6rem 0.5rem 0 -0.12rem rgba(255,255,255,0.15);
+        }
+
+        .decor-flower {
+            width: 3.2rem;
+            height: 3.2rem;
+        }
+
+        .decor-flower::before,
+        .decor-flower::after {
+            content: "";
             position: absolute;
             inset: 0;
             margin: auto;
-            width: 42%;
-            height: 42%;
             border-radius: 999px;
-            border: 1.5px solid rgba(120,53,15,.65);
-            background: rgba(255,255,255,.12);
         }
-        .coin-mark-lg {
-            width: 1.35rem;
-            height: 1.35rem;
+
+        .decor-flower::before {
+            width: 0.95rem;
+            height: 0.95rem;
+            background: rgba(255,255,255,0.72);
+            box-shadow:
+                0 -0.95rem 0 rgba(255,255,255,0.22),
+                0.95rem 0 0 rgba(255,255,255,0.22),
+                0 0.95rem 0 rgba(255,255,255,0.22),
+                -0.95rem 0 0 rgba(255,255,255,0.22),
+                0.68rem -0.68rem 0 rgba(255,255,255,0.2),
+                0.68rem 0.68rem 0 rgba(255,255,255,0.2),
+                -0.68rem 0.68rem 0 rgba(255,255,255,0.2),
+                -0.68rem -0.68rem 0 rgba(255,255,255,0.2);
         }
-    </style>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        display: ['Outfit', 'sans-serif'],
-                        mono: ['Space Mono', 'monospace'],
-                        serif: ['Playfair Display', 'serif'],
-                        marker: ['Permanent Marker', 'cursive'],
-                    }
-                }
+
+        .decor-flower::after {
+            width: 0.58rem;
+            height: 0.58rem;
+            background: rgba(253,224,71,0.84);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .flip-card,
+            .hover-shell::before,
+            .hover-shell::after,
+            .card-wrap:hover .tilt-soft,
+            .card-wrap:hover .tilt-right {
+                transition: none !important;
+                transform: none !important;
             }
         }
-    </script>
+    </style>
 </head>
-<body class="bg-slate-50 min-h-screen p-8 pb-32 font-sans text-slate-800">
-
-    <header class="max-w-7xl mx-auto mb-12 text-center">
-        <h1 class="text-4xl font-display font-black text-slate-900 mb-4 tracking-tight">TABU KART KOLEKSÄ°YONU - V2</h1>
-        <p class="text-slate-500 max-w-3xl mx-auto">
-            GeniÅŸletilmiÅŸ Ã§erÃ§eve, doku ve Ã¶zel efekt tasarÄ±mlarÄ±.
-            Bu tasarÄ±mlar maÄŸazada satÄ±labilir veya kategoriye Ã¶zel (Spor, Bilim, Sanat vb.) varsayÄ±lan temalar olarak kullanÄ±labilir.
-        </p>
+<body class="min-h-screen px-6 py-10 text-slate-900 md:px-10">
+    <header class="mx-auto max-w-7xl rounded-[32px] border border-white/70 bg-white/70 px-6 py-8 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)] backdrop-blur-xl md:px-8">
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div class="max-w-3xl">
+                <div class="text-xs font-black uppercase tracking-[0.34em] text-indigo-700">Hushle Extended Library</div>
+                <h1 class="mt-3 font-bricolage text-4xl font-extrabold tracking-tight text-slate-950 md:text-5xl">
+                    10 efektli skin ailesi
+                </h1>
+                <p class="mt-4 text-sm leading-7 text-slate-600 md:text-base">
+                    Bu set hover, glow, sweep, tilt ve atmosfer katmanlarini test ediyor.
+                    Yine ayni sabit kart anatomisi kullaniliyor; sadece premium efekt paketi degisiyor.
+                </p>
+            </div>
+            <div class="grid gap-3 rounded-[24px] border border-slate-200/80 bg-slate-950 px-4 py-4 text-slate-100 sm:grid-cols-2">
+                <label class="flex items-center gap-3 rounded-2xl bg-white/5 px-4 py-3">
+                    <input id="extendedFlipToggle" type="checkbox" checked class="h-4 w-4 accent-indigo-400">
+                    <span>
+                        <span class="block text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Interaction</span>
+                        <span class="block text-sm font-bold">Flip acik</span>
+                    </span>
+                </label>
+                <div class="rounded-2xl bg-white/5 px-4 py-3">
+                    <div class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Set</div>
+                    <div class="mt-1 text-sm font-bold">10 hareketli tasarim</div>
+                    <div class="mt-1 text-xs text-slate-400">Hover efektleri premium layer gibi davranir.</div>
+                </div>
+            </div>
+        </div>
     </header>
 
-    <!-- THEME 1: FRAME & BORDER STYLES -->
-    <section class="max-w-7xl mx-auto mb-20">
-        <h2 class="text-2xl font-bold mb-8 flex items-center gap-2 border-b border-slate-200 pb-4">
-            <span class="text-indigo-600">â˜…</span> Ã‡erÃ§eve & SÄ±nÄ±r TasarÄ±mlarÄ± (Frame Styles)
-        </h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-
-            <!-- DESIGN 5: BLUEPRINT (Technical) -->
-            <div class="flex flex-col gap-3">
-                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest">Design #5: Blueprint</div>
-                <div class="group h-[400px] w-full perspective-1000 cursor-pointer">
-                    <div class="relative h-full w-full transition-all duration-500 transform-style-3d group-hover:rotate-y-180 shadow-xl rounded-sm">
-
-                        <!-- FRONT -->
-                        <div class="absolute inset-0 backface-hidden bg-[#1e40af] rounded-sm border-2 border-white/30 flex flex-col overflow-hidden">
-                            <div class="absolute inset-0 pattern-grid opacity-20"></div>
-
-                            <!-- Technical Header -->
-                            <div class="h-24 border-b-2 border-white/30 flex items-center justify-between px-6 relative z-10">
-                                <div>
-                                    <div class="text-[10px] font-mono text-white/70">FIG. 01</div>
-                                    <h3 class="text-white text-3xl font-mono font-bold">UÃ‡AK</h3>
-                                </div>
-                                <div class="border border-white/30 p-1 rounded-sm">
-                                    <div class="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center text-white text-xs">A</div>
-                                </div>
-                            </div>
-
-                            <!-- Content -->
-                            <div class="flex-1 p-6 flex flex-col justify-center gap-3 relative z-10">
-                                <!-- Lines connecting words -->
-                                <div class="absolute left-4 top-6 bottom-6 w-px bg-white/20 border-l border-dashed border-white/40"></div>
-
-                                <div class="relative pl-6">
-                                    <div class="absolute left-[-5px] top-1/2 w-2 h-2 bg-white rounded-full -translate-y-1/2"></div>
-                                    <div class="font-mono text-white text-lg tracking-wider">KANAT</div>
-                                </div>
-                                <div class="relative pl-6">
-                                    <div class="absolute left-[-5px] top-1/2 w-2 h-2 bg-white border border-[#1e40af] rounded-full -translate-y-1/2"></div>
-                                    <div class="font-mono text-white text-lg tracking-wider">PÄ°LOT</div>
-                                </div>
-                                <div class="relative pl-6">
-                                    <div class="absolute left-[-5px] top-1/2 w-2 h-2 bg-white border border-[#1e40af] rounded-full -translate-y-1/2"></div>
-                                    <div class="font-mono text-white text-lg tracking-wider">HAVAALANI</div>
-                                </div>
-                                <div class="relative pl-6">
-                                    <div class="absolute left-[-5px] top-1/2 w-2 h-2 bg-white border border-[#1e40af] rounded-full -translate-y-1/2"></div>
-                                    <div class="font-mono text-white text-lg tracking-wider">YOLCU</div>
-                                </div>
-                                <div class="relative pl-6">
-                                    <div class="absolute left-[-5px] top-1/2 w-2 h-2 bg-white border border-[#1e40af] rounded-full -translate-y-1/2"></div>
-                                    <div class="font-mono text-white text-lg tracking-wider">BÄ°LET</div>
-                                </div>
-                            </div>
-
-                            <div class="h-8 border-t border-white/20 flex items-center justify-between px-4 bg-[#172554]">
-                                <span class="text-[10px] font-mono text-white/50">SCALE 1:1</span>
-                                <span class="text-[10px] font-mono text-white/50">REF-8492</span>
-                            </div>
-                        </div>
-
-                        <!-- BACK -->
-                        <div class="absolute inset-0 backface-hidden rotate-y-180 bg-[#1e40af] rounded-sm border-4 border-white flex flex-col items-center justify-center p-8 relative overflow-hidden">
-                            <div class="absolute inset-0 pattern-grid opacity-30"></div>
-                            <div class="border-4 border-white p-6 relative z-10 rotate-45">
-                                <div class="rotate-[-45deg] text-center">
-                                    <h2 class="text-3xl font-mono font-bold text-white tracking-widest">TABU</h2>
-                                    <div class="text-[10px] text-white/60 mt-1">BLUEPRINT SPEC</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+    <main class="mx-auto mt-10 max-w-7xl">
+        <section>
+            <div class="mb-6 flex items-center justify-between gap-4">
+                <div>
+                    <div class="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Set B</div>
+                    <h2 class="mt-2 font-display text-2xl font-black tracking-tight text-slate-950">Hover ve motion paketi tasarimlari</h2>
+                </div>
+                <div class="hidden rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-500 md:block">
+                    Fixed anatomy / premium motion
                 </div>
             </div>
+            <div id="extendedGrid" class="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-4"></div>
+        </section>
 
-            <!-- DESIGN 6: RETRO GAMER (Pixel) -->
-            <div class="flex flex-col gap-3">
-                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest">Design #6: Retro Gamer</div>
-                <div class="group h-[400px] w-full perspective-1000 cursor-pointer">
-                    <div class="relative h-full w-full transition-all duration-500 transform-style-3d group-hover:rotate-y-180 rounded-none shadow-lg">
-
-                        <!-- FRONT -->
-                        <div class="absolute inset-0 backface-hidden bg-zinc-100 flex flex-col" style="box-shadow: inset 0 0 0 4px #000;">
-                            <!-- Header -->
-                            <div class="h-24 bg-green-500 border-b-4 border-black flex items-center justify-center relative">
-                                <!-- Pixel Corners -->
-                                <div class="absolute top-1 left-1 w-2 h-2 bg-white"></div>
-                                <div class="absolute top-1 right-1 w-2 h-2 bg-white"></div>
-                                <h3 class="text-black text-3xl font-black tracking-tighter" style="font-family: 'Courier New', monospace;">MARIO</h3>
-                            </div>
-
-                            <!-- Content -->
-                            <div class="flex-1 p-6 flex flex-col justify-center gap-4 bg-zinc-100">
-                                <div class="bg-white border-2 border-black p-2 text-center font-bold font-mono text-sm shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all">
-                                    OYUN
-                                </div>
-                                <div class="bg-white border-2 border-black p-2 text-center font-bold font-mono text-sm shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                                    PRENSES
-                                </div>
-                                <div class="bg-white border-2 border-black p-2 text-center font-bold font-mono text-sm shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                                    MANTAR
-                                </div>
-                                <div class="bg-white border-2 border-black p-2 text-center font-bold font-mono text-sm shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                                    BORU
-                                </div>
-                                <div class="bg-white border-2 border-black p-2 text-center font-bold font-mono text-sm shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                                    BIYIK
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- BACK -->
-                        <div class="absolute inset-0 backface-hidden rotate-y-180 bg-black flex flex-col items-center justify-center relative border-4 border-white outline outline-4 outline-black">
-                             <div class="absolute inset-2 border-2 border-dashed border-zinc-700"></div>
-                             <h2 class="text-4xl text-green-500 font-black tracking-widest animate-pulse" style="font-family: 'Courier New', monospace; text-shadow: 2px 2px 0 #fff;">TABU</h2>
-                             <div class="mt-4 text-white text-xs font-mono">INSERT COIN</div>
-                        </div>
-                    </div>
+        <section class="mt-14 rounded-[30px] border border-slate-200 bg-white/80 p-6 shadow-[0_24px_70px_-48px_rgba(15,23,42,0.28)] backdrop-blur">
+            <div class="grid gap-5 md:grid-cols-3">
+                <div class="rounded-[22px] border border-slate-200 bg-slate-50 p-5">
+                    <div class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Motion Rule</div>
+                    <p class="mt-3 text-sm leading-6 text-slate-600">Efekt katmani skin ailesinden ayri da satilabilir. Her tasarima zorunlu baglanmamali.</p>
+                </div>
+                <div class="rounded-[22px] border border-slate-200 bg-slate-50 p-5">
+                    <div class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Inspection Rule</div>
+                    <p class="mt-3 text-sm leading-6 text-slate-600">Flip kalici kalsin; kullanici inceledigi yurdu kontrol etmeli. Otomatik geri donus acele hissettirir.</p>
+                </div>
+                <div class="rounded-[22px] border border-slate-200 bg-slate-50 p-5">
+                    <div class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Scalability</div>
+                    <p class="mt-3 text-sm leading-6 text-slate-600">Bu galeri veri odakli. Yeni skin eklemek artik tek bir obje tanimlamak kadar kolay.</p>
                 </div>
             </div>
+        </section>
+    </main>
 
-            <!-- DESIGN 7: ROYAL (Ornamental) -->
-            <div class="flex flex-col gap-3">
-                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest">Design #7: Royal</div>
-                <div class="group h-[400px] w-full perspective-1000 cursor-pointer">
-                    <div class="relative h-full w-full transition-all duration-500 transform-style-3d group-hover:rotate-y-180 shadow-2xl rounded-xl">
+    <script>
+        const designs = [
+            {
+                no: "11", name: "Neon Hack", rarity: "Epic", badge: "Neon", icon: "✕", word: "MATRIX",
+                taboo: ["KOD", "AG", "SISTEM", "VERI", "ERISIM"],
+                note: "Hover sirasinda neon sweep ve hafif tilt.",
+                motion: "Sweep + tilt",
+                wrapClass: "tilt-soft",
+                outer: "rounded-[30px] border border-cyan-400/40 bg-black text-white shadow-[0_26px_78px_-42px_rgba(6,182,212,0.45)]",
+                innerBorder: "border border-fuchsia-400/30",
+                header: "bg-[linear-gradient(135deg,#111827,#000000)] text-white",
+                badgeClass: "border border-cyan-400/30 bg-cyan-400/10 text-cyan-200",
+                difficultyClass: "border border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-200",
+                content: "bg-black",
+                row: "border border-cyan-400/15 bg-cyan-400/5 text-cyan-50",
+                xColor: "text-fuchsia-300",
+                footer: "bg-[linear-gradient(90deg,#22d3ee,#d946ef)]",
+                overlay: "radial-gradient(circle at top, rgba(255,255,255,0.18), transparent 34%), radial-gradient(circle at bottom right, rgba(34,211,238,0.16), transparent 28%)",
+                overlayOpacity: 1,
+                decor: "",
+                hoverShadow: "0 36px 96px -40px rgba(6,182,212,0.55)",
+                ringColor: "rgba(34,211,238,0.22)",
+                backOuter: "rounded-[30px] border border-cyan-400/30 bg-black text-white",
+                backPanel: "border border-fuchsia-400/30 bg-white/5"
+            },
+            {
+                no: "12", name: "Track Alloy", rarity: "Rare", badge: "Track", icon: "▣", word: "MOTOR",
+                taboo: ["YARIS", "HIZ", "PIST", "LASTIK", "TURBO"],
+                note: "Metal hissi ve sag tarafa dogru tilt.",
+                motion: "Tilt right",
+                wrapClass: "tilt-right",
+                outer: "rounded-[30px] border border-zinc-700 bg-[linear-gradient(180deg,#1f2937,#0a0a0a)] text-zinc-100 shadow-[0_26px_78px_-42px_rgba(0,0,0,0.52)]",
+                innerBorder: "border border-zinc-600",
+                header: "bg-[linear-gradient(135deg,#111827,#374151)] text-zinc-100",
+                badgeClass: "bg-white/10 text-white",
+                difficultyClass: "bg-red-500/20 text-red-200",
+                content: "bg-transparent",
+                row: "bg-white/5 text-zinc-200 border-l-4 border-zinc-500",
+                xColor: "text-red-300",
+                footer: "bg-[linear-gradient(90deg,#ef4444,#6b7280)]",
+                overlay: "linear-gradient(120deg, transparent 10%, rgba(255,255,255,0.18) 46%, transparent 70%)",
+                overlayOpacity: 1,
+                hoverShadow: "0 34px 92px -44px rgba(239,68,68,0.42)",
+                ringColor: "rgba(239,68,68,0.18)",
+                backOuter: "rounded-[30px] border border-zinc-700 bg-black text-white",
+                backPanel: "border border-zinc-600 bg-white/5"
+            },
+            {
+                no: "13", name: "Soft Pop", rarity: "Epic", badge: "Pop", icon: "♥", word: "BALON",
+                taboo: ["RENK", "UCMAK", "COCUK", "PARTI", "HELYUM"],
+                note: "Glow ve parlak sweep ile daha oyuncu premium bir dil.",
+                motion: "Glow sweep",
+                wrapClass: "tilt-soft",
+                outer: "rounded-[30px] border border-pink-200 bg-[linear-gradient(180deg,#fff7fb,#fff1f8)] shadow-[0_28px_72px_-42px_rgba(236,72,153,0.36)]",
+                innerBorder: "border border-pink-200/80",
+                header: "bg-[linear-gradient(135deg,#ec4899,#8b5cf6,#3b82f6)] text-white",
+                badgeClass: "bg-white/15 text-white",
+                difficultyClass: "bg-white/15 text-white",
+                content: "bg-transparent",
+                row: "bg-white/90 text-slate-700",
+                xColor: "text-rose-500",
+                footer: "bg-[linear-gradient(90deg,#ec4899,#3b82f6)]",
+                overlay: "radial-gradient(circle at top, rgba(255,255,255,0.2), transparent 32%), radial-gradient(circle at bottom right, rgba(236,72,153,0.18), transparent 28%)",
+                overlayOpacity: 1,
+                hoverShadow: "0 36px 96px -44px rgba(236,72,153,0.42)",
+                ringColor: "rgba(236,72,153,0.18)",
+                backOuter: "rounded-[30px] border border-pink-200 bg-[linear-gradient(160deg,#4c1d95,#831843,#1d4ed8)] text-white",
+                backPanel: "border border-white/15 bg-white/10"
+            },
+            {
+                no: "14", name: "Royal Pulse", rarity: "Legendary", badge: "Royal", icon: "✦", word: "TAHT",
+                taboo: ["KRAL", "TAC", "SALON", "GUC", "VARIS"],
+                note: "Altin outline hover'da daha cok belirginlesir.",
+                motion: "Pulse ring",
+                wrapClass: "pulse-ring",
+                outer: "rounded-[30px] border-[5px] border-[#c5a059] bg-[#111827] text-[#ecd8aa] shadow-[0_30px_82px_-46px_rgba(146,64,14,0.46)]",
+                innerBorder: "border border-[#c5a059]/50",
+                header: "bg-[linear-gradient(180deg,#d4af61,#8f6a26)] text-[#4a3510]",
+                badgeClass: "bg-white/40 text-[#4a3510]",
+                difficultyClass: "bg-white/40 text-[#4a3510]",
+                content: "bg-[#111827]",
+                row: "text-[#ecd8aa] border-b border-[#c5a059]/20",
+                xColor: "text-rose-300",
+                footer: "bg-[#c5a059]",
+                overlay: "radial-gradient(circle at top, rgba(255,255,255,0.1), transparent 34%)",
+                overlayOpacity: 0.8,
+                hoverShadow: "0 38px 94px -42px rgba(212,175,97,0.42)",
+                ringColor: "rgba(212,175,97,0.24)",
+                backOuter: "rounded-[30px] border-[5px] border-[#c5a059] bg-[#111827] text-[#ecd8aa]",
+                backPanel: "border border-[#c5a059] bg-[#1f2937] rotate-45"
+            },
+            {
+                no: "15", name: "Blue Holo", rarity: "Rare", badge: "Holo", icon: "◈", word: "BUZUL",
+                taboo: ["SOGUK", "CAM", "MAVI", "KUTUP", "YANSIMA"],
+                note: "Hafif holografik sweep ile temiz premium.",
+                motion: "Holo shine",
+                wrapClass: "tilt-soft",
+                outer: "rounded-[30px] border border-sky-200 bg-[linear-gradient(180deg,#f8fdff,#eef9ff)] shadow-[0_30px_84px_-46px_rgba(56,189,248,0.34)]",
+                innerBorder: "border border-sky-200/80",
+                header: "bg-[linear-gradient(135deg,#0ea5e9,#38bdf8,#93c5fd)] text-white",
+                badgeClass: "bg-white/15 text-white",
+                difficultyClass: "bg-white/15 text-white",
+                content: "bg-white/90",
+                row: "bg-sky-50 text-slate-700",
+                xColor: "text-rose-500",
+                footer: "bg-[linear-gradient(90deg,#0ea5e9,#93c5fd)]",
+                overlay: "radial-gradient(circle at 15% 10%, rgba(255,255,255,0.2), transparent 24%), linear-gradient(135deg, rgba(255,255,255,0.08), transparent 48%)",
+                overlayOpacity: 1,
+                hoverShadow: "0 38px 98px -44px rgba(14,165,233,0.42)",
+                ringColor: "rgba(14,165,233,0.18)",
+                backOuter: "rounded-[30px] border border-sky-200 bg-[linear-gradient(160deg,#082f49,#0f172a,#1d4ed8)] text-white",
+                backPanel: "border border-white/15 bg-white/10"
+            },
+            {
+                no: "16", name: "Jungle Mist", rarity: "Epic", badge: "Mist", icon: "✳", word: "ORMAN",
+                taboo: ["YAPRAK", "AGAC", "YESIL", "TOPRAK", "YAGMUR"],
+                note: "Organik glow ve hafif lens overlay.",
+                motion: "Mist glow",
+                wrapClass: "tilt-right",
+                outer: "rounded-[30px] border border-emerald-200/70 bg-[linear-gradient(180deg,#f6fff9,#ecfdf5)] shadow-[0_32px_84px_-46px_rgba(16,185,129,0.34)]",
+                innerBorder: "border border-emerald-200/80",
+                header: "bg-[linear-gradient(135deg,#14532d,#22c55e,#65a30d)] text-white",
+                badgeClass: "bg-white/15 text-white",
+                difficultyClass: "bg-white/15 text-white",
+                content: "bg-white/85",
+                row: "bg-emerald-50 text-slate-700",
+                xColor: "text-rose-500",
+                footer: "bg-[linear-gradient(90deg,#22c55e,#65a30d)]",
+                overlay: "radial-gradient(circle at top, rgba(255,255,255,0.18), transparent 28%), radial-gradient(circle at bottom right, rgba(34,197,94,0.18), transparent 24%)",
+                overlayOpacity: 1,
+                decor: "<div class='decor-layer'><span class='decor-cloud' style='top:1.1rem; right:0.3rem; transform:scale(0.66)'></span><span class='decor-flower' style='bottom:1.8rem; left:0.85rem; transform:scale(0.58)'></span></div>",
+                hoverShadow: "0 36px 92px -44px rgba(22,163,74,0.4)",
+                ringColor: "rgba(34,197,94,0.18)",
+                backOuter: "rounded-[30px] border border-emerald-200/70 bg-[linear-gradient(160deg,#052e16,#14532d,#1d4ed8)] text-emerald-50",
+                backPanel: "border border-white/10 bg-white/5"
+            },
+            {
+                no: "17", name: "Sunset Club", rarity: "Epic", badge: "Club", icon: "◉", word: "DISKO",
+                taboo: ["MUZIK", "ISIK", "GECE", "DANS", "DJ"],
+                note: "Club enerjisi veren gradient ve hareketli shine.",
+                motion: "Club shine",
+                wrapClass: "tilt-soft",
+                outer: "rounded-[30px] border border-orange-200 bg-[linear-gradient(180deg,#fff8f1,#fff1f2)] shadow-[0_34px_84px_-46px_rgba(249,115,22,0.34)]",
+                innerBorder: "border border-orange-200/80",
+                header: "bg-[linear-gradient(135deg,#f97316,#ef4444,#8b5cf6)] text-white",
+                badgeClass: "bg-white/15 text-white",
+                difficultyClass: "bg-white/15 text-white",
+                content: "bg-white/85",
+                row: "bg-white/90 text-slate-700",
+                xColor: "text-rose-500",
+                footer: "bg-[linear-gradient(90deg,#f97316,#8b5cf6)]",
+                overlay: "radial-gradient(circle at top, rgba(255,255,255,0.2), transparent 34%), radial-gradient(circle at 100% 20%, rgba(139,92,246,0.18), transparent 26%)",
+                overlayOpacity: 1,
+                hoverShadow: "0 38px 96px -44px rgba(249,115,22,0.42)",
+                ringColor: "rgba(249,115,22,0.18)",
+                backOuter: "rounded-[30px] border border-orange-200 bg-[linear-gradient(160deg,#7c2d12,#be123c,#4c1d95)] text-white",
+                backPanel: "border border-white/15 bg-white/10"
+            },
+            {
+                no: "18", name: "Carbon Pulse", rarity: "Rare", badge: "Carbon", icon: "⬢", word: "PILOT",
+                taboo: ["KOKPIT", "KANAT", "HIZ", "YAKIT", "ROTA"],
+                note: "Karbon zemin uzerinde sweep ve ince pulse ring.",
+                motion: "Carbon sweep",
+                wrapClass: "pulse-ring",
+                outer: "rounded-[30px] border border-zinc-700 bg-[linear-gradient(180deg,#0f172a,#111827)] text-zinc-100 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.55)]",
+                innerBorder: "border border-zinc-600/80",
+                header: "bg-[linear-gradient(135deg,#111827,#334155)] text-white",
+                badgeClass: "bg-white/10 text-white",
+                difficultyClass: "bg-white/10 text-white",
+                content: "bg-transparent",
+                row: "border border-zinc-700 bg-white/5 text-zinc-200",
+                xColor: "text-rose-300",
+                footer: "bg-[linear-gradient(90deg,#475569,#ef4444)]",
+                overlay: "linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.14) 48%, transparent 68%)",
+                overlayOpacity: 1,
+                hoverShadow: "0 36px 94px -44px rgba(71,85,105,0.44)",
+                ringColor: "rgba(148,163,184,0.18)",
+                backOuter: "rounded-[30px] border border-zinc-700 bg-black text-white",
+                backPanel: "border border-zinc-600 bg-white/5"
+            },
+            {
+                no: "19", name: "Candy Flash", rarity: "Rare", badge: "Candy", icon: "◔", word: "SERIT",
+                taboo: ["SEKER", "PEMBE", "SARMAL", "PAKET", "RENK"],
+                note: "Hover'da beyaz flash gecisi ile daha hafif premium.",
+                motion: "Flash sweep",
+                wrapClass: "tilt-right",
+                outer: "rounded-[30px] border border-pink-200 bg-[linear-gradient(180deg,#fff8fc,#fff5f7)] shadow-[0_32px_84px_-46px_rgba(244,114,182,0.34)]",
+                innerBorder: "border border-pink-200/80",
+                header: "bg-[linear-gradient(135deg,#f472b6,#fb7185,#fb923c)] text-white",
+                badgeClass: "bg-white/15 text-white",
+                difficultyClass: "bg-white/15 text-white",
+                content: "bg-white/90",
+                row: "bg-pink-50 text-slate-700",
+                xColor: "text-rose-500",
+                footer: "bg-[linear-gradient(90deg,#f472b6,#fb923c)]",
+                overlay: "linear-gradient(135deg, rgba(255,255,255,0.12) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.12) 75%, transparent 75%, transparent)",
+                overlayOpacity: 0.28,
+                decor: "<div class='decor-layer'><span class='decor-cloud' style='top:1.2rem; left:-0.2rem; transform:scale(0.62)'></span></div>",
+                hoverShadow: "0 36px 90px -44px rgba(244,114,182,0.42)",
+                ringColor: "rgba(244,114,182,0.18)",
+                backOuter: "rounded-[30px] border border-pink-200 bg-[linear-gradient(160deg,#831843,#be185d,#9a3412)] text-white",
+                backPanel: "border border-white/15 bg-white/10"
+            },
+            {
+                no: "20", name: "Frozen Beam", rarity: "Legendary", badge: "Beam", icon: "✷", word: "KRISTAL",
+                taboo: ["BUZ", "SAYDAM", "SOGUK", "MAVI", "KIRILMA"],
+                note: "Legendary seviyede soguk glow ve daha buyuk hover shadow.",
+                motion: "Beam glow",
+                wrapClass: "tilt-soft",
+                outer: "rounded-[30px] border border-cyan-200 bg-[linear-gradient(180deg,#f7fdff,#ecfeff)] shadow-[0_36px_92px_-46px_rgba(34,211,238,0.34)]",
+                innerBorder: "border border-cyan-200/90",
+                header: "bg-[linear-gradient(135deg,#0891b2,#22d3ee,#6366f1)] text-white",
+                badgeClass: "bg-white/15 text-white",
+                difficultyClass: "bg-white/15 text-white",
+                content: "bg-white/90",
+                row: "bg-cyan-50 text-slate-700",
+                xColor: "text-rose-500",
+                footer: "bg-[linear-gradient(90deg,#22d3ee,#6366f1)]",
+                overlay: "radial-gradient(circle at top, rgba(255,255,255,0.24), transparent 30%), linear-gradient(120deg, transparent 10%, rgba(255,255,255,0.2) 46%, transparent 72%)",
+                overlayOpacity: 1,
+                decor: "<div class='decor-layer'><span class='decor-flower' style='top:1rem; right:0.8rem; transform:scale(0.68)'></span><span class='decor-cloud' style='bottom:1.9rem; left:0.5rem; transform:scale(0.55)'></span></div>",
+                hoverShadow: "0 40px 102px -42px rgba(34,211,238,0.48)",
+                ringColor: "rgba(34,211,238,0.22)",
+                backOuter: "rounded-[30px] border border-cyan-200 bg-[linear-gradient(160deg,#0c4a6e,#1d4ed8,#312e81)] text-white",
+                backPanel: "border border-white/15 bg-white/10"
+            }
+        ];
 
-                        <!-- FRONT -->
-                        <div class="absolute inset-0 backface-hidden bg-slate-900 rounded-xl border-[6px] border-[#C5A059] flex flex-col overflow-hidden">
-                            <!-- Inner Border -->
-                            <div class="absolute inset-1 border border-[#C5A059]/50 rounded-lg pointer-events-none z-20"></div>
+        function rarityClass(rarity) {
+            if (rarity === "Legendary") return "bg-amber-100 text-amber-700";
+            if (rarity === "Epic") return "bg-fuchsia-100 text-fuchsia-700";
+            if (rarity === "Rare") return "bg-sky-100 text-sky-700";
+            return "bg-slate-200 text-slate-700";
+        }
 
-                            <!-- Header -->
-                            <div class="h-28 bg-gradient-to-b from-[#C5A059] to-[#987538] flex flex-col items-center justify-center relative shadow-lg z-10">
-                                <div class="text-[#4a3510] text-3xl font-serif font-bold tracking-wider">ALTIN</div>
-                                <div class="w-16 h-0.5 bg-[#4a3510]/30 mt-1"></div>
-                            </div>
+        function buildCard(design) {
+            const rows = design.taboo.map((word, index) => {
+                const isFlat = design.row.includes("border-b");
+                const extra = isFlat && index === design.taboo.length - 1 ? " border-b-0" : "";
+                return `<div class="taboo-row ${design.row}${extra}"><span class="font-black ${design.xColor}">X</span><span>${word}</span></div>`;
+            }).join("");
 
-                            <!-- Content -->
-                            <div class="flex-1 p-6 flex flex-col justify-center items-center gap-3 bg-slate-900 relative">
-                                <div class="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/damask.png')]"></div>
-
-                                <div class="relative z-10 w-full text-center py-2 text-[#e2d1aa] font-serif border-b border-[#C5A059]/20">DEÄERLÄ°</div>
-                                <div class="relative z-10 w-full text-center py-2 text-[#e2d1aa] font-serif border-b border-[#C5A059]/20">ZENGÄ°N</div>
-                                <div class="relative z-10 w-full text-center py-2 text-[#e2d1aa] font-serif border-b border-[#C5A059]/20">PARA</div>
-                                <div class="relative z-10 w-full text-center py-2 text-[#e2d1aa] font-serif border-b border-[#C5A059]/20">KOLYE</div>
-                                <div class="relative z-10 w-full text-center py-2 text-[#e2d1aa] font-serif">YÃœZÃœK</div>
-                            </div>
+            return `
+                <article class="space-y-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">${design.no}</div>
+                            <h3 class="mt-1 text-lg font-black text-slate-900">${design.name}</h3>
                         </div>
-
-                        <!-- BACK -->
-                        <div class="absolute inset-0 backface-hidden rotate-y-180 bg-slate-900 rounded-xl border-[6px] border-[#C5A059] flex flex-col items-center justify-center relative">
-                            <div class="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/damask.png')]"></div>
-                            <div class="w-32 h-32 border-2 border-[#C5A059] rotate-45 flex items-center justify-center bg-slate-800 shadow-xl">
-                                <div class="w-28 h-28 border border-[#C5A059]/50 flex items-center justify-center bg-slate-900">
-                                    <h2 class="text-3xl font-serif font-bold text-[#C5A059] transform -rotate-45">TABU</h2>
+                        <span class="rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${rarityClass(design.rarity)}">${design.rarity}</span>
+                    </div>
+                    <div class="motion-note text-slate-400">${design.motion}</div>
+                    <div class="scene card-wrap flex justify-center">
+                        <button type="button" data-flip-card class="flip-card ${design.wrapClass} lift-shadow" style="--hover-shadow:${design.hoverShadow}; --ring-color:${design.ringColor};">
+                            <div class="card-side hover-shell ${design.outer}" style="--overlay:${design.overlay}; --overlay-opacity:${design.overlayOpacity};">
+                                ${design.decor || ""}
+                                <div class="relative h-full p-[12px]">
+                                    <div class="absolute inset-[12px] rounded-[24px] ${design.innerBorder}"></div>
+                                    <div class="card-shell">
+                                        <div class="relative px-5 pb-4 pt-5 ${design.header}">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div class="rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${design.badgeClass}">${design.badge}</div>
+                                                <div class="difficulty-dot ${design.difficultyClass}">${design.icon}</div>
+                                            </div>
+                                            <div class="pt-7 text-center">
+                                                <div class="text-[11px] font-bold uppercase tracking-[0.24em] opacity-80">Hushle</div>
+                                                <div class="mt-2 font-display text-[2rem] font-black uppercase tracking-[0.18em]">${design.word}</div>
+                                                <div class="mx-auto mt-3 h-1.5 w-16 rounded-full bg-white/40"></div>
+                                            </div>
+                                        </div>
+                                        <div class="relative flex-1 px-5 py-5 ${design.content}">
+                                            <div class="space-y-2.5 text-sm font-bold uppercase tracking-[0.16em]">
+                                                ${rows}
+                                            </div>
+                                        </div>
+                                        <div class="h-4 ${design.footer}"></div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- DESIGN 8: WARNING (Industrial) -->
-            <div class="flex flex-col gap-3">
-                <div class="text-xs font-bold text-slate-400 uppercase tracking-widest">Design #8: Hazard</div>
-                <div class="group h-[400px] w-full perspective-1000 cursor-pointer">
-                    <div class="relative h-full w-full transition-all duration-500 transform-style-3d group-hover:rotate-y-180 shadow-2xl rounded-lg bg-zinc-800">
-
-                        <!-- FRONT -->
-                        <div class="absolute inset-0 backface-hidden bg-zinc-100 rounded-lg overflow-hidden flex flex-col">
-                            <!-- Stripes Border Top/Bottom -->
-                            <div class="h-4 hazard-stripes"></div>
-
-                            <!-- Header -->
-                            <div class="h-20 bg-zinc-900 flex items-center justify-center relative">
-                                <h3 class="text-yellow-400 text-3xl font-black uppercase tracking-widest">DÄ°KKAT</h3>
-                            </div>
-
-                            <!-- Content -->
-                            <div class="flex-1 p-6 flex flex-col justify-center gap-2 bg-zinc-200">
-                                <div class="bg-zinc-100 border-l-8 border-yellow-400 p-3 font-bold text-zinc-800 shadow-sm flex justify-between items-center">
-                                    <span>TEHLÄ°KE</span>
-                                    <span class="text-yellow-500">âš </span>
-                                </div>
-                                <div class="bg-zinc-100 border-l-8 border-transparent hover:border-black p-3 font-bold text-zinc-600 shadow-sm transition-all">
-                                    UYARI
-                                </div>
-                                <div class="bg-zinc-100 border-l-8 border-transparent hover:border-black p-3 font-bold text-zinc-600 shadow-sm transition-all">
-                                    YASAK
-                                </div>
-                                <div class="bg-zinc-100 border-l-8 border-transparent hover:border-black p-3 font-bold text-zinc-600 shadow-sm transition-all">
-                                    KIRMIZI
-                                </div>
-                                <div class="bg-zinc-100 border-l-8 border-transparent hover:border-black p-3 font-bold text-zinc-600 shadow-sm transition-all">
-                                    LEVHA
+                            <div class="card-side card-back ${design.backOuter}">
+                                <div class="flex h-full items-center justify-center p-7 text-center">
+                                    <div class="${design.backPanel} rounded-[24px] px-8 py-10">
+                                        <div class="text-[11px] font-black uppercase tracking-[0.26em] opacity-75">${design.badge} back</div>
+                                        <div class="mt-4 font-bricolage text-4xl font-extrabold tracking-[0.18em]">HUSHLE</div>
+                                    </div>
                                 </div>
                             </div>
-
-                            <div class="h-4 hazard-stripes"></div>
-                        </div>
-
-                        <!-- BACK -->
-                        <div class="absolute inset-0 backface-hidden rotate-y-180 bg-zinc-900 rounded-lg flex flex-col items-center justify-center relative border-8 border-yellow-400">
-                            <div class="absolute inset-0 hazard-stripes opacity-10"></div>
-                            <div class="bg-yellow-400 text-black font-black text-4xl px-8 py-2 transform -rotate-12 border-4 border-black shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
-                                TABU
-                            </div>
-                            <div class="mt-8 text-yellow-400/50 font-mono text-xs text-center">
-                                CAUTION: HIGH VOLTAGE<br>GAMEPLAY
-                            </div>
-                        </div>
+                        </button>
                     </div>
-                </div>
-            </div>
+                    <p class="text-sm leading-6 text-slate-600">${design.note}</p>
+                </article>
+            `;
+        }
 
-        </div>
-    </section>
+        const grid = document.getElementById("extendedGrid");
+        grid.innerHTML = designs.map(buildCard).join("");
 
-    <!-- THEME 2: MATERIAL & TEXTURE SKINS -->
-    <section class="max-w-7xl mx-auto mb-20">
-        <h2 class="text-2xl font-bold mb-8 flex items-center gap-2 border-b border-slate-200 pb-4">
-            <span class="text-pink-600">â˜…</span> Ã–zel Doku ve Materyaller (Special Materials)
-        </h2>
+        const flipToggle = document.getElementById("extendedFlipToggle");
+        const cards = Array.from(document.querySelectorAll("[data-flip-card]"));
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        cards.forEach((card) => {
+            card.addEventListener("click", () => {
+                if (!flipToggle.checked) return;
+                card.classList.toggle("is-flipped");
+            });
+        });
 
-            <!-- DESIGN 9: PAPER (Sketch) -->
-            <div class="group h-[380px] w-full perspective-1000 cursor-pointer relative">
-                <!-- Stack effect -->
-                <div class="absolute inset-0 bg-white border border-gray-300 rounded shadow rotate-3 z-0"></div>
-                <div class="absolute inset-0 bg-white border border-gray-300 rounded shadow -rotate-2 z-0"></div>
-
-                <div class="relative h-full w-full transition-all duration-500 transform-style-3d group-hover:rotate-y-180 shadow-md rounded bg-[#fdfbf7] z-10 border border-gray-200">
-                    <!-- FRONT -->
-                    <div class="absolute inset-0 backface-hidden flex flex-col p-6 bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]">
-                        <h3 class="font-marker text-4xl text-slate-800 mb-6 text-center rotate-1">Okul</h3>
-                        <div class="flex-1 space-y-4">
-                            <div class="font-marker text-xl text-slate-600 border-b border-blue-200 pb-1 rotate-[-1deg]">Ã–ÄŸrenci</div>
-                            <div class="font-marker text-xl text-slate-600 border-b border-blue-200 pb-1 rotate-[0.5deg]">Ã–ÄŸretmen</div>
-                            <div class="font-marker text-xl text-slate-600 border-b border-blue-200 pb-1 rotate-[-0.5deg]">SÄ±nÄ±f</div>
-                            <div class="font-marker text-xl text-slate-600 border-b border-blue-200 pb-1 rotate-[1deg]">Ders</div>
-                            <div class="font-marker text-xl text-slate-600 border-b border-blue-200 pb-1">TeneffÃ¼s</div>
-                        </div>
-                        <div class="absolute top-4 right-4 w-12 h-12 rounded-full border-2 border-red-500 flex items-center justify-center text-red-500 font-marker text-lg transform rotate-12 opacity-70">
-                            A+
-                        </div>
-                    </div>
-                    <!-- BACK -->
-                    <div class="absolute inset-0 backface-hidden rotate-y-180 bg-yellow-100 flex items-center justify-center p-8 bg-[url('https://www.transparenttextures.com/patterns/notebook.png')]">
-                         <h2 class="font-marker text-5xl text-slate-800 -rotate-6">Tabu</h2>
-                         <div class="absolute bottom-4 right-4 text-xs font-marker text-slate-400">Sketch Edition</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- DESIGN 10: CYBERPUNK (Glitch) -->
-            <div class="group h-[380px] w-full perspective-1000 cursor-pointer">
-                <div class="relative h-full w-full transition-all duration-500 transform-style-3d group-hover:rotate-y-180 glitch-clip bg-black">
-                    <!-- FRONT -->
-                    <div class="absolute inset-0 backface-hidden bg-black border-2 border-[#0ff] flex flex-col p-1">
-                        <div class="h-full w-full border border-[#f0f] p-4 flex flex-col relative overflow-hidden">
-                            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white to-transparent opacity-50 animate-pulse"></div>
-
-                            <h3 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#0ff] to-[#f0f] text-center mb-8 uppercase tracking-tighter" style="font-family: 'Arial', sans-serif;">Hacker</h3>
-
-                            <div class="space-y-3 flex-1">
-                                <div class="bg-zinc-900/80 text-[#0ff] p-2 font-mono text-sm border-l-2 border-[#0ff] hover:bg-[#0ff]/20 cursor-crosshair">CODE</div>
-                                <div class="bg-zinc-900/80 text-[#f0f] p-2 font-mono text-sm border-l-2 border-[#f0f] hover:bg-[#f0f]/20 cursor-crosshair">MATRIX</div>
-                                <div class="bg-zinc-900/80 text-[#0ff] p-2 font-mono text-sm border-l-2 border-[#0ff] hover:bg-[#0ff]/20 cursor-crosshair">SYSTEM</div>
-                                <div class="bg-zinc-900/80 text-[#f0f] p-2 font-mono text-sm border-l-2 border-[#f0f] hover:bg-[#f0f]/20 cursor-crosshair">VIRUS</div>
-                                <div class="bg-zinc-900/80 text-[#0ff] p-2 font-mono text-sm border-l-2 border-[#0ff] hover:bg-[#0ff]/20 cursor-crosshair">DATA</div>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- BACK -->
-                    <div class="absolute inset-0 backface-hidden rotate-y-180 bg-black flex items-center justify-center border-2 border-[#f0f]">
-                        <h2 class="text-5xl font-black text-white italic tracking-tighter neon-text-shadow">TABU</h2>
-                        <div class="absolute bottom-4 left-0 w-full text-center text-[#0ff] text-xs font-mono animate-pulse">SYSTEM_OVERRIDE</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- DESIGN 11: ECO (Nature) -->
-            <div class="group h-[380px] w-full perspective-1000 cursor-pointer">
-                <div class="relative h-full w-full transition-all duration-500 transform-style-3d group-hover:rotate-y-180 rounded-t-[100px] rounded-b-xl shadow-xl">
-                    <!-- FRONT -->
-                    <div class="absolute inset-0 backface-hidden bg-[#ecfccb] flex flex-col rounded-t-[100px] rounded-b-xl overflow-hidden border-4 border-[#365314]">
-                        <div class="h-32 bg-[#365314] flex items-center justify-center pt-8">
-                            <h3 class="text-[#ecfccb] text-3xl font-display font-bold">ORMAN</h3>
-                        </div>
-                        <div class="flex-1 p-6 flex flex-col justify-center items-center gap-3">
-                            <div class="w-full py-2 text-[#365314] font-bold text-center border-b border-[#365314]/20 hover:bg-[#365314]/10 rounded transition-colors">AÄAÃ‡</div>
-                            <div class="w-full py-2 text-[#365314] font-bold text-center border-b border-[#365314]/20 hover:bg-[#365314]/10 rounded transition-colors">YEÅÄ°L</div>
-                            <div class="w-full py-2 text-[#365314] font-bold text-center border-b border-[#365314]/20 hover:bg-[#365314]/10 rounded transition-colors">DOÄA</div>
-                            <div class="w-full py-2 text-[#365314] font-bold text-center border-b border-[#365314]/20 hover:bg-[#365314]/10 rounded transition-colors">YAPRAK</div>
-                            <div class="w-full py-2 text-[#365314] font-bold text-center hover:bg-[#365314]/10 rounded transition-colors">HAYVAN</div>
-                        </div>
-                    </div>
-                    <!-- BACK -->
-                    <div class="absolute inset-0 backface-hidden rotate-y-180 bg-[#365314] rounded-t-[100px] rounded-b-xl flex items-center justify-center border-4 border-[#ecfccb]">
-                        <div class="w-24 h-24 rounded-full border-2 border-[#ecfccb] flex items-center justify-center">
-                            <span class="text-3xl text-[#ecfccb]">ğŸŒ²</span>
-                        </div>
-                        <h2 class="absolute bottom-12 text-2xl font-bold text-[#ecfccb] tracking-widest">TABU</h2>
-                    </div>
-                </div>
-            </div>
-
-            <!-- DESIGN 12: CARBON (Carbon Fiber) -->
-            <div class="group h-[380px] w-full perspective-1000 cursor-pointer">
-                <div class="relative h-full w-full transition-all duration-500 transform-style-3d group-hover:rotate-y-180 rounded-xl shadow-2xl bg-zinc-900">
-                    <!-- FRONT -->
-                    <div class="absolute inset-0 backface-hidden carbon-fiber rounded-xl overflow-hidden flex flex-col border border-zinc-700">
-                        <div class="h-24 bg-gradient-to-b from-zinc-800 to-transparent flex items-center justify-center">
-                            <h3 class="text-zinc-100 text-3xl font-display font-black tracking-tight uppercase">Motor</h3>
-                        </div>
-                        <div class="flex-1 p-6 flex flex-col justify-center gap-3">
-                            <div class="bg-zinc-800/50 border-l-4 border-red-600 p-3 text-zinc-300 font-bold text-sm backdrop-blur-sm">ARABA</div>
-                            <div class="bg-zinc-800/50 border-l-4 border-zinc-600 p-3 text-zinc-300 font-bold text-sm backdrop-blur-sm">HIZ</div>
-                            <div class="bg-zinc-800/50 border-l-4 border-zinc-600 p-3 text-zinc-300 font-bold text-sm backdrop-blur-sm">YARIÅ</div>
-                            <div class="bg-zinc-800/50 border-l-4 border-zinc-600 p-3 text-zinc-300 font-bold text-sm backdrop-blur-sm">GÃœÃ‡</div>
-                            <div class="bg-zinc-800/50 border-l-4 border-zinc-600 p-3 text-zinc-300 font-bold text-sm backdrop-blur-sm">BENZÄ°N</div>
-                        </div>
-                    </div>
-                    <!-- BACK -->
-                    <div class="absolute inset-0 backface-hidden rotate-y-180 carbon-fiber rounded-xl flex items-center justify-center border-2 border-zinc-700">
-                         <div class="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent"></div>
-                         <h2 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-500 italic pr-2">TABU</h2>
-                         <span class="absolute bottom-6 text-[10px] text-zinc-500 tracking-widest uppercase">Carbon Edition</span>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-    </section>
-
-    <!-- THEME 3: SPECIAL EFFECTS (STORE ITEMS) -->
-    <section class="max-w-7xl mx-auto">
-        <h2 class="text-2xl font-bold mb-8 flex items-center gap-2 border-b border-slate-200 pb-4">
-            <span class="text-purple-600">â˜…</span> MaÄŸaza Efektleri (Store Effects)
-        </h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
-
-            <!-- EFFECT 1: RAINBOW BORDER -->
-            <div class="flex flex-col items-center">
-                <div class="mb-4 text-center">
-                    <h4 class="font-bold text-lg">RGB Border</h4>
-                    <span class="text-xs text-slate-500">2000 Coins</span>
-                </div>
-                <div class="relative w-48 h-64 bg-slate-900 rounded-xl flex items-center justify-center">
-                    <!-- The Effect -->
-                    <div class="absolute -inset-[3px] rounded-xl bg-gradient-to-r from-red-500 via-green-500 to-blue-500 animate-border-flow"></div>
-
-                    <div class="relative w-full h-full bg-slate-900 rounded-[10px] flex flex-col items-center justify-center z-10">
-                        <span class="text-white font-bold">RGB</span>
-                        <span class="text-white/50 text-xs">GAMING</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- EFFECT 2: FLOATING CROWN -->
-            <div class="flex flex-col items-center">
-                <div class="mb-4 text-center">
-                    <h4 class="font-bold text-lg">King's Crown</h4>
-                    <span class="text-xs text-slate-500">5000 Coins</span>
-                </div>
-                <div class="relative w-48 h-64 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center shadow-lg group">
-                    <!-- The Effect -->
-                    <div class="absolute -top-6 left-1/2 -translate-x-1/2 text-4xl animate-bounce drop-shadow-md">ğŸ‘‘</div>
-
-                    <div class="text-center">
-                        <span class="block font-serif text-2xl text-slate-800">KrallÄ±k</span>
-                        <span class="text-xs text-slate-400">Ã–zel Simge</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- EFFECT 3: GHOST MODE -->
-            <div class="flex flex-col items-center">
-                <div class="mb-4 text-center">
-                    <h4 class="font-bold text-lg">Ghost Aura</h4>
-                    <span class="text-xs text-slate-500">Limited Event</span>
-                </div>
-                <div class="relative w-48 h-64 bg-slate-800 rounded-xl flex items-center justify-center">
-                    <!-- The Effect -->
-                    <div class="absolute inset-0 rounded-xl bg-purple-500/50 blur-xl animate-pulse"></div>
-
-                    <div class="relative w-full h-full bg-slate-900/90 backdrop-blur rounded-xl border border-purple-500/30 flex flex-col items-center justify-center z-10">
-                        <span class="text-purple-300 font-bold tracking-widest uppercase">Ghost</span>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-    </section>
-
-    <footer class="max-w-7xl mx-auto mt-24 pb-8 text-center text-slate-400 text-sm">
-        <div class="w-full h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent mb-8"></div>
-        <p>Gemini CLI Generated Prototype - Extended Collection V2 â€¢ 2026</p>
-    </footer>
-
+        flipToggle.addEventListener("change", () => {
+            if (flipToggle.checked) return;
+            cards.forEach((card) => card.classList.remove("is-flipped"));
+        });
+    </script>
 </body>
 </html>

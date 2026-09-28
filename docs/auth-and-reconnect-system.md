@@ -11,7 +11,7 @@ Oyuncular için en kritik özelliklerden biri olan "Kayıt Olmadan Hızlıca Oyu
 - **Veritabanı Şişmesini Önleme:** Misafir oyuncular sisteme girdiklerinde veritabanına ("Guest123" gibi) kaydedilmezler. Bu sayede veritabanı kirliliği oluşmaz.
 - **Kriptografik Token Mimarisi:** Bir oyuncu misafir olarak "Oyuna Katıl" dediğinde `crypto.randomUUID()` ile eşsiz bir ID yaratılarak bu ID'ye bağlı gizli bir **NextAuth JWT (JSON Web Token)** çerezi oluşturulur.
 - **Güvenlik:** Kötü niyetli kullanıcıların Socket.IO üzerinden sahte `playerId` gönderip başka birinin yetkilerini (veya Admin taçını) çalması HTTPOnly çerezler ile imkansızlaştırılmıştır. Güvenlik %100 oranında sağlanmıştır.
-- **30 Günlük Session Ömrü:** Misafir oturumlarının geçerlilik süresi (maxAge) `src/lib/auth.ts` içinde **30 Gün** olarak belirlenmiştir. Bu sayede misafir kullanıcı sekmeyi / bilgisayarı kapatsa bile, çerezlerini manuel silmediği sürece 1 ay boyunca sistemde aynı profille duracak ve başarı veya takımlarını kaybetmeyecektir.
+- **30 Günlük Session Ömrü:** Misafir oturumlarının geçerlilik süresi (maxAge) `apps/web/src/lib/auth.ts` içinde **30 Gün** olarak belirlenmiştir. Bu sayede misafir kullanıcı sekmeyi / bilgisayarı kapatsa bile, çerezlerini manuel silmediği sürece 1 ay boyunca sistemde aynı profille duracak ve başarı veya takımlarını kaybetmeyecektir.
 
 ---
 
@@ -22,7 +22,7 @@ Bir kullanıcının, doğrudan oda URL'sini (`/room/AB123`) kopyalayıp WhatsApp
 ### Akış:
 1. **Middleware Koruması:** Aktif bir oturumu (Token'i) olmayan kullanıcı tıklayıp oyuna girmek istediğinde, `middleware.ts` onu "Yetkisiz Erişim / Soket Hatası" yerine anında `/login?callbackUrl=/room/AB123` sayfasına fırlatır.
 2. **Sekmeli (Tab) Giriş Ekranı:** Giriş sayfasında sadece "Kullanıcı" bölümü değil, varsayılan olarak **"Misafir"** alanı açılır.
-3. **Akıllı Yönlendirme:** Kullanıcı odada gözükecek adını yazıp butona basar basmaz saniyesinde token'ini alır ve geldiği oda bağlantısına (`callbackUrl`) geri fırlatılarak odaya sokulur. 
+3. **Akıllı Yönlendirme:** Kullanıcı odada gözükecek adını yazıp butona basar basmaz saniyesinde token'ini alır ve geldiği oda bağlantısına (`callbackUrl`) geri fırlatılarak odaya sokulur.
 
 ---
 
@@ -31,7 +31,7 @@ Bir kullanıcının, doğrudan oda URL'sini (`/room/AB123`) kopyalayıp WhatsApp
 URL davetleriyle gelen oyuncuların önüne, odaya düştüklerinde tekrar tekrar "Kullanıcı adı girin" penceresi çıkartılma hatası bu mimariyle çözülmüştür.
 
 - **Tarayıcı Depolaması Sorunu:** Oyun odaları kullanıcı ismini önceden sadace tarayıcının yerel deposundan (`localStorage('tabu_username')`) arıyordu. Login sayfasından gelen çerezli misafirlerin local storage'i boş olduğundan oyuncuya ismi iki kez soruluyordu.
-- **Akıllı Çözüm:** `src/app/room/[code]/page.tsx` içinde yazılan "Smart Recognition" sayesinde sayfa açıldığında öncelik şifreli oturuma (NextAuth `session.user.name`) verilir. Sistem kullanıcının paketindeki ismi görürse, **bir pop-up sormadan**, ismi usulca arka planda `localStorage`'a yazıp oyuncuyu anında lobilere ışınlar.
+- **Akıllı Çözüm:** `apps/web/src/app/room/[code]/page.tsx` içinde yazılan "Smart Recognition" sayesinde sayfa açıldığında öncelik şifreli oturuma (NextAuth `session.user.name`) verilir. Sistem kullanıcının paketindeki ismi görürse, **bir pop-up sormadan**, ismi usulca arka planda `localStorage`'a yazıp oyuncuyu anında lobilere ışınlar.
 
 ---
 
@@ -43,7 +43,7 @@ Sistem, "Kısa süreli anlık koptum" ve "Oyunu tamamen kapattım gittim" duruml
 Eğer bir oyuncu oyundayken **F5 (Yenile) yaparsa**, sekmeyi alta alırsa veya interneti saniyelik koparsa;
 - **Sistemden Silinmez:** `game-socket.ts` oyuncunun bağlantısının koptuğunu anlar ama diziden oyuncuyu atmaz, puanını veya takımını bozmaz. Sadece diğer oyunculara o ismin yanına "Çevrimdışı (Offline)" ikonu basar.
 - **Anında Reconnect:** Oyuncu saniyeler içinde sekmeyi geri yüklediğinde, JWT sayesinde anında kaldığı takıma / süre akışına geri oturur.
-- **15 Saniye Çöp Kutusu:** Ancak oyuncu sekmeyi kapatıp yemeğe giderse, odada "Hayalet (Phantom)" olarak sonsuza dek kalmaması (ve sunucu belleğini şişirmemesi) için 15 saniyelik "Grace Period" (Mühlet Süresi) işler. 15 saniye içinde geri dönmeyenler odadan kalıcı olarak çöpe atılır. 
+- **15 Saniye Çöp Kutusu:** Ancak oyuncu sekmeyi kapatıp yemeğe giderse, odada "Hayalet (Phantom)" olarak sonsuza dek kalmaması (ve sunucu belleğini şişirmemesi) için 15 saniyelik "Grace Period" (Mühlet Süresi) işler. 15 saniye içinde geri dönmeyenler odadan kalıcı olarak çöpe atılır.
 - Bu ayar `.env` dosyasındaki `PLAYER_TIMEOUT_MS=15000` kısmından istenildiği gibi saniye bazında kısaltılıp uzatılabilir.
 
 ### 3 Dakikalık Kurucu (Yönetici) Bekleme Süresi (`ADMIN_TIMEOUT_MS`)
