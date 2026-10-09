@@ -33,6 +33,8 @@ jobs:
             --exclude=node_modules \
             --exclude=.next \
             --exclude=backups \
+            --exclude=data \
+            --exclude='.env*' \
             -czf "$RUNNER_TEMP/hushle-release.tgz" .
           (
             cd "$RUNNER_TEMP"
