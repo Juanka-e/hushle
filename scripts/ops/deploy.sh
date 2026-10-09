@@ -70,5 +70,5 @@ docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile migration bui
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile jobs build jobs
 acquire_schema_ops_lock "$ROOT_DIR" "production-deploy"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile migration run --rm migrate
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans --wait --wait-timeout 180
 docker image prune -f >/dev/null 2>&1 || true

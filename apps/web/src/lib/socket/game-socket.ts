@@ -30,7 +30,7 @@ import {
 } from "@/lib/security/web-origin-policy";
 import { evaluateRoomRequestPolicy } from "@/lib/system-settings/policies";
 import { getSystemSettings } from "@/lib/system-settings/service";
-import { clearExpiredSuspensions, isSuspensionActive } from "@/lib/moderation/service";
+import { isSuspensionActive } from "@/lib/moderation/service";
 import {
     SOCKET_PROTOCOL_ERROR_CODE,
     evaluateSocketProtocolVersion,
@@ -2382,7 +2382,6 @@ async function getSocketAuthState(socket: Socket): Promise<{
         };
     }
 
-    await clearExpiredSuspensions();
     const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {

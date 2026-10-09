@@ -9,13 +9,13 @@ durdurulacagini ve kim tarafindan onaylandigini acik tutmaktir.
 Production deploy:
 
 1. `develop -> main` pull request'i ile baslar.
-2. `main` push'u `.github/workflows/deploy-production.yml` workflow'unu tetikler.
+2. `main` push'u CI'yi tetikler. Deploy workflow'u yalniz ayni repodaki basarili `CI` push calismasinin tamamlanmasindan sonra baslar; PR veya basarisiz CI deploy edilemez.
 3. Workflow kaynak agacini arsivler ve `PROD_DEPLOY_PATH` altina yukler.
 4. Arsiv SHA-256 checksum ile transfer sonrasi dogrulanir.
 5. `.release-sha` dosyasi deploy edilen Git SHA'yi kaydeder.
 6. Arsiv mevcut deploy klasorunun ustune acilir.
-7. `scripts/ops/deploy.sh`, migration'i ayri tek-seferlik container'da uygular.
-8. Migration basariliysa image'lari ve Compose stack'ini yeniden kurar.
+7. Mevcut kurulumda MySQL ve kalici gorseller migration oncesinde yedeklenir. Yedek veya eski asset mount kontrolu basarisizsa deploy durur.
+8. `scripts/ops/deploy.sh`, migration'i ayri tek-seferlik container'da uygular. Migration basariliysa Compose stack'ini yeniden kurar; `--wait` ve uygulama healthcheck sonucunu bekler.
 
 Bugunku akis:
 
@@ -30,6 +30,12 @@ gozetiminde yapilir.
 
 Workflow `production-deploy` concurrency grubu ile calisir. Devam eden deploy
 iptal edilmez; sonraki deploy kuyrukta bekler.
+
+Workflow kaynak agacini CI'nin dogruladigi `head_sha` ile alir; deploy anindaki
+degismis `main` ucunu kullanmaz. Kuyrukta eski kalan CI SHA'si yeni `main` ucuyla
+eslesmiyorsa deploy reddedilir. Arsivden `.env*`, `data` ve `backups` dislanir.
+Kalici dosyalar ve izole restore proseduru icin
+[veri guvenligi runbook'u](persistent-assets-and-data-backups.md) esas alinir.
 
 ## 2. Release Gate
 

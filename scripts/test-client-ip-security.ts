@@ -56,8 +56,15 @@ try {
                 },
             })
         ),
-        "198.51.100.11"
+        "unknown"
     );
+
+    assert.equal(getRequestIp(new Request("https://hushle.app", {
+        headers: { "x-forwarded-for": "1.2.3.4, 10.0.0.2", "x-real-ip": "198.51.100.9" },
+    })), "198.51.100.9");
+    assert.equal(getRequestIp(new Request("https://hushle.app", {
+        headers: { "x-real-ip": "not-an-ip", "x-forwarded-for": "attacker" },
+    })), "unknown");
 
     assert.equal(
         getSocketClientIp({

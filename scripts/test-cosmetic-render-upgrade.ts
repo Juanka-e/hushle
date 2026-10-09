@@ -32,7 +32,7 @@ assert.doesNotMatch(thumbnailSource, /getCosmeticMotionClass|getCosmeticMotionSt
 
 for (const source of [shopSource, inventorySource]) {
     assert.match(source, /const COSMETIC_GRID_BATCH_SIZE = 24/);
-    assert.match(source, /Daha fazla göster/);
+    assert.match(source, /t\("(?:shop|inventory).showMore"\)/);
     assert.match(source, /<CosmeticThumbnail item=/);
 }
 

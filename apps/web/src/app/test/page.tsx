@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { ViewerCardPreview } from "@/app/room/[code]/_components/active-game";
 import { resolveCardBackTheme } from "@/lib/cosmetics/card-back";
 import { resolveCardFaceTheme } from "@/lib/cosmetics/card-face";
@@ -51,6 +52,7 @@ const sampleBackTheme = resolveCardBackTheme({
 });
 
 export default function TestPage() {
+    if (process.env.NODE_ENV === "production") notFound();
     return (
         <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#1e293b,_#020617_60%)] px-6 py-12 text-white">
             <div className="mx-auto flex max-w-5xl flex-col gap-10">
