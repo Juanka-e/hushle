@@ -196,6 +196,8 @@
     "test:room-registered-start-rule": "tsx scripts/test-room-registered-start-rule.ts",
     "test:room-admission-closed": "tsx scripts/test-room-admission-closed.ts",
     "test:late-spectator-reward": "tsx scripts/test-late-spectator-reward.ts",
+    "test:room-game-start": "tsx scripts/test-room-game-start.ts",
+    "test:room-connection-continuity": "tsx scripts/test-room-connection-continuity.ts",
     "test:distributed-coordination": "tsx scripts/test-distributed-coordination.ts",
     "test:system-settings": "tsx scripts/test-system-settings.ts",
     "test:captcha-security": "tsx scripts/test-captcha-security.ts",

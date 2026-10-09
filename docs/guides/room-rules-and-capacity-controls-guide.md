@@ -1,7 +1,7 @@
 # Room Rules And Capacity Controls
 
 > Status: implemented on `feature/room-rules-and-capacity-controls`
-> Last updated: 28 July 2026
+> Last updated: 9 September 2026
 
 ## Goals
 
@@ -15,7 +15,7 @@
 
 - Code hard limit: 20 online players per room.
 - Code hard limit: 10 active players per team.
-- Admin defaults: 12 online players per room and 6 per team.
+- Admin defaults: 10 online players per room and 5 per team.
 - Spectators count toward the room limit but not the team limit.
 - The sum of both team capacities must cover the configured room capacity.
 - Lowering a limit never removes a player already in a room.
@@ -54,6 +54,30 @@ and cannot be finalized for a reward.
 
 This design keeps reward identity attached to `userId` and persistent player identity.
 Changing lobby display names does not reset economy guard history.
+
+## Connection-Aware Pause
+
+- The server pauses immediately when either team falls below two online match
+  participants, or when the active narrator or inspector disconnects.
+- A non-critical disconnect in a larger team does not interrupt the turn.
+- The card, score, pass count and remaining timer are preserved.
+- Reconnect restores the same persistent player and role; it never resumes the
+  timer automatically.
+- The host or active narrator can resume only after the server revalidates team
+  and role continuity.
+- Paused wall-clock time is excluded from the match duration used by reward and
+  economy review.
+- Fully offline rooms remain recoverable for
+  `ABANDONED_ROOM_TTL_MINUTES` (default 30 minutes), then close without a match
+  result or reward.
+
+Deferred until production usage justifies the complexity:
+
+- ending only the current turn
+- assigning a replacement narrator
+- automatic inspector reassignment
+- team-leader role controls
+- repeated disconnect telemetry and operator review
 
 ## Admission Modes
 
