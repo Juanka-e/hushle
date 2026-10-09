@@ -6,6 +6,9 @@ const workspaceRoot = fileURLToPath(new URL("../..", import.meta.url));
 loadEnvConfig(workspaceRoot, process.env.NODE_ENV !== "production");
 
 const nextConfig: NextConfig = {
+  outputFileTracingExcludes: {
+    "/*": ["../../data/**/*", "../../backups/**/*"],
+  },
   transpilePackages: [
     "@hushle/domain-game",
     "@hushle/platform-cache",

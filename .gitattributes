@@ -1,4 +1,6 @@
 scripts/ops/mysql-backup.sh text eol=lf
+scripts/ops/data-backup.sh text eol=lf
+scripts/ops/data-backup.cron.example text eol=lf
 scripts/ops/mysql-restore.sh text eol=lf
 scripts/ops/mysql-restore-smoke.sh text eol=lf
 scripts/ops/object-storage.sh text eol=lf

@@ -1,12 +1,11 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
+import { writeAsset } from "@/lib/assets/storage";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin/require-admin";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import {
     buildRateLimitHeaders,
-    consumeRequestRateLimit,
+    consumeDistributedRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 
@@ -48,7 +47,7 @@ export async function POST(request: NextRequest) {
         return adminSession;
     }
 
-    const rateLimit = consumeRequestRateLimit({
+    const rateLimit = await consumeDistributedRequestRateLimit({
         bucket: "admin-shop-item-upload",
         key: `admin:${adminSession.id}:${getRequestIp(request)}`,
         windowMs: 60_000,
@@ -96,12 +95,7 @@ export async function POST(request: NextRequest) {
 
         const normalizedCategory = category.replace(/[^a-z0-9-_]/gi, "").slice(0, 40) || "general";
         const fileName = `${randomUUID()}.${extension}`;
-        const uploadDir = path.join(process.cwd(), "public", "cosmetics", normalizedCategory);
-
-        await mkdir(uploadDir, { recursive: true });
-
-        const filePath = path.join(uploadDir, fileName);
-        await writeFile(filePath, buffer);
+        await writeAsset(`/cosmetics/${normalizedCategory}/${fileName}`, buffer);
         await writeAuditLog({
             actor: adminSession,
             action: "admin.shop-item.upload",

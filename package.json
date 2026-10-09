@@ -237,7 +237,12 @@
     "db:migrate:status": "npx prisma migrate status",
     "db:migrate:deploy": "npx prisma migrate deploy",
     "db:migrate:baseline:existing": "tsx scripts/baseline-existing-database.ts",
-    "db:studio": "npx prisma studio"
+    "db:studio": "npx prisma studio",
+    "backup:data": "node scripts/ops/data-backup.mjs create",
+    "backup:verify": "node scripts/ops/data-backup.mjs verify",
+    "backup:restore-assets": "node scripts/ops/data-backup.mjs restore-assets",
+    "test:persistent-assets": "tsx scripts/test-persistent-assets.ts",
+    "test:data-backup": "node scripts/test-data-backup.mjs"
   },
   "dependencies": {
     "@hushle/domain-game": "0.1.0",
