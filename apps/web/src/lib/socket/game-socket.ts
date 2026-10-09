@@ -50,6 +50,16 @@ import {
     setPendingRoomAdminHandoff,
 } from "./room-admin-handoff";
 import { runWithRoomActionLock } from "./room-action-lock";
+import {
+    beginRoomGameStart,
+    canMutateRoomLobby,
+    finishRoomGameStart,
+    shouldJoinRoomAsSpectator,
+} from "./room-game-start";
+import {
+    calculateActiveMatchDurationSeconds,
+    resolveConnectionContinuity,
+} from "./room-connection-continuity";
 import type { PlayerCosmetics } from "@/types/game";
 import type { CapacitySettings } from "@/types/system-settings";
 import { registerMetricsProvider } from "./room-metrics";
@@ -136,6 +146,11 @@ interface ActiveTransitionSnapshot {
     cardBackTheme: RoomCardThemePayload["cardBackTheme"];
 }
 
+interface ConnectionPauseState {
+    startedAt: number;
+    missingPlayerIds: string[];
+}
+
 interface MatchParticipantSnapshot {
     playerId: string;
     userId: number | null;
@@ -151,6 +166,7 @@ interface RoomData {
     gameMode: GameModeId;
     creatorId: string;
     creatorPlayerId: string; // Persistent ID for admin
+    gameStartInProgress: boolean;
     oyuncular: PlayerData[];
     ayarlar: TabuRoomSettings;
     gecerliKategoriIdleri: number[];
@@ -159,6 +175,13 @@ interface RoomData {
     seciliZorluklar?: number[];
     oyunDurumu: GameStateData;
     activeTransition: ActiveTransitionSnapshot | null;
+    activeTransitionRoles: {
+        narratorPlayerId: string;
+        inspectorPlayerId: string | null;
+    } | null;
+    connectionPause: ConnectionPauseState | null;
+    pauseStartedAt: number | null;
+    pausedDurationMs: number;
     matchParticipants: MatchParticipantSnapshot[];
     activeWordAnalytics: {
         wordId: number;
@@ -246,6 +269,15 @@ const ROOM_JOIN_MAX_ATTEMPTS = parseInt(process.env.ROOM_JOIN_MAX_ATTEMPTS || "1
 // Admin Transfer Timeout
 const roomAdminTimeouts = sharedGameSocketState.roomAdminTimeouts;
 const ADMIN_TIMEOUT_MS = parseInt(process.env.ADMIN_TIMEOUT_MS || "180000", 10); // Default 3 mins
+const configuredAbandonedRoomTtlMinutes = Number.parseInt(
+    process.env.ABANDONED_ROOM_TTL_MINUTES || "30",
+    10
+);
+const ABANDONED_ROOM_TTL_MS =
+    (Number.isFinite(configuredAbandonedRoomTtlMinutes) &&
+    configuredAbandonedRoomTtlMinutes > 0
+        ? configuredAbandonedRoomTtlMinutes
+        : 30) * 60_000;
 // Preserve malformed wire aliases from clients released before the ASCII migration.
 const ROOM_START_GAME_EVENTS = ["oyun_baslat", "oyunBaslatİsteği", "oyunBaslat\u00c4\u00b0ste\u00c4\u0178i"] as const;
 const ROOM_GAME_CONTROL_EVENTS = ["oyun_kontrol", "oyunKontrolİsteği", "oyunKontrol\u00c4\u00b0ste\u00c4\u0178i"] as const;
@@ -561,6 +593,82 @@ export function setupGameSocket(
         });
     }
 
+    function getConnectionContinuity(room: RoomData) {
+        const players = room.matchParticipants.length > 0
+            ? room.matchParticipants.map((participant) => {
+                const current = room.oyuncular.find(
+                    (player) => player.playerId === participant.playerId
+                );
+                return {
+                    playerId: participant.playerId,
+                    team: participant.teamAtStart,
+                    online: current?.online === true,
+                    spectator: false,
+                };
+            })
+            : room.oyuncular.map((player) => ({
+                playerId: player.playerId,
+                team: player.takim,
+                online: player.online,
+                spectator: player.rol === "İzleyici",
+            }));
+        return resolveConnectionContinuity({
+            active: room.oyunDurumu.oyunAktifMi,
+            players,
+            narratorPlayerId:
+                room.activeTransitionRoles?.narratorPlayerId ??
+                room.oyunDurumu.anlatici?.playerId ??
+                null,
+            inspectorPlayerId:
+                room.activeTransitionRoles?.inspectorPlayerId ??
+                room.oyunDurumu.gozetmen?.playerId ??
+                null,
+        });
+    }
+
+    function getPublicConnectionPause(room: RoomData) {
+        if (!room.connectionPause) return null;
+        return {
+            waitingForPlayers: room.connectionPause.missingPlayerIds.length > 0,
+        };
+    }
+
+    function setRoomPaused(room: RoomData, paused: boolean): void {
+        const now = Date.now();
+        if (paused && !room.oyunDurumu.oyunDurduruldu) {
+            room.pauseStartedAt = now;
+        } else if (!paused && room.oyunDurumu.oyunDurduruldu && room.pauseStartedAt) {
+            room.pausedDurationMs += Math.max(0, now - room.pauseStartedAt);
+            room.pauseStartedAt = null;
+        }
+        room.oyunDurumu.oyunDurduruldu = paused;
+    }
+
+    function synchronizeConnectionPause(room: RoomData): boolean {
+        if (!room.oyunDurumu.oyunAktifMi) return false;
+        const continuity = getConnectionContinuity(room);
+        if (!room.connectionPause && continuity.canContinue) return false;
+
+        room.connectionPause = {
+            startedAt: room.connectionPause?.startedAt ?? Date.now(),
+            missingPlayerIds: continuity.missingPlayerIds,
+        };
+        setRoomPaused(room, true);
+        return true;
+    }
+
+    function emitGamePauseState(room: RoomData): void {
+        if (room.oyunDurumu.gecisEkraninda) {
+            io.to(room.odaKodu).emit("turGecisDurumGuncelle", {
+                oyunDurduruldu: room.oyunDurumu.oyunDurduruldu,
+                kalanSure: room.oyunDurumu.kalanGecisSuresi ?? 0,
+                connectionPause: getPublicConnectionPause(room),
+            });
+            return;
+        }
+        io.to(room.odaKodu).emit("oyunDurumuGuncelle", buildPublicGameState(room));
+    }
+
     function buildPublicGameState(room: RoomData) {
         const narrator = room.oyunDurumu.anlatici;
         const inspector = room.oyunDurumu.gozetmen;
@@ -582,6 +690,7 @@ export function setupGameSocket(
                 ? { ad: inspector.ad, takim: inspector.takim }
                 : null,
             altinSkorAktif: room.oyunDurumu.altinSkorAktif,
+            connectionPause: getPublicConnectionPause(room),
             kalanGecisSuresi: room.oyunDurumu.kalanGecisSuresi ?? 0,
             toplamSure: room.ayarlar.sure,
         };
@@ -703,6 +812,10 @@ export function setupGameSocket(
             cardBackTheme: null,
         };
         room.activeTransition = transitionSnapshot;
+        room.activeTransitionRoles = {
+            narratorPlayerId: narrator.playerId,
+            inspectorPlayerId: inspector?.playerId ?? null,
+        };
         persistRoom(room);
 
         const narratorCardThemes = await hydrateNarratorCardThemes(narrator.userId);
@@ -720,6 +833,7 @@ export function setupGameSocket(
             ...room.activeTransition,
             kalanSure: room.oyunDurumu.kalanGecisSuresi,
             oyunDurduruldu: room.oyunDurumu.oyunDurduruldu,
+            connectionPause: getPublicConnectionPause(room),
         });
 
         room.zamanlayici = setInterval(() => {
@@ -736,8 +850,9 @@ export function setupGameSocket(
                 );
                 currentRoom.oyunDurumu.kalanGecisSuresi = nextCountdown;
                 io.to(roomCode).emit("turGecisDurumGuncelle", {
-                    oyunDurduruldu: currentRoom.oyunDurumu.oyunDurduruldu,
-                    kalanSure: currentRoom.oyunDurumu.kalanGecisSuresi,
+                        oyunDurduruldu: currentRoom.oyunDurumu.oyunDurduruldu,
+                        kalanSure: currentRoom.oyunDurumu.kalanGecisSuresi,
+                        connectionPause: getPublicConnectionPause(currentRoom),
                 });
 
                 if ((currentRoom.oyunDurumu.kalanGecisSuresi ?? 0) <= 0) {
@@ -787,6 +902,7 @@ export function setupGameSocket(
         currentRoom.oyunDurumu.kalanPasHakki = 3;
         currentRoom.oyunDurumu.aktifKart = null;
         currentRoom.activeTransition = null;
+        currentRoom.activeTransitionRoles = null;
         persistRoom(currentRoom);
 
         try {
@@ -892,6 +1008,7 @@ export function setupGameSocket(
                 ...room.activeTransition,
                 kalanSure: room.oyunDurumu.kalanGecisSuresi ?? 0,
                 oyunDurduruldu: room.oyunDurumu.oyunDurduruldu,
+                connectionPause: getPublicConnectionPause(room),
             });
         } else if (room.oyunDurumu.anlatici) {
             const narrator = room.oyunDurumu.anlatici;
@@ -1106,6 +1223,9 @@ export function setupGameSocket(
 
         room.oyunDurumu.oyunAktifMi = false;
         room.activeTransition = null;
+        room.activeTransitionRoles = null;
+        room.connectionPause = null;
+        setRoomPaused(room, false);
         room.oyunDurumu.bittiAt = Date.now();
         if (room.zamanlayici) {
             clearInterval(room.zamanlayici);
@@ -1129,6 +1249,10 @@ export function setupGameSocket(
         room.oyunDurumu.kalanZaman = room.ayarlar.sure || 60;
         room.oyunDurumu.toplamTur = room.ayarlar.deger || 0;
         room.activeTransition = null;
+        room.activeTransitionRoles = null;
+        room.connectionPause = null;
+        room.pauseStartedAt = null;
+        room.pausedDurationMs = 0;
         room.matchParticipants = [];
         room.activeWordAnalytics = null;
 
@@ -1369,12 +1493,17 @@ export function setupGameSocket(
                             gameMode: TABU_MODE_ID,
                             creatorId: socket.id,
                             creatorPlayerId: effectivePlayerId,
+                            gameStartInProgress: false,
                             oyuncular: [],
                             ayarlar: { ...TABU_DEFAULT_SETTINGS },
                             gecerliKategoriIdleri: [],
                             gecerliZorlukSeviyeleri: [],
                             oyunDurumu: createInitialGameState(),
                             activeTransition: null,
+                            activeTransitionRoles: null,
+                            connectionPause: null,
+                            pauseStartedAt: null,
+                            pausedDurationMs: 0,
                             matchParticipants: [],
                             activeWordAnalytics: null,
                             zamanlayici: null,
@@ -1419,6 +1548,7 @@ export function setupGameSocket(
                     const reconnectingPlayer = room.oyuncular.find(
                         (player) => player.playerId === effectivePlayerId
                     );
+                    let connectionPauseChanged = false;
 
                     if (reconnectingPlayer) {
                         if (reconnectingPlayer.id !== socket.id) {
@@ -1459,8 +1589,14 @@ export function setupGameSocket(
                         ) {
                             room.oyunDurumu.anlatici.id = socket.id;
                         }
+                        if (
+                            room.oyunDurumu.gozetmen &&
+                            room.oyunDurumu.gozetmen.playerId === reconnectingPlayer.playerId
+                        ) {
+                            room.oyunDurumu.gozetmen.id = socket.id;
+                        }
+                        connectionPauseChanged = synchronizeConnectionPause(room);
                     } else {
-                        const isSpectator = room.oyunDurumu.oyunAktifMi;
                         const yeniOyuncu: PlayerData = {
                             id: socket.id,
                             playerId: effectivePlayerId,
@@ -1470,7 +1606,7 @@ export function setupGameSocket(
                             ad: effectiveDisplayName,
                             takim: null,
                             online: true,
-                            rol: isSpectator ? "İzleyici" : "Oyuncu",
+                            rol: "Oyuncu",
                             ip,
                             cosmetics: createEmptyPlayerCosmetics(),
                         };
@@ -1487,7 +1623,8 @@ export function setupGameSocket(
                             );
                             return;
                         }
-                        const assignedTeam = isSpectator
+                        const joinAsSpectator = shouldJoinRoomAsSpectator(room);
+                        const assignedTeam = joinAsSpectator
                             ? null
                             : chooseJoinTeam(
                                 room.oyuncular.map((entry) => ({
@@ -1498,13 +1635,14 @@ export function setupGameSocket(
                                 })),
                                 settings.capacity
                             );
-                        if (!isSpectator && assignedTeam === null) {
+                        if (!joinAsSpectator && assignedTeam === null) {
                             socket.emit(
                                 "hata",
                                 "Her iki takım da dolu. Lütfen daha sonra tekrar deneyin."
                             );
                             return;
                         }
+                        yeniOyuncu.rol = joinAsSpectator ? "İzleyici" : "Oyuncu";
                         yeniOyuncu.takim = assignedTeam;
                         room.oyuncular.push(yeniOyuncu);
                     }
@@ -1520,6 +1658,10 @@ export function setupGameSocket(
                     joinedRoom = true;
                     if (effectiveAuthUserId) {
                         startSocketMembershipHeartbeat(socket.id, effectiveAuthUserId, room.odaKodu);
+                    }
+
+                    if (connectionPauseChanged) {
+                        emitGamePauseState(room);
                     }
 
                     await sendVisibleCategories(socket);
@@ -1575,7 +1717,7 @@ export function setupGameSocket(
             const parsed = z.object({ playerId: z.string().min(1).max(128), direction: z.enum(["up", "down"]) }).strict().safeParse(payload);
             if (!parsed.success) return;
             const room = getRoomBySocketId(socket.id);
-            if (!room || room.oyunDurumu.oyunAktifMi) return;
+            if (!room || !canMutateRoomLobby(room)) return;
             const actor = room.oyuncular.find(p => p.id === socket.id);
             if (!actor || actor.playerId !== room.creatorPlayerId) return;
             const target = room.oyuncular.find(p => p.playerId === parsed.data.playerId);
@@ -1600,12 +1742,13 @@ export function setupGameSocket(
             if (!room) return;
             const player = room.oyuncular.find((p) => p.id === socket.id);
             if (!player || player.playerId !== room.creatorPlayerId) return;
-            if (room.oyunDurumu.oyunAktifMi) {
+            if (!canMutateRoomLobby(room)) {
                 socket.emit("hata", "Oyun sırasında takımlar değiştirilemez.");
                 return;
             }
             const lock = await runWithRoomActionLock(room.odaKodu, "shuffle-teams", 2_500, async () => {
                 const settings = await getSystemSettings();
+                if (!canMutateRoomLobby(room)) return;
                 const activePlayers = room.oyuncular.filter(
                     (entry) => entry.rol !== "İzleyici"
                 );
@@ -1648,6 +1791,7 @@ export function setupGameSocket(
                 const player = room.oyuncular.find((p) => p.id === socket.id);
                 if (!player || player.playerId !== room.creatorPlayerId) return;
                 const lock = await runWithRoomActionLock(room.odaKodu, "transfer-host", 2_500, async () => {
+                    if (room.gameStartInProgress) return;
                     const newAdmin = room.oyuncular.find(
                         (player) =>
                             player.playerId === targetPlayerId && player.online
@@ -1685,6 +1829,12 @@ export function setupGameSocket(
                 const { targetPlayerId } = parsed.data;
                 const room = getRoomBySocketId(socket.id);
                 if (!room) return;
+                if (room.gameStartInProgress) return;
+
+                if (room.oyunDurumu.oyunAktifMi) {
+                    socket.emit("hata", "Oyun sırasında oyuncu odadan atılamaz.");
+                    return;
+                }
 
                 const player = room.oyuncular.find((p) => p.id === socket.id);
                 if (!player) return;
@@ -1744,15 +1894,6 @@ export function setupGameSocket(
                     }
                 }
 
-                let shouldRestartRound = false;
-                if (
-                    room.oyunDurumu.anlatici &&
-                    room.oyunDurumu.anlatici.playerId === target.playerId
-                ) {
-                    room.oyunDurumu.anlatici = null;
-                    shouldRestartRound = true;
-                }
-
                 persistRoom(room);
                 broadcastLobby(room);
 
@@ -1765,16 +1906,6 @@ export function setupGameSocket(
                     return;
                 }
 
-                if (room.oyunDurumu.oyunAktifMi) {
-                    if (shouldRestartRound) {
-                        startNewRound(room.odaKodu);
-                    } else {
-                        io.to(room.odaKodu).emit(
-                            "oyunDurumuGuncelle",
-                            buildPublicGameState(room)
-                        );
-                    }
-                }
             }
         );
 
@@ -1794,7 +1925,14 @@ export function setupGameSocket(
                 if (!room) return;
                 const player = room.oyuncular.find((p) => p.id === socket.id);
                 if (!player || player.playerId !== room.creatorPlayerId) return;
-                const lock = await runWithRoomActionLock(room.odaKodu, "start-game", 4_000, async () => {
+                if (!beginRoomGameStart(room)) {
+                    socket.emit("hata", "Oyun zaten baslatiliyor. Lutfen bekleyin.");
+                    return;
+                }
+
+                let lock: { acquired: boolean };
+                try {
+                    lock = await runWithRoomActionLock(room.odaKodu, "start-game", 4_000, async () => {
                     if (room.oyunDurumu.oyunAktifMi) {
                         socket.emit("hata", "Oyun zaten devam ediyor.");
                         return;
@@ -1821,6 +1959,28 @@ export function setupGameSocket(
                     ].filter((categoryId) =>
                         visibleCategoryIds.has(categoryId)
                     );
+
+                    if (!getRoom(room.odaKodu) || socketToRoom.get(socket.id) !== room.odaKodu) {
+                        socket.emit("hata", "Oda baglantisi degisti. Lutfen tekrar deneyin.");
+                        return;
+                    }
+                    if (room.oyunDurumu.oyunAktifMi) {
+                        socket.emit("hata", "Oyun zaten devam ediyor.");
+                        return;
+                    }
+
+                    const currentStartDecision = resolveRoomStartDecision(
+                        room.oyuncular.map((entry) => ({
+                            identityType: entry.identityType,
+                            team: entry.takim,
+                            role: entry.rol,
+                            online: entry.online,
+                        }))
+                    );
+                    if (!currentStartDecision.allowed) {
+                        socket.emit("hata", currentStartDecision.message);
+                        return;
+                    }
 
                     room.gecerliKategoriIdleri = allowedCategoryIds;
                     room.gecerliZorlukSeviyeleri = seciliZorluklar;
@@ -1877,12 +2037,23 @@ export function setupGameSocket(
                         basladiAt: Date.now(),
                         bittiAt: null,
                     };
+                    room.activeTransitionRoles = null;
+                    room.connectionPause = null;
+                    room.pauseStartedAt = null;
+                    room.pausedDurationMs = 0;
 
                     persistRoom(room);
                     publishCurrentCapacity();
                     io.to(room.odaKodu).emit("oyunBasladi");
                     startNewRound(room.odaKodu);
-                });
+                    });
+                } catch (error) {
+                    console.error("Game start failed", error);
+                    socket.emit("hata", "Oyun baslatilamadi. Lutfen tekrar deneyin.");
+                    return;
+                } finally {
+                    finishRoomGameStart(room);
+                }
                 if (!lock.acquired) {
                     socket.emit("hata", "Oyun zaten baslatiliyor. Lutfen bekleyin.");
                 }
@@ -1894,18 +2065,37 @@ export function setupGameSocket(
         // ── Pause / Resume ──
         const gameControlHandler = async () => {
             const room = getRoomBySocketId(socket.id);
-            if (!room) return;
-            const player = room.oyuncular.find((p) => p.id === socket.id);
-            if (!player || player.playerId !== room.creatorPlayerId) return;
+            if (!room || !room.oyunDurumu.oyunAktifMi) return;
+            if (room.gameStartInProgress) return;
             const lock = await runWithRoomActionLock(room.odaKodu, "game-control", 2_500, async () => {
-                room.oyunDurumu.oyunDurduruldu = !room.oyunDurumu.oyunDurduruldu;
+                if (room.gameStartInProgress || !room.oyunDurumu.oyunAktifMi) return;
+                const currentPlayer = room.oyuncular.find((entry) => entry.id === socket.id);
+                if (!currentPlayer) return;
+                const currentIsHost = currentPlayer.playerId === room.creatorPlayerId;
+                const currentIsNarrator =
+                    currentPlayer.playerId === room.oyunDurumu.anlatici?.playerId ||
+                    currentPlayer.playerId === room.activeTransitionRoles?.narratorPlayerId;
+                if (!currentIsHost && !currentIsNarrator) return;
+                if (!room.oyunDurumu.oyunDurduruldu && !currentIsHost) return;
+
+                if (room.oyunDurumu.oyunDurduruldu) {
+                    const continuity = getConnectionContinuity(room);
+                    if (room.connectionPause && !continuity.canContinue) {
+                        room.connectionPause.missingPlayerIds = continuity.missingPlayerIds;
+                        persistRoom(room);
+                        emitGamePauseState(room);
+                        socket.emit("hata", "Eksik oyuncular donmeden oyun devam ettirilemez.");
+                        return;
+                    }
+                    room.connectionPause = null;
+                    setRoomPaused(room, false);
+                } else {
+                    setRoomPaused(room, true);
+                }
                 persistRoom(room);
 
                 if (room.oyunDurumu.gecisEkraninda) {
-                    io.to(room.odaKodu).emit("turGecisDurumGuncelle", {
-                        oyunDurduruldu: room.oyunDurumu.oyunDurduruldu,
-                        kalanSure: room.oyunDurumu.kalanGecisSuresi,
-                    });
+                    emitGamePauseState(room);
                 } else if (room.oyunDurumu.oyunAktifMi) {
                     if (room.oyunDurumu.oyunDurduruldu && room.zamanlayici) {
                         clearInterval(room.zamanlayici);
@@ -1952,9 +2142,11 @@ export function setupGameSocket(
             // Allow reset if admin OR game is not active (just in case)
             // But strict admin check is safer for "reset game"
             if (!player || player.playerId !== room.creatorPlayerId) return;
+            if (room.gameStartInProgress) return;
 
             const lock = await runWithRoomActionLock(room.odaKodu, "reset-game", 4_000, async () => {
                 const settings = await getSystemSettings();
+                if (room.gameStartInProgress) return;
                 resetGame(room, settings.capacity);
                 persistRoom(room);
             });
@@ -1969,7 +2161,7 @@ export function setupGameSocket(
         // ── Switch Team ──
         const switchTeamHandler = async () => {
             const room = getRoomBySocketId(socket.id);
-            if (!room || room.oyunDurumu.oyunAktifMi) return;
+            if (!room || !canMutateRoomLobby(room)) return;
 
             const player = room.oyuncular.find((p) => p.id === socket.id);
             if (
@@ -1985,11 +2177,12 @@ export function setupGameSocket(
                 "switch-team",
                 2_500,
                 async () => {
-                    if (room.oyunDurumu.oyunAktifMi) {
+                    if (!canMutateRoomLobby(room)) {
                         return;
                     }
                     const targetTeam = player.takim === "A" ? "B" : "A";
                     const settings = await getSystemSettings();
+                    if (!canMutateRoomLobby(room)) return;
                     const canMove = canMoveToTeam(
                         room.oyuncular.map((entry) => ({
                             identityType: entry.identityType,
@@ -2053,7 +2246,7 @@ export function setupGameSocket(
                     return;
                 }
 
-                if (room.oyunDurumu.oyunAktifMi) {
+                if (!canMutateRoomLobby(room)) {
                     callback?.({
                         ok: false,
                         error: "Mac basladiktan sonra gorunen ad degistirilemez.",
@@ -2098,24 +2291,26 @@ export function setupGameSocket(
                 if (!room) return;
                 const player = room.oyuncular.find((p) => p.id === socket.id);
                 if (!player || player.playerId !== room.creatorPlayerId) return;
-                if (room.oyunDurumu.oyunAktifMi) return;
+                if (!canMutateRoomLobby(room)) return;
 
                 await runWithRoomActionLock(
                     room.odaKodu,
                     "category-settings",
                     2_500,
                     async () => {
-                        if (room.oyunDurumu.oyunAktifMi) {
+                        if (!canMutateRoomLobby(room)) {
                             return;
                         }
                         const previousLocale = room.ayarlar.wordLocale;
-                        if (wordLocale) {
-                            room.ayarlar = normalizeTabuRoomSettings({
+                        const nextSettings = wordLocale
+                            ? normalizeTabuRoomSettings({
                                 ...room.ayarlar,
                                 wordLocale,
-                            });
-                        }
-                        const visibleCategories = await getVisibleCategories(room.ayarlar.wordLocale);
+                            })
+                            : room.ayarlar;
+                        const visibleCategories = await getVisibleCategories(nextSettings.wordLocale);
+                        if (!canMutateRoomLobby(room)) return;
+                        room.ayarlar = nextSettings;
                         const visibleCategoryIds = collectVisibleCategoryIds(visibleCategories);
                         room.seciliKategoriler = [
                             ...new Set(seciliKategoriler),
@@ -2157,6 +2352,11 @@ export function setupGameSocket(
             if (!player) return;
 
             player.online = false;
+            const connectionPauseChanged = synchronizeConnectionPause(room);
+            if (connectionPauseChanged) {
+                persistRoom(room);
+                emitGamePauseState(room);
+            }
             publishCurrentCapacity();
             if (typeof player.userId === "number") {
                 const hasOtherOnlineSession = room.oyuncular.some(
@@ -2173,9 +2373,7 @@ export function setupGameSocket(
             const onlinePlayers = room.oyuncular.filter((p) => p.online);
 
             if (onlinePlayers.length === 0) {
-                // Grace period: wait 15 seconds before destroying room
-                // This prevents race condition when homepage disconnects
-                // its socket before the /room/[code] page reconnects
+                // Keep a disconnected match recoverable while bounding abandoned room memory.
                 const roomCode = room.odaKodu;
                 setTimeout(() => {
                     const currentRoom = getRoom(roomCode);
@@ -2196,7 +2394,7 @@ export function setupGameSocket(
 
                         destroyRoom(roomCode);
                     }
-                }, 15_000);
+                }, ABANDONED_ROOM_TTL_MS);
                 return;
             }
 
@@ -2478,10 +2676,13 @@ export function getRoomMatchSnapshot(roomCode: string): RoomMatchSnapshot | null
     if (!room) return null;
     const startedAt = room.oyunDurumu.basladiAt ?? null;
     const endedAt = room.oyunDurumu.bittiAt ?? null;
-    const sureSeconds =
-        startedAt !== null
-            ? Math.max(0, Math.round(((endedAt ?? Date.now()) - startedAt) / 1000))
-            : null;
+    const sureSeconds = calculateActiveMatchDurationSeconds({
+        startedAt,
+        endedAt,
+        now: Date.now(),
+        pausedDurationMs: room.pausedDurationMs,
+        pauseStartedAt: room.pauseStartedAt,
+    });
     const matchParticipants =
         room.matchParticipants?.length > 0
             ? room.matchParticipants

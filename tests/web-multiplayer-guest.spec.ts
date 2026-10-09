@@ -38,7 +38,7 @@ test("four guests form two playable teams and enter the first transition", async
     viewport: { width: 390, height: 844 },
     hasTouch: true,
   });
-  const guestPage = await guestContext.newPage();
+  let guestPage = await guestContext.newPage();
   const guestErrors = collectPageErrors(guestPage);
   const supportContext = await browser.newContext({
     viewport: { width: 1024, height: 768 },
@@ -248,6 +248,44 @@ test("four guests form two playable teams and enter the first transition", async
       ).toHaveCount(0);
       await expectNoHorizontalOverflow(guestPage);
       checkpoint("active game state survived guest reload");
+    });
+
+    await test.step("critical disconnect pauses until the player returns and host resumes", async () => {
+      const reconnectIdentity = await guestPage.evaluate(() => ({
+        playerId: window.sessionStorage.getItem("tabu_playerId"),
+        guestToken: window.sessionStorage.getItem("tabu_guestToken"),
+      }));
+      expect(reconnectIdentity.playerId).toBeTruthy();
+      expect(reconnectIdentity.guestToken).toBeTruthy();
+
+      await guestPage.close();
+      await expect(hostPage.getByText(/Bir oyuncunun bağlantısı kesildi/i)).toBeVisible({
+        timeout: 20_000,
+      });
+
+      await guestContext.addInitScript((identity) => {
+        if (identity.playerId) {
+          window.sessionStorage.setItem("tabu_playerId", identity.playerId);
+        }
+        if (identity.guestToken) {
+          window.sessionStorage.setItem("tabu_guestToken", identity.guestToken);
+        }
+      }, reconnectIdentity);
+      guestPage = await guestContext.newPage();
+      guestPage.on("pageerror", (error) => guestErrors.push(error.message));
+      await guestPage.goto(`/room/${roomCode}`);
+      await expect(guestPage.getByText(/^(?:ANLATICI|NARRATOR)$/i)).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(hostPage.getByText(/Oyuncu yeniden bağlandı/i)).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(hostPage.getByRole("button", { name: /Devam Ettir/i })).toBeVisible({
+        timeout: 20_000,
+      });
+      await hostPage.getByRole("button", { name: /Devam Ettir/i }).click();
+      await expect(hostPage.getByText(/Oyuncu yeniden bağlandı/i)).toHaveCount(0);
+      checkpoint("critical disconnect pause and manual recovery synchronized");
     });
 
     expect(hostErrors).toEqual([]);

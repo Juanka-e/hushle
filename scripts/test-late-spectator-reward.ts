@@ -220,12 +220,17 @@ async function run(): Promise<void> {
         });
         console.log("[late-spectator] four-player room ready");
 
-        const gameStarted = waitForEvent<undefined>(
-            host.socket,
-            "oyunBasladi"
-        );
-        const gameStartError = waitForEvent<string>(host.socket, "hata");
-        host.socket.emit("oyun_baslat", {
+        let gameStartedCount = 0;
+        const gameStartErrors: string[] = [];
+        host.socket.removeAllListeners("hata");
+        host.socket.on("oyunBasladi", () => {
+            gameStartedCount += 1;
+        });
+        host.socket.on("hata", (message: string) => {
+            gameStartErrors.push(message);
+        });
+        const gameStarted = waitForEvent<undefined>(host.socket, "oyunBasladi");
+        const startPayload = {
             seciliKategoriler: [categoryId],
             seciliZorluklar: [1],
             ayarlar: {
@@ -233,13 +238,23 @@ async function run(): Promise<void> {
                 mod: "skor",
                 deger: 10,
             },
-        });
-        await Promise.race([
-            gameStarted,
-            gameStartError.then((message) => {
-                throw new Error(`Game start rejected: ${message}`);
-            }),
-        ]);
+        };
+        host.socket.emit("oyun_baslat", startPayload);
+        host.socket.emit("oyun_baslat", startPayload);
+        try {
+            await gameStarted;
+        } catch (error) {
+            throw new Error(
+                `Game start timed out; server errors: ${gameStartErrors.join(" | ") || "none"}`,
+                { cause: error }
+            );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        assert.equal(gameStartedCount, 1, "concurrent start requests must start one game");
+        assert.ok(
+            gameStartErrors.some((message) => /baslatiliyor|devam ediyor/i.test(message)),
+            "duplicate start request must be rejected"
+        );
         console.log("[late-spectator] game started");
 
         const spectator = await connectPlayer({
