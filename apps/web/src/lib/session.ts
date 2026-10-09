@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { clearExpiredSuspensions, isSuspensionActive } from "@/lib/moderation/service";
+import { isSuspensionActive } from "@/lib/moderation/service";
 
 export async function getSessionUser() {
     const session = await auth();
@@ -8,7 +8,6 @@ export async function getSessionUser() {
     const userId = Number(session.user.id);
     if (!Number.isInteger(userId) || userId <= 0) return null;
 
-    await clearExpiredSuspensions();
     const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {

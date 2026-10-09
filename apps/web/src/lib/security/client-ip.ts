@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 interface RequestLike {
     headers: Headers;
 }
@@ -27,7 +29,8 @@ export function normalizeIp(rawIp: string | null | undefined): string {
         return "unknown";
     }
 
-    return rawIp.replace(/^::ffff:/, "").trim() || "unknown";
+    const normalized = rawIp.replace(/^::ffff:/, "").trim();
+    return isIP(normalized) ? normalized : "unknown";
 }
 
 export function getTrustedForwardedIp(
@@ -38,14 +41,11 @@ export function getTrustedForwardedIp(
         return null;
     }
 
-    const firstForwarded = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
-    if (firstForwarded) {
-        return normalizeIp(firstForwarded.split(",")[0]);
-    }
-
-    const firstRealIp = Array.isArray(realIp) ? realIp[0] : realIp;
-    if (firstRealIp) {
-        return normalizeIp(firstRealIp);
+    // The private ingress must replace these headers, not append client input.
+    for (const candidate of [realIp, forwardedFor]) {
+        if (typeof candidate !== "string" || candidate.includes(",")) continue;
+        const normalized = normalizeIp(candidate);
+        if (normalized !== "unknown") return normalized;
     }
 
     return null;

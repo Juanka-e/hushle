@@ -31,7 +31,12 @@ assert.equal((`${workflow}\n${ciWorkflow}`.match(/actions\/checkout@3d3c42e5aac5
 assert.equal((ciWorkflow.match(/actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/g) ?? []).length, 2);
 assert.equal((`${workflow}\n${ciWorkflow}`.match(/persist-credentials:\s*false/g) ?? []).length, 3);
 assert.doesNotMatch(`${workflow}\n${ciWorkflow}`, /actions\/(?:checkout|setup-node)@v\d/);
-assert.match(workflow, /GITHUB_SHA.*\.release-sha/);
+assert.match(workflow, /RELEASE_SHA.*\.release-sha/);
+assert.match(workflow, /workflow_run:/);
+assert.match(workflow, /conclusion == 'success'/);
+assert.match(workflow, /event == 'push'/);
+assert.match(workflow, /head_repository.full_name == github.repository/);
+assert.doesNotMatch(workflow, /workflow_dispatch:|\n  push:/);
 assert.match(ciWorkflow, /test:request-origin-integration/);
 assert.match(workflow, /sha256sum hushle-release\.tgz/);
 assert.match(workflow, /sha256sum -c hushle-release\.tgz\.sha256/);
