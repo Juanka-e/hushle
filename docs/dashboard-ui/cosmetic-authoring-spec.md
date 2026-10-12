@@ -2,6 +2,12 @@
 
 Son guncelleme: 9 March 2026
 
+## Yeni Tasarim Degerlendirmesi
+
+[Kart koleksiyonlari, renk varyantlari ve profil raporu](./card-collections-and-profile-review.md)
+4 Ekim 2026 tarihli mevcut kod incelemesini ve onerilen V2 full-art yolunu
+icerir. Asagidaki V1 spec'in veya uygulanmis renderer'in degistigi anlamina gelmez.
+
 ## Amac
 
 Bu dokumanin amaci iki seyi standart hale getirmektir:
