@@ -33,7 +33,7 @@ assert.match(config, /name:\s*"webkit-iphone-public"/);
 assert.match(config, /name:\s*"webkit-desktop-public"/);
 assert.match(config, /name:\s*"webkit-iphone-auth"/);
 assert.match(config, /browserName:\s*"webkit"/);
-assert.match(config, /testMatch:\s*"web-responsive\.spec\.ts"/);
+assert.match(config, /testMatch:\s*\["web-responsive\.spec\.ts", "prehydration-input\.spec\.ts"\]/);
 assert.match(config, /testMatch:\s*"web-launch-auth\.spec\.ts"/);
 
 assert.match(workflow, /playwright install --with-deps chromium webkit/);
