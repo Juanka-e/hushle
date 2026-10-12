@@ -9,6 +9,10 @@ import { getSystemSettings } from "../apps/web/src/lib/system-settings/service";
 import { resolveMatchRewardCoin } from "../apps/web/src/lib/system-settings/economy";
 
 const serverUrl = process.env.SOCKET_TEST_URL ?? "http://127.0.0.1:3301";
+// Production servers only answer /api/health with the shared token.
+const healthHeaders: Record<string, string> = process.env.HEALTHCHECK_TOKEN?.trim()
+    ? { "x-health-token": process.env.HEALTHCHECK_TOKEN.trim() }
+    : {};
 const timeoutMs = 30_000;
 
 interface LobbyPlayer {
@@ -270,7 +274,9 @@ async function run(): Promise<void> {
             assert.equal(Number(walletAfterReads?.coinBalance ?? 0), read.body.coinEarned, "reads never pay again");
             console.log("[e2e] finalize read is stable and idempotent");
 
-            const health = await fetch(`${serverUrl}/api/health`).then((response) => response.json()) as {
+            const healthResponse = await fetch(`${serverUrl}/api/health`, { headers: healthHeaders });
+            assert.equal(healthResponse.status, 200, "health refused: set HEALTHCHECK_TOKEN to the server's token");
+            const health = (await healthResponse.json()) as {
                 matchSettlements?: { available: boolean; buffered: number };
             };
             assert.equal(health.matchSettlements?.available, true);
