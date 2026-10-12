@@ -3,17 +3,22 @@
 import { Clock3, Pause, Play } from "lucide-react";
 import type { TransitionData } from "@/types/game";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { ConnectionPausePanel } from "./connection-pause-panel";
 
 interface TransitionScreenProps {
     transition: TransitionData;
     isHost?: boolean;
     onPauseResume?: () => void;
+    canResolveConnectionPause?: boolean;
+    onEmit?: (event: string, data?: unknown) => void;
 }
 
 export function TransitionScreen({
     transition,
     isHost = false,
     onPauseResume,
+    canResolveConnectionPause = false,
+    onEmit,
 }: TransitionScreenProps) {
     const { t } = useI18n();
     const getTeamLabel = (team: string) => team === "A" ? t("transition.teamA") : t("transition.teamB");
@@ -135,6 +140,15 @@ export function TransitionScreen({
                         </div>
                     </section>
                 </div>
+
+                {transition.oyunDurduruldu && transition.connectionPause?.waitingForPlayers ? (
+                    <ConnectionPausePanel
+                        className="mt-5"
+                        connectionPause={transition.connectionPause}
+                        canResolve={canResolveConnectionPause}
+                        onEmit={onEmit}
+                    />
+                ) : null}
 
                 {isHost && onPauseResume ? (
                     <div className="mt-5 flex justify-end">
