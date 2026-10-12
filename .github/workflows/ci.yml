@@ -40,6 +40,11 @@ jobs:
       - name: ESLint
         run: npm run lint
 
+      - name: Test persistent storage and backups
+        run: |
+          npm run test:persistent-assets
+          npm run test:data-backup
+
       - name: Test mobile API foundation
         run: npm run test:mobile-api
 

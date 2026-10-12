@@ -1,5 +1,4 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
+import { writeAsset } from "@/lib/assets/storage";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin/require-admin";
@@ -90,11 +89,7 @@ export async function POST(request: NextRequest) {
         }
 
         const fileName = `${randomUUID()}.${extension}`;
-        const uploadDir = path.join(process.cwd(), "public", "branding", config.directory);
-        await mkdir(uploadDir, { recursive: true });
-
-        const filePath = path.join(uploadDir, fileName);
-        await writeFile(filePath, buffer);
+        await writeAsset(`/branding/${config.directory}/${fileName}`, buffer);
 
         await writeAuditLog({
             actor: adminSession,

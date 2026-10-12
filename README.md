@@ -193,6 +193,7 @@ docker compose --env-file .env.production up -d --build
 - [Realtime production topolojisi](docs/architecture/adr-003-single-realtime-writer-topology.md)
 - [Deployment güvenliği](docs/guides/deployment-security-guide.md)
 - [Deployment operasyon runbook'u](docs/guides/deployment-ops-runbook.md)
+- [Kalıcı görseller, veri yedekleme ve izole restore](docs/deploy/persistent-assets-and-data-backups.md)
 - [Web açılış hazırlığı](docs/guides/web-launch-readiness-guide.md)
 - [Ekonomi ve abuse koruması](docs/guides/economy-abuse-hardening-guide.md)
 - [i18n, duyuru ve kelime paketleri](docs/guides/i18n-announcements-and-word-packs.md)
