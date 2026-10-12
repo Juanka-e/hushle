@@ -10,6 +10,10 @@ import { CONNECTION_PAUSE_RESOLVE_EVENT } from "../apps/web/src/lib/socket/conne
 
 // Run against a server started with CONNECTION_PAUSE_GRACE_SECONDS=5.
 const serverUrl = process.env.SOCKET_TEST_URL ?? "http://127.0.0.1:3301";
+// Production servers only answer /api/health with the shared token.
+const healthHeaders: Record<string, string> = process.env.HEALTHCHECK_TOKEN?.trim()
+    ? { "x-health-token": process.env.HEALTHCHECK_TOKEN.trim() }
+    : {};
 const graceSeconds = Number(process.env.CONNECTION_PAUSE_GRACE_SECONDS ?? "5");
 const timeoutMs = 45_000;
 
@@ -179,7 +183,9 @@ async function closeMatch(host: Player): Promise<void> {
 }
 
 async function activeMatches(): Promise<number> {
-    const health = (await fetch(`${serverUrl}/api/health`).then((response) => response.json())) as { aktifMacSayisi?: number };
+    const response = await fetch(`${serverUrl}/api/health`, { headers: healthHeaders });
+    assert.equal(response.status, 200, "health refused: set HEALTHCHECK_TOKEN to the server's token");
+    const health = (await response.json()) as { aktifMacSayisi?: number };
     assert.equal(typeof health.aktifMacSayisi, "number", "health must report active matches");
     return health.aktifMacSayisi as number;
 }
@@ -288,6 +294,7 @@ async function run(): Promise<void> {
             inspector.socket.disconnect();
             await until("pause after inspector leaves", () => host.pause?.waitingForPlayers === true);
             const pausedClock = host.state!.kalanZaman;
+            const narratorBefore = host.state!.anlatici?.ad;
             await waitForResolvable(host);
             assert.equal(host.state!.kalanZaman, pausedClock, "the turn clock is frozen during the pause");
             const roles = players
@@ -298,6 +305,10 @@ async function run(): Promise<void> {
             const newInspector = assigned.find(([, rol]) => rol === "Gözetmen")?.[0];
             assert.ok(newInspector && newInspector !== inspector, "a new inspector is assigned");
             await until("clock resumed", () => (host.state?.kalanZaman ?? pausedClock) < pausedClock);
+            // Same turn: no transition, same narrator, and the clock continues instead of resetting.
+            assert.equal(host.state!.gecisEkraninda, false, "the turn continues without a transition");
+            assert.equal(host.state!.anlatici?.ad, narratorBefore, "the narrator keeps the turn");
+            assert.ok(host.state!.kalanZaman >= pausedClock - 3, "the clock continues from where it stopped");
             assert.equal(host.state!.gozetmen?.ad, newInspector.name);
             await closeMatch(host);
             console.log("[pause-e2e] S2 inspector replaced, clock resumed");

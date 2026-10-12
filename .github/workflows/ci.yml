@@ -224,6 +224,17 @@ jobs:
           ADMIN_ACCESS_MODE: "public_login"
           ADMIN_ACCESS_FAIL_CLOSED: "false"
 
+      - name: Test connection pause panel and Admin Lab UI
+        run: npm run test:connection-pause-ui-e2e
+        env:
+          CONNECTION_PAUSE_UI_E2E: "true"
+          CONNECTION_PAUSE_GRACE_SECONDS: "5"
+          ADMIN_ACCESS_MODE: "public_login"
+          ADMIN_ACCESS_FAIL_CLOSED: "false"
+          ROOM_JOIN_MAX_ATTEMPTS: "100"
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-pause-ui"
+
       - name: Test payment checkout UI
         run: npm run test:payment-checkout-e2e
         env:
