@@ -14,6 +14,12 @@ import { readConnectionPauseResolution } from "./connection-pause-rules";
 /** Re-enables the buttons if the server rejects a decision without sending new state. */
 const SUBMIT_RETRY_MS = 5_000;
 
+// The panel can sit below the fold on the transition screen; bring the decision area into view
+// when it appears and when the end-match confirmation opens (distinct keys force a remount).
+const revealOnMount = (node: HTMLDivElement | null) => {
+    node?.scrollIntoView({ block: "nearest" });
+};
+
 interface ConnectionPausePanelProps {
     connectionPause: ConnectionPauseSummary | null | undefined;
     canResolve: boolean;
@@ -162,6 +168,8 @@ export function ConnectionPausePanel({
             {showActions ? (
                 confirmingEnd ? (
                     <div
+                        key="confirm-end"
+                        ref={revealOnMount}
                         role="alertdialog"
                         aria-labelledby="connection-pause-end-title"
                         aria-describedby="connection-pause-end-body"
@@ -193,7 +201,7 @@ export function ConnectionPausePanel({
                         </div>
                     </div>
                 ) : (
-                    <div className="mt-4 space-y-2">
+                    <div key="actions" ref={revealOnMount} className="mt-4 space-y-2">
                         <div className="flex flex-wrap gap-2">
                             <button
                                 type="button"

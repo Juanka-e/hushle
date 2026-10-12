@@ -1324,7 +1324,10 @@ export default function RoomPage() {
                             {renderGameContent()}
                         </div>
                     ) : (
-                        renderGameContent()
+                        // Short screens must scroll to the transition and pause controls instead of clipping them.
+                        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                            {renderGameContent()}
+                        </div>
                     )}
                 </main>
 
