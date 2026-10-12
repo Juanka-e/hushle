@@ -82,15 +82,19 @@ Hedef:
 Referans:
 - `docs/guides/web-real-device-smoke.md`
 
-## Ertelenen Rol Kurtarma Secenekleri
+## Rol Kurtarma
 
-Connection-aware pause/reconnect temel akisi once uygulanir. Gercek kullanim verisi
-gerektirirse ayri branchlerde su secenekler degerlendirilir:
-- yalniz mevcut turu sonlandirma
-- 5v5 icin yeni anlatici atama
-- otomatik gozetmen devri
+2026-10-13: baglanti duraklatmasindan 60 sn sonra yonetici (yonetici yoksa mactaki
+aktif bir oyuncu) "Onsuz devam et" veya "Maci bitir" secebilir. Anlatici ayrildiysa
+tur biter (gecis ekraninda ayni takim yeni anlaticiyla devam eder), gozetmen
+ayrildiysa yenisi atanir; maci bitirmek `host_ended` olarak coin vermeden kaydeder.
+Onsuz devam yalniz her takimda en az 2 cevrimici oyuncu kaliyorsa sunulur.
+Duraklatma tetikleyicisi ve cozum sekli Admin > Lab'de 7/30 gunluk gorunur.
+Spec: `docs/superpowers/specs/2026-10-13-connection-pause-resolution-design.md`.
+
+Hala ertelenen (Lab verisi gerektirirse):
 - takim lideri rol yonetimi
-- tekrarlanan kopmalar icin hafif telemetry ve operator incelemesi
+- yonetici beklemeden otomatik karar
 
 Fiziksel iOS/Android/laptop smoke harness'i tamamlandi. Gercek cihaz sonucu
 otomasyonla uretilemeyecegi icin release kaniti olarak manuel acik kalir:

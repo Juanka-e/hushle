@@ -10,6 +10,7 @@
 | `oyuncuyuAt` | `{ targetPlayerId: string }` | (Admin only) Kicks and bans a player from the room. |
 | `oyun_baslat` | `{ seciliKategoriler: number[], seciliZorluklar: number[], ayarlar: RoomSettings }` | (Admin only) Starts the game with selected settings. |
 | `oyun_kontrol` | `void` | (Admin only) Pauses or resumes the game timer. |
+| `connection_pause:resolve` | `{ action: 'continue_without_missing' \| 'end_match' }` | During a connection pause, after the grace period (`CONNECTION_PAUSE_GRACE_SECONDS`, default 60): the host, or any online active participant while the host is offline, continues without the missing players (only if each team keeps two online players) or ends the match as `host_ended` (no coins, no win). |
 | `oyunVerisi` | `{ eylem: 'dogru' | 'pas' | 'tabu' }` | Narrator sends action result for the current card. |
 | `oyun_sifirla` | `void` | (Admin only) Resets the game state to lobby. |
 | `takim_degistir` | `void` | Player requests to switch teams (lobby only). |
@@ -21,9 +22,9 @@
 | :--- | :--- | :--- |
 | `lobiGuncelle` | `PublicRoomData` | Broadcasts public player fields, settings, selections and server-computed `startReadiness`. Internal `userId`, identity type, username snapshot and IP are not included. |
 | `kapasiteEngeli` | `{ level, retryAfterSeconds, message }` | Tells the requesting client that new admission is temporarily blocked. Internal capacity totals and thresholds are not included. |
-| `oyunDurumuGuncelle` | `GameState` | Broadcasts active game state (scores, timer, current card masked). `connectionPause` exposes only whether critical players are still missing. |
+| `oyunDurumuGuncelle` | `GameState` | Broadcasts active game state (scores, timer, current card masked). `connectionPause` carries `waitingForPlayers`, `missingPlayers` (playerId, display name, team), `resolutionAvailableInSeconds` and `canContinueWithoutMissing`. |
 | `oyunBasladi` | `void` | Signals that the game has started. Clients switch to game view. |
-| `turGecisDurumGuncelle` | `{ oyunDurduruldu: boolean, kalanSure: number, connectionPause?: { waitingForPlayers: boolean } | null }` | Updates state during turn transitions. Reconnect identity and continuity details remain server-side. |
+| `turGecisDurumGuncelle` | `{ oyunDurduruldu: boolean, kalanSure: number, connectionPause?: ConnectionPauseSummary | null }` | Updates state during turn transitions. Reconnect identity and continuity details remain server-side. |
 | `hata` | `string` | Sent when an error occurs. |
 | `odadanAtildin` | `{ odaKodu: string }` | Sent to a player who has been kicked. |
 | `kategoriAyarlariGuncellendi` | `{ seciliKategoriler, seciliZorluklar }` | Updates lobby UI when admin changes settings. |
