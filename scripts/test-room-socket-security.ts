@@ -76,6 +76,13 @@ assert.match(
     socketSource,
     /if \(room\.oyunDurumu\.oyunAktifMi\) \{\s*socket\.emit\("hata", "Oyun sırasında oyuncu odadan atılamaz\."\);\s*return;/
 );
+// The long abandoned-room TTL applies only to interrupted matches, never to empty lobbies.
+assert.match(
+    socketSource,
+    /const abandonedRoomTtlMs = resolveAbandonedRoomTtlMs\(\{\s*matchActive: room\.oyunDurumu\.oyunAktifMi,\s*abandonedMatchTtlMs: ABANDONED_ROOM_TTL_MS,\s*\}\);/
+);
+assert.match(socketSource, /\}, abandonedRoomTtlMs\);/);
+assert.doesNotMatch(socketSource, /\}, ABANDONED_ROOM_TTL_MS\);/);
 assert.match(
     socketSource,
     /runWithRoomActionLock\(\s*room\.odaKodu,\s*"switch-team"/

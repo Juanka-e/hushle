@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
+    EMPTY_LOBBY_GRACE_MS,
     calculateActiveMatchDurationSeconds,
+    resolveAbandonedRoomTtlMs,
     resolveConnectionContinuity,
 } from "../apps/web/src/lib/socket/room-connection-continuity";
 
@@ -65,5 +67,10 @@ assert.equal(
     5,
     "live match duration must exclude the currently open pause"
 );
+
+// Only an interrupted match is worth keeping; empty lobbies must free their slot quickly.
+assert.equal(resolveAbandonedRoomTtlMs({ matchActive: true, abandonedMatchTtlMs: 1_800_000 }), 1_800_000);
+assert.equal(resolveAbandonedRoomTtlMs({ matchActive: false, abandonedMatchTtlMs: 1_800_000 }), EMPTY_LOBBY_GRACE_MS);
+assert.equal(EMPTY_LOBBY_GRACE_MS, 15_000);
 
 console.log("room connection continuity checks passed");
