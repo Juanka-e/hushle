@@ -91,6 +91,12 @@ const checks: IntegrationCheck[] = [
         script: "test:match-settlement-e2e",
         env: { MATCH_SETTLEMENT_E2E_TEST: "true" },
     },
+    {
+        // The server under test must run with CONNECTION_PAUSE_GRACE_SECONDS=5.
+        area: "connection pause resolution",
+        script: "test:connection-pause-resolution-e2e",
+        env: { CONNECTION_PAUSE_E2E_TEST: "true", CONNECTION_PAUSE_GRACE_SECONDS: "5" },
+    },
 ];
 
 const npmCliPath = process.env.npm_execpath;
