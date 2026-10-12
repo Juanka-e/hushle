@@ -83,3 +83,16 @@ export function resolveConnectionContinuity(
         missingPlayerIds: [...missingIds],
     };
 }
+
+export const EMPTY_LOBBY_GRACE_MS = 15_000;
+
+/**
+ * Only an interrupted match is worth keeping when everyone is offline; an empty
+ * lobby or finished match frees its capacity slot after a short grace period.
+ */
+export function resolveAbandonedRoomTtlMs(input: {
+    matchActive: boolean;
+    abandonedMatchTtlMs: number;
+}): number {
+    return input.matchActive ? input.abandonedMatchTtlMs : EMPTY_LOBBY_GRACE_MS;
+}

@@ -67,9 +67,11 @@ Changing lobby display names does not reset economy guard history.
   and role continuity.
 - Paused wall-clock time is excluded from the match duration used by reward and
   economy review.
-- Fully offline rooms remain recoverable for
+- Fully offline rooms with an interrupted match remain recoverable for
   `ABANDONED_ROOM_TTL_MINUTES` (default 30 minutes), then close without a match
   result or reward.
+- Fully offline lobbies and finished matches close after 15 seconds so they do
+  not hold an active-room capacity slot.
 
 Deferred until production usage justifies the complexity:
 

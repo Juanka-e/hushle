@@ -58,6 +58,7 @@ import {
 } from "./room-game-start";
 import {
     calculateActiveMatchDurationSeconds,
+    resolveAbandonedRoomTtlMs,
     resolveConnectionContinuity,
 } from "./room-connection-continuity";
 import type { PlayerCosmetics } from "@/types/game";
@@ -2373,8 +2374,12 @@ export function setupGameSocket(
             const onlinePlayers = room.oyuncular.filter((p) => p.online);
 
             if (onlinePlayers.length === 0) {
-                // Keep a disconnected match recoverable while bounding abandoned room memory.
+                // Keep an interrupted match recoverable; empty lobbies free their slot quickly.
                 const roomCode = room.odaKodu;
+                const abandonedRoomTtlMs = resolveAbandonedRoomTtlMs({
+                    matchActive: room.oyunDurumu.oyunAktifMi,
+                    abandonedMatchTtlMs: ABANDONED_ROOM_TTL_MS,
+                });
                 setTimeout(() => {
                     const currentRoom = getRoom(roomCode);
                     if (!currentRoom) return;
@@ -2394,7 +2399,7 @@ export function setupGameSocket(
 
                         destroyRoom(roomCode);
                     }
-                }, ABANDONED_ROOM_TTL_MS);
+                }, abandonedRoomTtlMs);
                 return;
             }
 
