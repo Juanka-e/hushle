@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../apps/web/src/lib/prisma";
+import { closeRedisClient } from "@hushle/platform-cache";
 import { getSystemSettings } from "../apps/web/src/lib/system-settings/service";
 import type { SystemSettings } from "../apps/web/src/types/system-settings";
 import { evaluateMatchRewardEligibility } from "../apps/web/src/lib/economy/reward-eligibility";
@@ -533,6 +534,37 @@ async function run(): Promise<void> {
             console.log("[settlement] 15 repeated group guard ok");
         }
 
+        // 22. Two matches of the same user settled at the same moment must still respect the
+        // rolling cap: the wallet lock has to come before any read of the earning window.
+        {
+            const zoe = await createUser("zoe");
+            const capped = structuredClone(settings);
+            capped.economy.matchRewardGuardEnabled = true;
+            capped.economy.matchRewardWindowHours = 24;
+            capped.economy.matchRewardSoftCapCoin = 120;
+            capped.economy.matchRewardHardCapCoin = 120;
+            const first = buildSnapshot({ participants: [registered(zoe, "A"), guest("z1", "B")] });
+            const second = buildSnapshot({ participants: [registered(zoe, "A"), guest("z2", "B")] });
+            const ids = [(await recordMatchSettlement(first)).id, (await recordMatchSettlement(second)).id];
+            let started = 0;
+            let releaseBarrier: () => void = () => undefined;
+            const barrier = new Promise<void>((resolve) => { releaseBarrier = resolve; });
+            const hooks = {
+                async transactionStarted() {
+                    started += 1;
+                    if (started === 2) releaseBarrier();
+                    await barrier;
+                },
+            };
+            await Promise.all(ids.map((id) => settleMatchSettlement(id, { settings: capped, hooks })));
+            const firstResult = await resultFor(first, zoe);
+            const secondResult = await resultFor(second, zoe);
+            assert.ok(firstResult && secondResult);
+            assert.equal(firstResult.coinEarned + secondResult.coinEarned, 120, "concurrent settlements must not bypass the hard cap");
+            assert.equal(await balance(zoe), 120);
+            console.log("[settlement] 22 concurrent cap ok");
+        }
+
         // 16. Safety ceiling at the hard cap still writes the match with zero coins.
         {
             const rosa = await createUser("rosa");
@@ -690,6 +722,7 @@ async function run(): Promise<void> {
     } finally {
         await cleanup();
         await prisma.$disconnect();
+        await closeRedisClient();
     }
 }
 

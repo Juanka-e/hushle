@@ -49,6 +49,8 @@ export interface SettleOptions {
     hooks?: {
         /** Test seam: runs before each registered participant is settled. */
         beforeParticipant?(userId: number): void | Promise<void>;
+        /** Test seam: runs first inside each participant transaction. */
+        transactionStarted?(userId: number): void | Promise<void>;
     };
 }
 
@@ -99,6 +101,15 @@ function claimableWhere(now: Date): Prisma.MatchSettlementWhereInput {
     };
 }
 
+/**
+ * Creates wallet/profile outside the reward transaction. INSERT IGNORE lets a concurrent
+ * settlement of the same user win the race without an error.
+ */
+async function ensureParticipantCore(userId: number): Promise<void> {
+    await prisma.wallet.createMany({ data: [{ userId, coinBalance: 0 }], skipDuplicates: true });
+    await prisma.userProfile.createMany({ data: [{ userId }], skipDuplicates: true });
+}
+
 async function describeUnclaimed(id: number): Promise<SettlementRunResult> {
     const row = await prisma.matchSettlement.findUnique({ where: { id }, select: { status: true } });
     if (!row) return { settlementId: id, status: "not_found", participants: [] };
@@ -132,9 +143,11 @@ async function settleOneParticipant(
         return { userId, outcome: "skipped_reward_capability", coinEarned: null };
     }
 
-    const outcome = await prisma.$transaction((tx) =>
-        settleParticipantReward(tx, { snapshot, userId, settings, now })
-    );
+    await ensureParticipantCore(userId);
+    const outcome = await prisma.$transaction(async (tx) => {
+        await options.hooks?.transactionStarted?.(userId);
+        return settleParticipantReward(tx, { snapshot, userId, settings, now });
+    });
     await publishParticipantSettlementEffects({ snapshot, settlementId, userId, outcome });
 
     if (outcome.kind === "not_eligible") {
@@ -269,7 +282,8 @@ export async function sweepDueMatchSettlements(
     const ids = await findDueMatchSettlementIds({ now, limit: options.limit ?? 25 });
     const result: SweepResult = { processed: 0, settled: 0, pending: 0, deadLetter: 0, claimedElsewhere: 0 };
     for (const id of ids) {
-        const run = await settleMatchSettlement(id, { now, settings: options.settings });
+        // Each row takes a fresh clock so a long batch never writes an already-expired claim.
+        const run = await settleMatchSettlement(id, { settings: options.settings });
         result.processed += 1;
         if (run.status === "settled") result.settled += 1;
         else if (run.status === "pending") result.pending += 1;

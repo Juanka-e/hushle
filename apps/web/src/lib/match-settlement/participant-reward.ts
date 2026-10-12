@@ -61,18 +61,12 @@ export async function settleParticipantReward(
     const { snapshot, userId, settings, now } = input;
     const matchStartedAt = new Date(snapshot.matchStartedAt);
 
-    await tx.wallet.upsert({
-        where: { userId },
-        update: {},
-        create: { userId, coinBalance: 0 },
-    });
-    await tx.userProfile.upsert({
-        where: { userId },
-        update: {},
-        create: { userId },
-    });
-    // Serialize rewards for this wallet before reading rolling-window aggregates.
-    await tx.$queryRaw`SELECT user_id FROM wallets WHERE user_id = ${userId} FOR UPDATE`;
+    // Must be the first statement: under REPEATABLE READ the first plain read fixes the
+    // snapshot, so locking first makes every later aggregate see committed rewards.
+    const locked = await tx.$queryRaw<Array<{ user_id: number }>>`SELECT user_id FROM wallets WHERE user_id = ${userId} FOR UPDATE`;
+    if (locked.length === 0) {
+        throw new Error(`Wallet for user ${userId} is missing; ensure it before settling`);
+    }
 
     const existing = await tx.matchResult.findUnique({
         where: {
