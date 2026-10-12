@@ -321,7 +321,7 @@ function SummaryView({ summary }: { summary: ConnectionPauseAnalyticsSummary }) 
                                 </dt>
                                 <dd className="font-semibold tabular-nums text-foreground">
                                     {summary.averageResolutionSeconds[outcome] === null ? (
-                                        <span className="text-muted-foreground">
+                                        <span className="relative text-muted-foreground">
                                             <span aria-hidden="true">—</span>
                                             <span className="sr-only">Veri yok</span>
                                         </span>
@@ -438,12 +438,12 @@ export function ConnectionPauseCard() {
                     <WifiOff aria-hidden="true" className="h-5 w-5 text-rose-500" />
                     Bağlantı kopmaları
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="col-start-1">
                     Anlatıcı veya gözetmen düştüğünde ya da bir takımda 2&apos;den az çevrimiçi
                     oyuncu kaldığında maç duraklar. Bu kart duraklatmaların neden başladığını ve
                     nasıl çözüldüğünü gösterir.
                 </CardDescription>
-                <CardAction className="flex flex-wrap items-center gap-2">
+                <CardAction className="flex flex-wrap items-center gap-2 @max-xl/card-header:col-start-1 @max-xl/card-header:row-span-1 @max-xl/card-header:row-start-auto @max-xl/card-header:justify-self-start">
                     <div
                         role="group"
                         aria-label="Zaman aralığı"
@@ -457,7 +457,7 @@ export function ConnectionPauseCard() {
                                     type="button"
                                     aria-pressed={active}
                                     onClick={() => setDays(option.value)}
-                                    className={`rounded-xl px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                                    className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                                         active
                                             ? "bg-background text-foreground shadow-sm"
                                             : "text-muted-foreground hover:text-foreground"
