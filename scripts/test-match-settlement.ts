@@ -63,6 +63,21 @@ assert.equal("oyunAktifMi" in snapshot, false);
 assert.doesNotMatch(JSON.stringify(snapshot), /"ip(?:Address)?"\s*:/i, "snapshot must not carry IP fields");
 assert.equal(createSettlementSnapshot(endedRoom(), "host_ended").endReason, "host_ended");
 
+// 1b. Cosmetic labels are normalized instead of failing the whole match.
+{
+    const room = endedRoom();
+    room.oyuncular = [
+        { ...room.oyuncular[0], ad: "x".repeat(80), usernameSnapshot: "u".repeat(80) },
+        { ...room.oyuncular[1], ad: "   " },
+        { ...room.oyuncular[2], usernameSnapshot: "" },
+    ];
+    const normalized = createSettlementSnapshot(room, "completed");
+    assert.equal(normalized.participants[0].displayName.length, 64);
+    assert.equal(normalized.participants[0].usernameSnapshot?.length, 64);
+    assert.equal(normalized.participants[1].displayName, "Oyuncu");
+    assert.equal(normalized.participants[2].usernameSnapshot, null);
+}
+
 // 2. Only finished matches can be snapshotted.
 assert.throws(() => createSettlementSnapshot(endedRoom({ oyunAktifMi: true }), "completed"), SettlementSnapshotError);
 assert.throws(() => createSettlementSnapshot(endedRoom({ matchStartedAt: null }), "completed"), SettlementSnapshotError);

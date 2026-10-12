@@ -99,12 +99,18 @@ export function createSettlementSnapshot(
             playerId: player.playerId,
             userId: player.userId,
             identityType: player.identityType,
-            usernameSnapshot: player.usernameSnapshot,
-            displayName: player.ad,
+            usernameSnapshot: normalizeLabel(player.usernameSnapshot),
+            displayName: normalizeLabel(player.ad) ?? "Oyuncu",
             team: player.takim,
             roleAtStart: player.roleAtStart,
         })),
     });
+}
+
+/** Cosmetic labels must never make a finished match unrecordable. */
+function normalizeLabel(value: string | null | undefined): string | null {
+    const trimmed = (value ?? "").trim().slice(0, 64);
+    return trimmed.length > 0 ? trimmed : null;
 }
 
 /** Reward pipeline input in the same shape the live room snapshot uses. */
