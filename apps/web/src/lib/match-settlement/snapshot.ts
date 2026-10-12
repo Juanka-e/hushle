@@ -119,6 +119,7 @@ export function toRewardRoomSnapshot(snapshot: MatchSettlementSnapshot): RoomMat
         sureSeconds: snapshot.durationSeconds,
         matchFormat: snapshot.matchFormat,
         matchTarget: snapshot.matchTarget,
+        matchEndReason: snapshot.endReason,
         oyuncular: snapshot.participants.map((participant) => ({
             playerId: participant.playerId,
             userId: participant.userId,

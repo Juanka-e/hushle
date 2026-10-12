@@ -63,6 +63,8 @@ import {
 import type { PlayerCosmetics } from "@/types/game";
 import type { CapacitySettings } from "@/types/system-settings";
 import { registerMetricsProvider } from "./room-metrics";
+import { enqueueMatchSettlement } from "@/lib/match-settlement/runtime";
+import type { MatchEndReason } from "@/lib/match-settlement/types";
 import {
     canMoveToTeam,
     chooseJoinTeam,
@@ -182,6 +184,7 @@ interface RoomData {
     connectionPause: ConnectionPauseState | null;
     pauseStartedAt: number | null;
     pausedDurationMs: number;
+    matchEndReason: MatchEndReason | null;
     matchParticipants: MatchParticipantSnapshot[];
     activeWordAnalytics: {
         wordId: number;
@@ -203,6 +206,7 @@ export interface RoomMatchSnapshot {
     sureSeconds: number | null;
     matchFormat: TabuRoomSettings["mod"];
     matchTarget: number;
+    matchEndReason?: MatchEndReason | null;
     oyuncular: Array<{
         playerId: string;
         userId: number | null;
@@ -1227,6 +1231,7 @@ export function setupGameSocket(
         room.connectionPause = null;
         setRoomPaused(room, false);
         room.oyunDurumu.bittiAt = Date.now();
+        room.matchEndReason = "completed";
         if (room.zamanlayici) {
             clearInterval(room.zamanlayici);
         }
@@ -1236,6 +1241,10 @@ export function setupGameSocket(
             kazananTakim: finishDecision.winner,
             skor: room.oyunDurumu.skor,
         });
+
+        // Settle server-side so rewards never depend on the client staying connected.
+        const settlementRoom = getRoomMatchSnapshot(room.odaKodu);
+        if (settlementRoom) enqueueMatchSettlement(settlementRoom, "completed");
     }
 
     function resetGame(
@@ -1253,6 +1262,7 @@ export function setupGameSocket(
         room.connectionPause = null;
         room.pauseStartedAt = null;
         room.pausedDurationMs = 0;
+        room.matchEndReason = null;
         room.matchParticipants = [];
         room.activeWordAnalytics = null;
 
@@ -1504,6 +1514,7 @@ export function setupGameSocket(
                             connectionPause: null,
                             pauseStartedAt: null,
                             pausedDurationMs: 0,
+                            matchEndReason: null,
                             matchParticipants: [],
                             activeWordAnalytics: null,
                             zamanlayici: null,
@@ -2041,6 +2052,7 @@ export function setupGameSocket(
                     room.connectionPause = null;
                     room.pauseStartedAt = null;
                     room.pausedDurationMs = 0;
+                    room.matchEndReason = null;
 
                     persistRoom(room);
                     publishCurrentCapacity();
@@ -2710,6 +2722,7 @@ export function getRoomMatchSnapshot(roomCode: string): RoomMatchSnapshot | null
         sureSeconds,
         matchFormat: room.ayarlar.mod,
         matchTarget: room.ayarlar.deger,
+        matchEndReason: room.matchEndReason ?? null,
         oyuncular: matchParticipants.map((player) => ({
             playerId: player.playerId,
             userId: player.userId ?? null,
