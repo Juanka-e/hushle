@@ -156,9 +156,9 @@ sıra başka disk/bucket kopyası olmadan disk kaybına dayanıklı olduğunu s�
 - Build başarılı; storage import zincirinde bir Turbopack NFT tracing uyarısı
   kaldı. Runtime `data`/`backups` tracing ve Docker context'ten dışlanır; build'in
   uyarısız olduğunu söylemeyin. Daha dar runtime storage modülü ayrıca incelenecek.
-- Client finalize'dan bağımsız durable maç sonucu + reward outbox/worker. Cüzdan
-  kilidi eşzamanlı cap yarışını kapatır, ama tarayıcı kapanması/server restart sonrası
-  ödül işinin kaybolması sorununu tek başına çözmez.
+- ~~Client finalize'dan bağımsız durable maç sonucu + reward outbox/worker.~~
+  Tamamlandı (2026-10-12): `match_settlements` outbox'ı ve süreç içi worker.
+  Kalan risk: maç biterken DB erişilemezken süreç de çökerse bellek tamponu kaybolur.
 - Atomik release dizinleri ve kontrollü uygulama rollback; schema rollback otomatik olmaz.
 - Gerçek bucket acceptance, cron/alarm kurulumu, offsite indirme/restore tatbikatı.
 - Mağazada bounded server-side sayfalama/filtreleme ve audit archive lifecycle.

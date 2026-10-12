@@ -86,6 +86,11 @@ const checks: IntegrationCheck[] = [
         script: "test:late-spectator-reward",
         env: { LATE_SPECTATOR_REWARD_TEST: "true" },
     },
+    {
+        area: "server-side match settlement",
+        script: "test:match-settlement-e2e",
+        env: { MATCH_SETTLEMENT_E2E_TEST: "true" },
+    },
 ];
 
 const npmCliPath = process.env.npm_execpath;

@@ -139,7 +139,7 @@ Source-contract cases (in `scripts/test-match-settlement.ts`):
 Contract cases:
 1. Route no longer imports `applyWalletLedgerMutation` or writes `match_results`.
 2. Status table from the spec (401/403/409/404/403-denied/200/202) — exercised end to end in Task 8.
-3. Ledger foundation test points at `participant-reward.ts`; admin history test asserts `match_duration_seconds` and `snapshot.room.matchFormat` there.
+3. Ledger foundation test points at `participant-reward.ts`; admin history test asserts `match_duration_seconds` and `${snapshot.matchFormat}` there.
 
 ### Task 8: Socket end-to-end
 
