@@ -8,6 +8,7 @@ import {
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import { isTrustedStateChangeRequest } from "@/lib/security/request-origin";
+import { processGuestClaimsForUser } from "@/lib/match-settlement/guest-claim";
 
 const confirmSchema = z.object({
     token: z.string().trim().min(40).max(160),
@@ -68,6 +69,12 @@ export async function POST(request: Request) {
             });
         } catch (error) {
             console.error("Email verification audit could not be written", error);
+        }
+        // Guest matches claimed at signup were waiting for this; the worker retries failures.
+        try {
+            await processGuestClaimsForUser(result.userId);
+        } catch (error) {
+            console.error("Guest match claims could not be settled after verification", error);
         }
         return NextResponse.json(
             { ok: true },

@@ -92,6 +92,12 @@ const checks: IntegrationCheck[] = [
         env: { MATCH_SETTLEMENT_E2E_TEST: "true" },
     },
     {
+        // Signs up three accounts; sign-up allows five per IP every ten minutes.
+        area: "guest match claim",
+        script: "test:guest-match-claim-e2e",
+        env: { GUEST_MATCH_CLAIM_E2E_TEST: "true" },
+    },
+    {
         // The server under test must run with CONNECTION_PAUSE_GRACE_SECONDS=5.
         area: "connection pause resolution",
         script: "test:connection-pause-resolution-e2e",

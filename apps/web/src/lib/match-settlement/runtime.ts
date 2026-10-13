@@ -1,5 +1,6 @@
 import { reportError } from "@hushle/platform-observability";
 import type { RoomMatchSnapshot } from "@/lib/socket/game-socket";
+import { sweepDueGuestSeatClaims } from "./guest-claim";
 import { createSettlementQueue, type SettlementQueue } from "./queue";
 import {
     purgeSettledMatchSettlements,
@@ -49,7 +50,10 @@ export function getMatchSettlementBufferSize(): number {
 export function startMatchSettlementWorker(): SettlementWorker {
     const worker = createSettlementWorker({
         flush: (options) => queue.flushDue(options),
-        sweep: () => sweepDueMatchSettlements(),
+        sweep: async () => {
+            await sweepDueMatchSettlements();
+            await sweepDueGuestSeatClaims();
+        },
         purge: () => purgeSettledMatchSettlements(),
         onError: (event, error) => report(event, error),
     });

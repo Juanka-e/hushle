@@ -1,16 +1,25 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Trophy, Home } from "lucide-react";
 import type { GameOverData } from "@/types/game";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { stashGuestClaimToken } from "@/lib/client/guest-claim-storage";
 
 interface GameOverScreenProps {
     gameOverData: GameOverData;
     onReturnToLobby: () => void;
+    /** Room to return to after signing in; set only for guests who played the match. */
+    guestClaimRoomCode?: string | null;
 }
 
-export function GameOverScreen({ gameOverData, onReturnToLobby }: GameOverScreenProps) {
+export function GameOverScreen({ gameOverData, onReturnToLobby, guestClaimRoomCode = null }: GameOverScreenProps) {
     const { t } = useI18n();
+    const router = useRouter();
+    const openGuestClaim = (path: string) => {
+        stashGuestClaimToken();
+        router.push(path);
+    };
     const isDraw = gameOverData.kazananTakim === "Berabere";
     const endedByHost = gameOverData.endReason === "host_ended";
     const heading = isDraw
@@ -66,6 +75,38 @@ export function GameOverScreen({ gameOverData, onReturnToLobby }: GameOverScreen
                         <div className="text-xs font-bold opacity-60">{t("gameOver.team", { team: "B" })}</div>
                     </div>
                 </div>
+
+                {guestClaimRoomCode ? (
+                    <div
+                        data-testid="game-over-guest-claim"
+                        className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-left dark:border-emerald-900/50 dark:bg-emerald-950/30"
+                    >
+                        <p className="text-sm font-bold text-emerald-900 dark:text-emerald-100">
+                            {t("gameOver.guestClaimTitle")}
+                        </p>
+                        <p className="mt-1 text-sm text-emerald-800 dark:text-emerald-200">
+                            {endedByHost ? t("gameOver.guestClaimBodyNoCoin") : t("gameOver.guestClaimBody")}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => openGuestClaim("/register")}
+                                className="min-w-32 flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-emerald-700"
+                            >
+                                {t("gameOver.guestClaimRegister")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    openGuestClaim(`/login?callbackUrl=${encodeURIComponent(`/room/${guestClaimRoomCode}`)}`)
+                                }
+                                className="min-w-32 flex-1 rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-transparent dark:text-emerald-100 dark:hover:bg-emerald-900/40"
+                            >
+                                {t("gameOver.guestClaimLogin")}
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
 
                 <button
                     onClick={onReturnToLobby}

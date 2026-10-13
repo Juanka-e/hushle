@@ -852,6 +852,12 @@ export default function RoomPage() {
                 <GameOverScreen
                     gameOverData={gameOverData}
                     onReturnToLobby={() => emit(ROOM_RESET_GAME_EVENT)}
+                    // Only server-issued guest seats that played the match can be moved to an account.
+                    guestClaimRoomCode={
+                        myPlayerId.startsWith("guest:") && currentPlayer?.takim && currentPlayer.rol !== "İzleyici"
+                            ? normalizedRoomCode
+                            : null
+                    }
                 />
             );
         }

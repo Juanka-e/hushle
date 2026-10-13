@@ -129,6 +129,11 @@ jobs:
         env:
           MATCH_SETTLEMENT_INTEGRATION_TEST: "true"
 
+      - name: Test guest match claims
+        run: npm run test:guest-match-claim-integration
+        env:
+          GUEST_MATCH_CLAIM_INTEGRATION_TEST: "true"
+
       - name: Test payment fulfillment concurrency
         run: |
           npm run test:economy-grant-contract
@@ -234,6 +239,14 @@ jobs:
           ROOM_JOIN_MAX_ATTEMPTS: "100"
           PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
           REDIS_KEY_PREFIX: "hushle:ci-pause-ui"
+
+      - name: Test guest match claim UI
+        run: npm run test:guest-match-claim-ui-e2e
+        env:
+          GUEST_CLAIM_UI_E2E: "true"
+          ROOM_JOIN_MAX_ATTEMPTS: "100"
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-guest-claim-ui"
 
       - name: Test payment checkout UI
         run: npm run test:payment-checkout-e2e
