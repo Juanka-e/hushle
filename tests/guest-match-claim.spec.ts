@@ -91,7 +91,13 @@ test.describe("guest match claim", () => {
         });
     }
 
-    async function browserGuest(browser: Browser, name: string, roomCode: string, viewport = desktop): Promise<Page> {
+    async function browserGuest(
+        browser: Browser,
+        name: string,
+        roomCode: string,
+        viewport = desktop,
+        lobbyView = true
+    ): Promise<Page> {
         const context = await browser.newContext({ viewport, hasTouch: viewport === phone });
         contexts.push(context);
         const page = await context.newPage();
@@ -100,19 +106,25 @@ test.describe("guest match claim", () => {
         await page.getByPlaceholder(/Örn: ABC123|E.g.: ABC123/i).fill(roomCode);
         await page.getByRole("button", { name: /^Katıl$|^Join$/i }).click();
         await expect(page).toHaveURL(new RegExp(`/room/${roomCode}$`), { timeout: 20_000 });
-        // Team lists sit in drawers on phones, so readiness is checked on the room header.
-        await expect(page.getByRole("button", { name: new RegExp(`/room/.*${roomCode}`) })).toBeVisible({ timeout: 20_000 });
+        if (lobbyView) {
+            // Team lists sit in drawers on phones, so readiness is checked on the lobby header.
+            await expect(page.getByRole("button", { name: new RegExp(`/room/.*${roomCode}`) })).toBeVisible({ timeout: 20_000 });
+        }
         return page;
     }
 
-    function lobbyIncludes(socket: Socket, name: string): Promise<void> {
+    type LobbyPlayer = { ad: string; rol: string; takim: "A" | "B" | null };
+
+    /** Resolves once the server lists `name` in the room, whatever screen the room shows. */
+    function lobbyIncludes(socket: Socket, name: string): Promise<LobbyPlayer> {
         return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error(`${name} never reached the lobby`)), 20_000);
-            const onLobby = (lobby: { oyuncular: Array<{ ad: string }> }) => {
-                if (!lobby.oyuncular.some((player) => player.ad === name)) return;
+            const timer = setTimeout(() => reject(new Error(`${name} never reached the room`)), 20_000);
+            const onLobby = (lobby: { oyuncular: LobbyPlayer[] }) => {
+                const player = lobby.oyuncular.find((entry) => entry.ad === name);
+                if (!player) return;
                 clearTimeout(timer);
                 socket.off("lobiGuncelle", onLobby);
-                resolve();
+                resolve(player);
             };
             socket.on("lobiGuncelle", onLobby);
         });
@@ -123,7 +135,7 @@ test.describe("guest match claim", () => {
         browser: Browser,
         tag: string,
         viewport = desktop,
-        duringMatch?: (roomCode: string) => Promise<void>
+        duringMatch?: (roomCode: string, host: Socket) => Promise<void>
     ) {
         const host = await socketGuest(`Host${tag}${suffix}`);
         const roomCode = host.roomCode;
@@ -149,7 +161,7 @@ test.describe("guest match claim", () => {
             ayarlar: { sure: 60, mod: "skor", deger: 10 },
         });
         const narrator = (await roles).find(([, role]) => role === "Anlatıcı")?.[0] ?? null;
-        await duringMatch?.(roomCode);
+        await duringMatch?.(roomCode, host.socket);
         let over = false;
         void gameOver.then(() => {
             over = true;
@@ -164,14 +176,16 @@ test.describe("guest match claim", () => {
             await player.waitForTimeout(300);
         }
         await gameOver;
-        return { player, roomCode };
+        return { player, roomCode, host: host.socket };
     }
 
     test("a guest signs in from the game-over card and keeps the match", async ({ browser }) => {
         let watcher: Page | null = null;
-        const { player, roomCode } = await playMatch(browser, "L", desktop, async (code) => {
+        const { player, roomCode, host } = await playMatch(browser, "L", desktop, async (code, hostSocket) => {
             // Joins mid-match, so the server seats this guest as a spectator.
-            watcher = await browserGuest(browser, `Izleyici${suffix}`, code);
+            const seated = lobbyIncludes(hostSocket, `Izleyici${suffix}`);
+            watcher = await browserGuest(browser, `Izleyici${suffix}`, code, desktop, false);
+            expect((await seated).rol).toBe("İzleyici");
         });
         const card = player.getByTestId("game-over-guest-claim");
         await expect(card).toBeVisible({ timeout: 20_000 });
@@ -184,7 +198,9 @@ test.describe("guest match claim", () => {
         expect(spectator).not.toBeNull();
         await expect(spectator!.getByText(/KAZANAN|BERABERE|SONUÇ/).first()).toBeVisible({ timeout: 20_000 });
         await expect(spectator!.getByTestId("game-over-guest-claim")).toHaveCount(0);
-        const latecomer = await browserGuest(browser, `Gec${suffix}`, roomCode);
+        const arrived = lobbyIncludes(host, `Gec${suffix}`);
+        const latecomer = await browserGuest(browser, `Gec${suffix}`, roomCode, desktop, false);
+        await arrived;
         await latecomer.waitForTimeout(1_500);
         await expect(latecomer.getByTestId("game-over-guest-claim")).toHaveCount(0);
 
