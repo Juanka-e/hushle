@@ -7,6 +7,7 @@ import {
     GUEST_CLAIM_WINDOW_MS,
     getClaimableGuestSeats,
     isServerIssuedGuestPlayerId,
+    isWaitingOutcome,
     resolveClaimableGuestPlayerId,
     summarizeGuestClaim,
     toClaimedSnapshot,
@@ -208,6 +209,8 @@ const match = snapshot([
         guestPlayerId: GUEST_A,
         newlyClaimed: 4,
         previouslySettled: 2,
+        // The awaiting and retry seats above are the two still attached.
+        stillPending: 2,
         seats: [
             seat("settled", 120),
             seat("settled", 0),
@@ -225,6 +228,10 @@ const match = snapshot([
         awaitingVerification: 1,
         alreadyMoved: 2,
     });
+    assert.deepEqual(
+        (["settled", "awaiting_verification", "suspended_waiting", "retry", "failed", "expired", "not_pending"] as const).map(isWaitingOutcome),
+        [false, true, true, true, false, false, false]
+    );
     console.log("claim summary: counts settled, waiting and earlier moves");
 }
 
@@ -243,7 +250,8 @@ const match = snapshot([
     // Joining a room signed in drops the guest token; the claim copy must survive it.
     store.delete("tabu_guestToken");
     assert.equal(readPendingGuestClaim(storage, now + 60_000), "guest-token-value-123456");
-    assert.equal(readPendingGuestClaim(storage, now + 26 * 60 * 60 * 1000), null, "stale copy expires");
+    assert.equal(readPendingGuestClaim(storage, now + 90 * 60 * 1000), "guest-token-value-123456", "survives a slow sign-up");
+    assert.equal(readPendingGuestClaim(storage, now + 3 * 60 * 60 * 1000), null, "abandoned copy expires after two hours");
     assert.equal(store.has("tabu_pendingGuestClaim"), false, "and is removed");
 
     store.set("tabu_pendingGuestClaim", "{not json");
@@ -304,6 +312,8 @@ const match = snapshot([
 
     const runtime = read("apps/web/src/lib/match-settlement/runtime.ts");
     assert.match(runtime, /await sweepDueMatchSettlements\(\);\s+await sweepDueGuestSeatClaims\(\);/);
+    assert.match(runtime, /await settleMatchSettlement\(id\);\s+await settlePendingGuestSeatsOf\(id\);/, "owned seats settle right after recording");
+    assert.match(recordBody, /tx\.guestProgress\.findMany\(\{\s+where: \{ playerId: \{ in: guestSeats \}, linkedUserId: \{ not: null \} \}/);
 
     const register = read("apps/web/src/app/api/auth/register/route.ts");
     assert.match(register, /guestToken: z\.string\(\)[^\n]*\.catch\(null\)/, "a bad guest token never blocks sign-up");
@@ -319,6 +329,7 @@ const match = snapshot([
     const route = read("apps/web/src/app/api/game/match/guest-claims/route.ts");
     assert.ok(route.indexOf("await getSessionUser()") < route.indexOf("await consumeDistributedRequestRateLimit("), "auth before work");
     assert.doesNotMatch(route, /enforceAccountCapability/, "unverified accounts may attach claims");
+    assert.match(route, /key: `user:\$\{sessionUser\.id\}`,/, "rate limit follows the account, not the address");
 
     const layout = read("apps/web/src/app/layout.tsx");
     assert.match(layout, /<GuestClaimFinalizer \/>/);

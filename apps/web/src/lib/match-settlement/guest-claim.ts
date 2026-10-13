@@ -1,3 +1,4 @@
+import type { Prisma } from "@hushle/platform-db";
 import { canUseAccountCapability } from "@hushle/platform-auth";
 import { reportError } from "@hushle/platform-observability";
 import { prisma } from "@/lib/prisma";
@@ -12,6 +13,7 @@ import {
     GUEST_CLAIM_TOKEN_GRACE_MS,
     GUEST_CLAIM_WINDOW_MS,
     resolveClaimableGuestPlayerId,
+    isWaitingOutcome,
     toClaimedSnapshot,
     type GuestClaimResult,
     type GuestSeatSettleOutcome,
@@ -27,9 +29,43 @@ export interface GuestClaimOptions {
     now?: Date;
     settings?: SystemSettings;
     hooks?: {
+        /** Test seam: runs before a seat is read, outside any transaction. */
+        beforeSeat?(seatId: number): void | Promise<void>;
         /** Test seam: runs first inside the reward transaction of a seat. */
         transactionStarted?(seatId: number): void | Promise<void>;
     };
+}
+
+/**
+ * Seats a caller may settle now. Failed seats wait out their back-off so repeated
+ * sign-ins cannot burn the attempt budget; first attempts (including seats waiting
+ * for verification or a suspension) may run whenever the owner asks.
+ */
+function runnableNow(now: Date): Prisma.MatchSettlementGuestSeatWhereInput {
+    return { OR: [{ attemptCount: 0 }, { availableAt: { lte: now } }] };
+}
+
+/** One broken seat never stops the others; it is retried later by the worker. */
+async function settleSeatSafely(seatId: number, options: GuestClaimOptions): Promise<GuestSeatSettleResult> {
+    try {
+        return await settleGuestSeatClaim(seatId, options);
+    } catch (error) {
+        const now = options.now ?? new Date();
+        const lastError = formatSettlementError(error);
+        await prisma.matchSettlementGuestSeat
+            .updateMany({
+                where: { id: seatId, status: "pending" },
+                data: { lastError, availableAt: new Date(now.getTime() + GUEST_CLAIM_RECHECK_MS) },
+            })
+            .catch(() => undefined);
+        await reportError({
+            service: "hushle-web",
+            event: "match_settlement.guest_claim.seat_failed",
+            error,
+            context: { seatId },
+        }).catch(() => undefined);
+        return seatResult(seatId, "retry", { error: lastError });
+    }
 }
 
 function seatResult(
@@ -106,6 +142,7 @@ export async function settleGuestSeatClaim(
     options: GuestClaimOptions = {}
 ): Promise<GuestSeatSettleResult> {
     const now = options.now ?? new Date();
+    await options.hooks?.beforeSeat?.(seatId);
     const seat = await prisma.matchSettlementGuestSeat.findUnique({
         where: { id: seatId },
         select: {
@@ -139,7 +176,17 @@ export async function settleGuestSeatClaim(
         },
     });
     if (!account) return closeSeat(seat.id, "rejected", "user_missing", now);
-    if (isSuspensionActive(account)) return closeSeat(seat.id, "rejected", "suspended", now);
+    if (isSuspensionActive(account)) {
+        if (!account.suspendedUntil) return closeSeat(seat.id, "rejected", "suspended", now);
+        // A timed suspension only delays the claim; the pending TTL still bounds the wait.
+        await prisma.matchSettlementGuestSeat.updateMany({
+            where: { id: seat.id, status: "pending" },
+            data: {
+                availableAt: new Date(Math.max(account.suspendedUntil.getTime(), now.getTime() + GUEST_CLAIM_RECHECK_MS)),
+            },
+        });
+        return seatResult(seat.id, "suspended_waiting");
+    }
     if (!canUseAccountCapability(account, "reward")) {
         // Email verification triggers the claim; this re-check is only the safety net.
         await prisma.matchSettlementGuestSeat.updateMany({
@@ -275,26 +322,25 @@ export async function claimGuestMatches(
         data: { status: "pending", claimUserId: input.userId, claimedAt: now, availableAt: now },
     });
 
+    const ownSeats = { guestPlayerId, claimUserId: input.userId };
     const pending = await prisma.matchSettlementGuestSeat.findMany({
-        where: { guestPlayerId, claimUserId: input.userId, status: "pending" },
+        where: { ...ownSeats, status: "pending", ...runnableNow(now) },
         orderBy: { id: "asc" },
         take: MAX_SEATS_PER_RUN,
         select: { id: true },
     });
     const seats: GuestSeatSettleResult[] = [];
     for (const seat of pending) {
-        seats.push(await settleGuestSeatClaim(seat.id, { ...options, now }));
+        seats.push(await settleSeatSafely(seat.id, { ...options, now }));
     }
     const settledHere = seats.filter((seat) => seat.outcome === "settled").map((seat) => seat.seatId);
-    const previouslySettled = await prisma.matchSettlementGuestSeat.count({
-        where: {
-            guestPlayerId,
-            claimUserId: input.userId,
-            status: "settled",
-            id: { notIn: settledHere },
-        },
-    });
-    return { status: "ok", guestPlayerId, newlyClaimed: claimed.count, seats, previouslySettled };
+    const [previouslySettled, stillPending] = await Promise.all([
+        prisma.matchSettlementGuestSeat.count({
+            where: { ...ownSeats, status: "settled", id: { notIn: settledHere } },
+        }),
+        prisma.matchSettlementGuestSeat.count({ where: { ...ownSeats, status: "pending" } }),
+    ]);
+    return { status: "ok", guestPlayerId, newlyClaimed: claimed.count, seats, previouslySettled, stillPending };
 }
 
 /** Settles every waiting claim of an account at once, e.g. right after email verification. */
@@ -303,14 +349,31 @@ export async function processGuestClaimsForUser(
     options: GuestClaimOptions = {}
 ): Promise<GuestSeatSettleResult[]> {
     const pending = await prisma.matchSettlementGuestSeat.findMany({
-        where: { claimUserId: userId, status: "pending" },
+        where: { claimUserId: userId, status: "pending", ...runnableNow(options.now ?? new Date()) },
         orderBy: { id: "asc" },
         take: MAX_SEATS_PER_RUN,
         select: { id: true },
     });
     const results: GuestSeatSettleResult[] = [];
     for (const seat of pending) {
-        results.push(await settleGuestSeatClaim(seat.id, options));
+        results.push(await settleSeatSafely(seat.id, options));
+    }
+    return results;
+}
+
+/** Settles seats a match assigned to their owners when it was recorded. */
+export async function settlePendingGuestSeatsOf(
+    settlementId: number,
+    options: GuestClaimOptions = {}
+): Promise<GuestSeatSettleResult[]> {
+    const pending = await prisma.matchSettlementGuestSeat.findMany({
+        where: { settlementId, status: "pending", ...runnableNow(options.now ?? new Date()) },
+        orderBy: { id: "asc" },
+        select: { id: true },
+    });
+    const results: GuestSeatSettleResult[] = [];
+    for (const seat of pending) {
+        results.push(await settleSeatSafely(seat.id, options));
     }
     return results;
 }
@@ -324,7 +387,7 @@ export interface GuestClaimSweepResult {
 
 /** Worker safety net: retries failed seats, re-checks unverified accounts, expires old claims. */
 export async function sweepDueGuestSeatClaims(
-    options: { now?: Date; limit?: number; settings?: SystemSettings } = {}
+    options: { now?: Date; limit?: number; settings?: SystemSettings; hooks?: GuestClaimOptions["hooks"] } = {}
 ): Promise<GuestClaimSweepResult> {
     const now = options.now ?? new Date();
     const due = await prisma.matchSettlementGuestSeat.findMany({
@@ -335,13 +398,15 @@ export async function sweepDueGuestSeatClaims(
     });
     const result: GuestClaimSweepResult = { processed: 0, settled: 0, waiting: 0, closed: 0 };
     for (const seat of due) {
-        const run = await settleGuestSeatClaim(seat.id, {
+        // Each seat takes a fresh clock unless the caller pins one.
+        const run = await settleSeatSafely(seat.id, {
             settings: options.settings,
             now: options.now,
+            hooks: options.hooks,
         });
         result.processed += 1;
         if (run.outcome === "settled") result.settled += 1;
-        else if (run.outcome === "awaiting_verification" || run.outcome === "retry") result.waiting += 1;
+        else if (isWaitingOutcome(run.outcome)) result.waiting += 1;
         else if (run.outcome !== "not_pending") result.closed += 1;
     }
     return result;

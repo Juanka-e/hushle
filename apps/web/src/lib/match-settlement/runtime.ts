@@ -1,6 +1,6 @@
 import { reportError } from "@hushle/platform-observability";
 import type { RoomMatchSnapshot } from "@/lib/socket/game-socket";
-import { sweepDueGuestSeatClaims } from "./guest-claim";
+import { settlePendingGuestSeatsOf, sweepDueGuestSeatClaims } from "./guest-claim";
 import { createSettlementQueue, type SettlementQueue } from "./queue";
 import {
     purgeSettledMatchSettlements,
@@ -25,7 +25,10 @@ const queue =
     globalForSettlement.__hushleMatchSettlementQueue ??
     createSettlementQueue({
         record: recordMatchSettlement,
-        settle: (id) => settleMatchSettlement(id),
+        settle: async (id) => {
+            await settleMatchSettlement(id);
+            await settlePendingGuestSeatsOf(id);
+        },
         onDrop: (key) => report("match_settlement.buffer.dropped", new Error("Settlement buffer full"), { key }),
         onError: (event, error, context) => report(event, error, context),
     });

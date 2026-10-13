@@ -4,8 +4,9 @@
 // joins a room signed in, so the claim keeps its own copy until the server answers.
 const GUEST_TOKEN_KEY = "tabu_guestToken";
 const PENDING_CLAIM_KEY = "tabu_pendingGuestClaim";
-// Guest tokens live 24h plus a one-hour claim grace; older copies cannot succeed.
-const PENDING_CLAIM_MAX_AGE_MS = 25 * 60 * 60 * 1000;
+// Sign-up or sign-in normally finishes within minutes; a short life keeps an abandoned
+// copy on a shared browser from reaching whoever signs in next in this tab.
+const PENDING_CLAIM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 type ClaimStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 

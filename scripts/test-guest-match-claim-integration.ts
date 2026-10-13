@@ -20,6 +20,7 @@ import {
     claimGuestMatches,
     processGuestClaimsForUser,
     settleGuestSeatClaim,
+    settlePendingGuestSeatsOf,
     sweepDueGuestSeatClaims,
 } from "../apps/web/src/lib/match-settlement/guest-claim";
 import {
@@ -365,8 +366,12 @@ async function run(): Promise<void> {
             assert.equal((await claim(owner.id, guest)).settledNow, 1);
             const later = buildSnapshot({ participants: [registeredSeat(host.id, "A"), guestSeat(guest, "B")] });
             const laterRecord = await recordMatchSettlement(later);
+            const assigned = await seatOf(laterRecord.id, guest);
+            assert.equal(assigned.status, "pending", "a later match is assigned to the owner when recorded");
+            assert.equal(assigned.claimUserId, owner.id);
             assert.deepEqual(await claim(intruder.id, guest), okSummary({ status: "linked_elsewhere" }));
-            assert.equal((await seatOf(laterRecord.id, guest)).status, "unclaimed", "a refused claim touches nothing");
+            assert.equal((await seatOf(laterRecord.id, guest)).claimUserId, owner.id, "a refused claim touches nothing");
+            assert.equal(await balance(intruder.id), 0);
             assert.deepEqual(await claim(owner.id, guest), okSummary({ matches: 2, settledNow: 1, coinEarnedNow: 40, alreadyMoved: 1 }));
             assert.equal(await balance(owner.id), 160);
             console.log("[claim] 7 linked guest refuses other accounts, owner collects later matches");
@@ -589,7 +594,11 @@ async function run(): Promise<void> {
             const doomedUser = await createUser("doomed", { unverified: true });
             await claim(doomedUser.id, doomedGuest);
             const doomedSeat = await seatOf(doomedRecord.id, doomedGuest);
-            await prisma.matchSettlementGuestSeat.update({ where: { id: doomedSeat.id }, data: { attemptCount: GUEST_CLAIM_MAX_ATTEMPTS - 1 } });
+            // Seven earlier failures whose back-off has just elapsed.
+            await prisma.matchSettlementGuestSeat.update({
+                where: { id: doomedSeat.id },
+                data: { attemptCount: GUEST_CLAIM_MAX_ATTEMPTS - 1, availableAt: new Date(Date.now() - 1_000) },
+            });
             await prisma.user.update({ where: { id: doomedUser.id }, data: { emailVerifiedAt: new Date(), accountStatus: "active" } });
             const [doomed] = await processGuestClaimsForUser(doomedUser.id, {
                 settings,
@@ -672,6 +681,101 @@ async function run(): Promise<void> {
             assert.ok(purged >= 1);
             assert.equal(await prisma.matchSettlementGuestSeat.count({ where: { settlementId: record.id } }), 0);
             console.log("[claim] 20 seats follow their settlement's retention");
+        }
+
+        // 21. Repeated sign-ins cannot burn the retry budget of a failed seat.
+        {
+            const guest = newGuest();
+            const record = await recordMatchSettlement(buildSnapshot({ participants: [registeredSeat(host.id, "B"), guestSeat(guest, "A")] }));
+            const user = await createUser("backoff");
+            const alwaysFail = { transactionStarted() { throw new Error("flaky wallet"); } };
+            assert.deepEqual(await claim(user.id, guest, { hooks: alwaysFail }), okSummary({ matches: 1 }));
+            for (let attempt = 0; attempt < 10; attempt += 1) {
+                const summary = await claim(user.id, guest, { hooks: alwaysFail });
+                assert.deepEqual(summary, okSummary({ matches: 1 }), "a seat in back-off is reported, not retried");
+                await processGuestClaimsForUser(user.id, { settings, hooks: alwaysFail });
+            }
+            const seat = await seatOf(record.id, guest);
+            assert.equal(seat.status, "pending");
+            assert.equal(seat.attemptCount, 1, "only the first failure counted");
+            await sweepDueGuestSeatClaims({ settings, now: new Date(seat.availableAt!.getTime() + 1_000) });
+            assert.equal((await seatOf(record.id, guest)).status, "settled");
+            assert.equal(await balance(user.id), 120);
+            console.log("[claim] 21 back-off holds against repeated sign-ins");
+        }
+
+        // 22. A timed suspension delays the claim; it is paid once the suspension ends.
+        {
+            const guest = newGuest();
+            const record = await recordMatchSettlement(buildSnapshot({ participants: [registeredSeat(host.id, "B"), guestSeat(guest, "A")] }));
+            const user = await createUser("timeout", { unverified: true });
+            await claim(user.id, guest);
+            const until = new Date(Date.now() + 3 * HOUR);
+            await prisma.user.update({
+                where: { id: user.id },
+                data: { emailVerifiedAt: new Date(), accountStatus: "active", isSuspended: true, suspendedUntil: until },
+            });
+            const [waiting] = await processGuestClaimsForUser(user.id, { settings });
+            assert.equal(waiting.outcome, "suspended_waiting");
+            const held = await seatOf(record.id, guest);
+            assert.equal(held.status, "pending");
+            assert.equal(held.availableAt?.getTime(), until.getTime(), "waits until the suspension ends");
+            assert.equal(await balance(user.id), 0);
+            await prisma.user.update({ where: { id: user.id }, data: { isSuspended: false, suspendedUntil: null } });
+            await sweepDueGuestSeatClaims({ settings, now: new Date(until.getTime() + 60_000) });
+            assert.equal((await seatOf(record.id, guest)).status, "settled");
+            assert.equal(await balance(user.id), 120);
+            console.log("[claim] 22 timed suspension delays, permanent ban rejects (15)");
+        }
+
+        // 23. A match recorded after the claim (slow record, later match) goes to the owner.
+        {
+            const guest = newGuest();
+            const stranger = newGuest();
+            const user = await createUser("lateRecord");
+            assert.deepEqual(await claim(user.id, guest), okSummary({}), "claim before the match exists binds the guest");
+            const snapshot = buildSnapshot({ participants: [registeredSeat(host.id, "B"), guestSeat(guest, "A"), guestSeat(stranger, "B", "Oyuncu")] });
+            const record = await recordMatchSettlement(snapshot);
+            const owned = await seatOf(record.id, guest);
+            assert.equal(owned.status, "pending");
+            assert.equal(owned.claimUserId, user.id);
+            assert.equal((await seatOf(record.id, stranger)).status, "unclaimed", "unbound guests are untouched");
+            const settled = await settlePendingGuestSeatsOf(record.id, { settings });
+            assert.deepEqual(settled.map((entry) => [entry.outcome, entry.coinEarned]), [["settled", 120]]);
+            assert.equal(await balance(user.id), 120);
+            console.log("[claim] 23 matches recorded after the claim reach the owner");
+        }
+
+        // 24. One seat that throws outside its transaction does not stall the sweep.
+        {
+            const brokenGuest = newGuest();
+            const healthyGuest = newGuest();
+            const brokenRecord = await recordMatchSettlement(buildSnapshot({ participants: [registeredSeat(host.id, "B"), guestSeat(brokenGuest, "A")] }));
+            const healthyRecord = await recordMatchSettlement(buildSnapshot({ participants: [registeredSeat(host.id, "B"), guestSeat(healthyGuest, "A")] }));
+            const brokenUser = await createUser("brokenSeat", { unverified: true });
+            const healthyUser = await createUser("healthySeat", { unverified: true });
+            await claim(brokenUser.id, brokenGuest);
+            await claim(healthyUser.id, healthyGuest);
+            for (const id of [brokenUser.id, healthyUser.id]) {
+                await prisma.user.update({ where: { id }, data: { emailVerifiedAt: new Date(), accountStatus: "active" } });
+            }
+            const brokenSeatId = (await seatOf(brokenRecord.id, brokenGuest)).id;
+            const sweepAt = new Date(Date.now() + GUEST_CLAIM_RECHECK_MS + 60_000);
+            await sweepDueGuestSeatClaims({
+                settings,
+                now: sweepAt,
+                hooks: {
+                    beforeSeat(seatId) {
+                        if (seatId === brokenSeatId) throw new Error("database hiccup");
+                    },
+                },
+            });
+            assert.equal((await seatOf(healthyRecord.id, healthyGuest)).status, "settled", "the next seat still settles");
+            const broken = await seatOf(brokenRecord.id, brokenGuest);
+            assert.equal(broken.status, "pending");
+            assert.match(broken.lastError ?? "", /database hiccup/);
+            assert.ok(broken.availableAt && broken.availableAt.getTime() >= sweepAt.getTime() + GUEST_CLAIM_RECHECK_MS - 1_000, "pushed back");
+            console.log("[claim] 24 a broken seat is isolated and retried later");
         }
 
         console.log("guest match claim integration checks passed");

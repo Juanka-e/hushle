@@ -88,6 +88,7 @@ export function toClaimedSnapshot(
 export type GuestSeatSettleOutcome =
     | "settled"
     | "awaiting_verification"
+    | "suspended_waiting"
     | "already_recorded"
     | "already_participant"
     | "not_eligible"
@@ -116,6 +117,8 @@ export type GuestClaimResult =
           newlyClaimed: number;
           seats: GuestSeatSettleResult[];
           previouslySettled: number;
+          /** Seats still attached and waiting (verification, suspension or back-off). */
+          stillPending: number;
       };
 
 export interface GuestClaimSummary {
@@ -126,6 +129,11 @@ export interface GuestClaimSummary {
     coinEarnedNow: number;
     awaitingVerification: number;
     alreadyMoved: number;
+}
+
+/** The seat stays attached to the account and settles later. */
+export function isWaitingOutcome(outcome: GuestSeatSettleOutcome): boolean {
+    return outcome === "awaiting_verification" || outcome === "suspended_waiting" || outcome === "retry";
 }
 
 export function summarizeGuestClaim(result: GuestClaimResult): GuestClaimSummary {
@@ -140,13 +148,9 @@ export function summarizeGuestClaim(result: GuestClaimResult): GuestClaimSummary
         };
     }
     const settled = result.seats.filter((seat) => seat.outcome === "settled");
-    // A seat whose first attempt failed is still attached and retried by the worker.
-    const waiting = result.seats.filter(
-        (seat) => seat.outcome === "awaiting_verification" || seat.outcome === "retry"
-    );
     return {
         status: "ok",
-        matches: settled.length + waiting.length + result.previouslySettled,
+        matches: settled.length + result.stillPending + result.previouslySettled,
         settledNow: settled.length,
         coinEarnedNow: settled.reduce((total, seat) => total + (seat.coinEarned ?? 0), 0),
         awaitingVerification: result.seats.filter((seat) => seat.outcome === "awaiting_verification").length,

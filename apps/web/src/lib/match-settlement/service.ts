@@ -104,6 +104,19 @@ export async function recordMatchSettlement(
                 })),
                 skipDuplicates: true,
             });
+            // A guest already moved to an account keeps moving: a match recorded after the
+            // claim (slow record, second match in the same tab) goes straight to its owner.
+            const owners = await tx.guestProgress.findMany({
+                where: { playerId: { in: guestSeats }, linkedUserId: { not: null } },
+                select: { playerId: true, linkedUserId: true },
+            });
+            const claimedAt = new Date();
+            for (const owner of owners) {
+                await tx.matchSettlementGuestSeat.updateMany({
+                    where: { settlementId: row.id, guestPlayerId: owner.playerId, status: "unclaimed" },
+                    data: { status: "pending", claimUserId: owner.linkedUserId, claimedAt, availableAt: claimedAt },
+                });
+            }
         }
         return { id: row.id, created };
     });

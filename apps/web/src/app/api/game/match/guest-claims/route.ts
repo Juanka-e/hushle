@@ -6,7 +6,6 @@ import { summarizeGuestClaim } from "@/lib/match-settlement/guest-claim-rules";
 import {
   buildRateLimitHeaders,
   consumeDistributedRequestRateLimit,
-  getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
 
@@ -26,7 +25,8 @@ export async function POST(req: Request) {
 
   const rateLimit = await consumeDistributedRequestRateLimit({
     bucket: "match-guest-claim",
-    key: `user:${sessionUser.id}:${getRequestIp(req)}`,
+    // Per account, so rotating addresses does not buy extra attempts.
+    key: `user:${sessionUser.id}`,
     windowMs: 10 * 60_000,
     maxRequests: 10,
   });
