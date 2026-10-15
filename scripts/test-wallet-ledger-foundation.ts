@@ -76,8 +76,8 @@ for (const path of [
 ]) {
     assert.doesNotMatch(
         read(path),
-        /wallet\.(upsert|create)\s*\(/,
-        `${path} must open wallets with ensureWallet, not a racing Prisma upsert`
+        /wallet\.(upsert|create|update)\s*\(/,
+        `${path} must open wallets with ensureWallet and write balances with a plain UPDATE`
     );
 }
 

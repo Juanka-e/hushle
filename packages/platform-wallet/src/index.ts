@@ -97,6 +97,23 @@ async function lockWallet(tx: TransactionClient, userId: number): Promise<Locked
     return wallet;
 }
 
+// Prisma's update first re-reads the row from the transaction snapshot, which
+// can predate a wallet opened by a concurrent first mutation, and then fails
+// with "record not found". updateMany is a single UPDATE on the locked row.
+async function writeLockedWalletBalance(
+    tx: TransactionClient,
+    walletId: number,
+    coinBalance: number
+): Promise<void> {
+    const updated = await tx.wallet.updateMany({
+        where: { id: walletId },
+        data: { coinBalance },
+    });
+    if (updated.count !== 1) {
+        throw new Error(`Wallet balance update failed for wallet ${walletId}.`);
+    }
+}
+
 async function ensureWalletLedgerBaseline(
     tx: TransactionClient,
     wallet: LockedWallet,
@@ -260,10 +277,7 @@ export async function applyWalletLedgerMutation(
     }
 
     const balanceAfter = resolveWalletBalanceAfterDelta(wallet.coinBalance, input.deltaCoin);
-    await tx.wallet.update({
-        where: { id: wallet.id },
-        data: { coinBalance: balanceAfter },
-    });
+    await writeLockedWalletBalance(tx, wallet.id, balanceAfter);
     const ledgerEntry = await tx.walletLedgerEntry.create({
         data: {
             walletId: wallet.id,
@@ -392,7 +406,7 @@ export async function reversePaymentCoinLot(
         };
     }
     const balanceAfter = resolveWalletBalanceAfterDelta(wallet.coinBalance, -reversedCoin);
-    await tx.wallet.update({ where: { id: wallet.id }, data: { coinBalance: balanceAfter } });
+    await writeLockedWalletBalance(tx, wallet.id, balanceAfter);
     const ledgerEntry = await tx.walletLedgerEntry.create({
         data: {
             walletId: wallet.id,
