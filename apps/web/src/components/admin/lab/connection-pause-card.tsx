@@ -1,12 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { AlertTriangle, Info, RefreshCw, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, Info, WifiOff } from "lucide-react";
 import { AdminEmptyState } from "@/components/admin/admin-table-shell";
+import {
+    formatLabCount as formatCount,
+    LabKpiTile as KpiTile,
+    LabNotice as Notice,
+    LabRangeActions,
+    LabSectionHeading as SectionHeading,
+    type LabRangeDays as RangeDays,
+} from "@/components/admin/lab/lab-card-parts";
 import { Button } from "@/components/ui/button";
 import {
     Card,
-    CardAction,
     CardContent,
     CardDescription,
     CardHeader,
@@ -27,13 +34,6 @@ import type {
     ConnectionPauseOutcome,
     ConnectionPauseTrigger,
 } from "@/lib/analytics/connection-pause-analytics";
-
-type RangeDays = 7 | 30;
-
-const RANGE_OPTIONS: ReadonlyArray<{ value: RangeDays; label: string }> = [
-    { value: 7, label: "7 gün" },
-    { value: 30, label: "30 gün" },
-];
 
 const OUTCOME_ORDER: readonly ConnectionPauseOutcome[] = [
     "resumed_after_reconnect",
@@ -79,7 +79,6 @@ const TRIGGER_LABELS: Record<ConnectionPauseTrigger, string> = {
     team_below_minimum: "Takım 2'nin altına düştü",
 };
 
-const numberFormatter = new Intl.NumberFormat("tr-TR");
 const decimalFormatter = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 });
 const dayFormatter = new Intl.DateTimeFormat("tr-TR", {
     day: "numeric",
@@ -87,10 +86,6 @@ const dayFormatter = new Intl.DateTimeFormat("tr-TR", {
     weekday: "short",
     timeZone: "UTC",
 });
-
-function formatCount(value: number): string {
-    return numberFormatter.format(value);
-}
 
 function formatShare(part: number, total: number): string {
     if (total <= 0) return "%0";
@@ -124,84 +119,6 @@ function isSummary(value: unknown): value is ConnectionPauseAnalyticsSummary {
         && Array.isArray((value as { daily: unknown }).daily)
         && "outcomes" in value
         && "byTrigger" in value
-    );
-}
-
-function Notice({
-    tone,
-    icon,
-    children,
-    action,
-}: {
-    tone: "warning" | "info" | "error";
-    icon: ReactNode;
-    children: ReactNode;
-    action?: ReactNode;
-}) {
-    const toneClass =
-        tone === "warning"
-            ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200"
-            : tone === "error"
-              ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
-              : "border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-200";
-
-    return (
-        <div
-            role={tone === "info" ? "status" : "alert"}
-            className={`flex flex-col gap-3 rounded-2xl border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${toneClass}`}
-        >
-            <div className="flex items-start gap-2">
-                <span aria-hidden="true" className="mt-0.5 shrink-0 [&_svg]:h-4 [&_svg]:w-4">
-                    {icon}
-                </span>
-                <div>{children}</div>
-            </div>
-            {action ? <div className="shrink-0">{action}</div> : null}
-        </div>
-    );
-}
-
-function KpiTile({
-    label,
-    value,
-    caption,
-    accent,
-    emphasis = false,
-}: {
-    label: string;
-    value: string;
-    caption?: string;
-    accent?: string;
-    emphasis?: boolean;
-}) {
-    return (
-        <div
-            className={`rounded-2xl border p-4 ${
-                emphasis ? "border-primary/40 bg-primary/5" : "border-border/60 bg-muted/20"
-            }`}
-        >
-            <dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                {accent ? (
-                    <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${accent}`} />
-                ) : null}
-                {label}
-            </dt>
-            <dd className="mt-2 text-2xl font-bold tabular-nums text-foreground">{value}</dd>
-            {caption ? (
-                <dd className="mt-1 text-xs text-muted-foreground">{caption}</dd>
-            ) : null}
-        </div>
-    );
-}
-
-function SectionHeading({ id, children }: { id: string; children: ReactNode }) {
-    return (
-        <h3
-            id={id}
-            className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
-        >
-            {children}
-        </h3>
     );
 }
 
@@ -432,7 +349,7 @@ export function ConnectionPauseCard() {
     const showingStale = summary !== null && summary.days !== days;
 
     return (
-        <Card className="border-border/70 shadow-sm">
+        <Card data-testid="connection-pause-lab" className="border-border/70 shadow-sm">
             <CardHeader className="border-b border-border/60">
                 <CardTitle className="flex items-center gap-2 text-lg">
                     <WifiOff aria-hidden="true" className="h-5 w-5 text-rose-500" />
@@ -443,44 +360,13 @@ export function ConnectionPauseCard() {
                     oyuncu kaldığında maç duraklar. Bu kart duraklatmaların neden başladığını ve
                     nasıl çözüldüğünü gösterir.
                 </CardDescription>
-                <CardAction className="flex flex-wrap items-center gap-2 @max-xl/card-header:col-start-1 @max-xl/card-header:row-span-1 @max-xl/card-header:row-start-auto @max-xl/card-header:justify-self-start">
-                    <div
-                        role="group"
-                        aria-label="Zaman aralığı"
-                        className="inline-flex rounded-2xl border border-border/70 bg-muted/30 p-1"
-                    >
-                        {RANGE_OPTIONS.map((option) => {
-                            const active = option.value === days;
-                            return (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    aria-pressed={active}
-                                    onClick={() => setDays(option.value)}
-                                    className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                                        active
-                                            ? "bg-background text-foreground shadow-sm"
-                                            : "text-muted-foreground hover:text-foreground"
-                                    }`}
-                                >
-                                    {option.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void load(days)}
-                        disabled={loading}
-                    >
-                        <RefreshCw
-                            aria-hidden="true"
-                            className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-                        />
-                        Yenile
-                    </Button>
-                </CardAction>
+                <LabRangeActions
+                    label="Bağlantı kopmaları zaman aralığı"
+                    days={days}
+                    loading={loading}
+                    onDaysChange={setDays}
+                    onRefresh={() => void load(days)}
+                />
             </CardHeader>
 
             <CardContent className="space-y-6" aria-busy={loading}>
