@@ -21,6 +21,12 @@ mkdir -p "$APP/scripts/ops/lib" "$APP/prisma/migrations" "$FAKE_BIN" "$FAKE_STAT
 cp "$ROOT_DIR/scripts/ops/deploy.sh" "$APP/scripts/ops/"
 cp "$ROOT_DIR/scripts/ops/lib/schema-ops-lock.sh" "$ROOT_DIR/scripts/ops/lib/release.sh" "$APP/scripts/ops/lib/"
 cp "$ROOT_DIR/docker-compose.yml" "$APP/"
+# deploy.sh backs up existing installs before migrating (data-backup.sh); the
+# stand-in only records that it ran.
+cat > "$APP/scripts/ops/data-backup.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "data-backup" >> "$FAKE_STATE/calls.log"
+EOF
 cat > "$APP/.env.production" <<'EOF'
 DATABASE_URL=mysql://hushle:secret@mysql:3306/hushle
 AUTH_SECRET=test-auth-secret
@@ -49,7 +55,7 @@ case "$1" in
     ;;
   inspect)
     [[ "$(last "$@")" == "fake-app" && -s "$S/app_image" ]] || exit 1
-    cat "$S/app_image"
+    if [[ "$*" == *Mounts* ]]; then echo /data/assets; else cat "$S/app_image"; fi
     exit 0
     ;;
   image)
@@ -110,7 +116,8 @@ case "$command" in
     if [[ "$service" == "app" && -s "$S/app_image" ]]; then echo fake-app; fi
     ;;
   up)
-    if [[ "$(last "$@")" == "mysql" ]]; then touch "$S/mysql"; exit 0; fi
+    # Starting only MySQL/Redis (schema check, pre-migration backup) is not a switch.
+    if [[ " $* " == *" mysql "* || "$(last "$@")" == "mysql" ]]; then touch "$S/mysql"; exit 0; fi
     [[ -z "${HUSHLE_RELEASE:-}" ]] || { echo "switch must use :current" >&2; exit 1; }
     [[ " $* " == *" --no-build "* ]] || { echo "switch must not build" >&2; exit 1; }
     [[ -f "$(image_file hushle-app:current)" ]] || { echo "no current app image" >&2; exit 1; }
@@ -271,9 +278,15 @@ if grep -q " build app$" "$FAKE_STATE/calls.log"; then fail "redeploy rebuilt th
 pass "redeploy of the running SHA keeps the app image and the rollback target"
 
 extract_release "$SHA_B" "$M1"
+mark
 run_ok "deploy B" deploy_sh
 assert_live "$SHA_B" "deploy B"
 [[ "$(state previous)" == "$SHA_A" ]] || fail "previous release not recorded"
+if grep -q 'data-backup.sh' "$APP/scripts/ops/deploy.sh"; then
+  awk '/^data-backup$/ { backup = NR } / run --rm migrate$/ { migrate = NR }
+    END { exit !(backup && migrate && backup < migrate) }' "$FAKE_STATE/calls.log" \
+    || fail "the pre-migration backup did not run before the migration"
+fi
 pass "deploying a new SHA keeps the old one as previous"
 
 mark
