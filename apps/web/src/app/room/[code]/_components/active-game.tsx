@@ -27,6 +27,7 @@ import {
 } from "@/lib/game/room-display";
 import { useI18n } from "@/components/providers/i18n-provider";
 import type { CardData, GameState } from "@/types/game";
+import type { GameContentLocale } from "@hushle/domain-game";
 
 interface ActiveGameProps {
     gameState: GameState | null;
@@ -36,7 +37,7 @@ interface ActiveGameProps {
     narratorName: string;
     inspectorName: string;
     isHost: boolean;
-    settings: { sure: number; mod: "tur" | "skor"; deger: number };
+    settings: { sure: number; mod: "tur" | "skor"; deger: number; wordLocale?: GameContentLocale };
     cardFaceTheme: ResolvedCardFaceTheme | null;
     cardBackTheme: ResolvedCardBackTheme | null;
     onWordAction: (action: "dogru" | "tabu" | "pas") => void;
@@ -163,6 +164,7 @@ export function ActiveGame({
                             card={card}
                             cardFaceTheme={cardFaceTheme}
                             cardBackTheme={cardBackTheme}
+                            contentLocale={settings.wordLocale}
                         />
                     </div>
                 )}
@@ -275,10 +277,12 @@ export function ViewerCardPreview({
     card,
     cardFaceTheme,
     cardBackTheme,
+    contentLocale,
 }: {
     card: CardData;
     cardFaceTheme: ResolvedCardFaceTheme | null;
     cardBackTheme: ResolvedCardBackTheme | null;
+    contentLocale?: GameContentLocale | null;
 }) {
     const { t } = useI18n();
     const isFlipEnabled = useSyncExternalStore(
@@ -344,7 +348,7 @@ export function ViewerCardPreview({
                         }`}
                     >
                         <div className="absolute inset-0 [backface-visibility:hidden]">
-                            <GameCard card={card} theme={cardFaceTheme} />
+                            <GameCard card={card} theme={cardFaceTheme} contentLocale={contentLocale} />
                         </div>
                         <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
                             <CardBackPanel cardBackTheme={cardBackTheme} />

@@ -1,18 +1,30 @@
 "use client";
 
+import { useRef } from "react";
 import Image, { type ImageLoaderProps } from "next/image";
 import { Feather, Flame, Target, X } from "lucide-react";
+import type { GameContentLocale } from "@hushle/domain-game";
 import {
     buildCosmeticPatternStyle,
     getCosmeticMotionClass,
     getCosmeticMotionStyle,
 } from "@/lib/cosmetics/effects";
 import type { ResolvedCardFaceTheme } from "@/lib/cosmetics/card-face";
+import {
+    CARD_TABOO_FIT,
+    CARD_WORD_FIT,
+    formatCardText,
+    getCardTextLang,
+    resolveCardContentLocale,
+} from "@/lib/game/card-text";
 import type { CardData, Difficulty } from "@/types/game";
+import { useCardTextFit } from "./use-card-text-fit";
 
 interface GameCardProps {
     card: CardData;
     theme?: ResolvedCardFaceTheme | null;
+    /** Room word pack locale, used when the card has no locale of its own. */
+    contentLocale?: GameContentLocale | null;
 }
 
 const difficultyConfig: Record<
@@ -42,7 +54,37 @@ const difficultyConfig: Record<
 
 const passthroughImageLoader = ({ src }: ImageLoaderProps) => src;
 
-export function GameCard({ card, theme }: GameCardProps) {
+function CardTabooWord({
+    text,
+    lang,
+    color,
+}: {
+    text: string;
+    lang: string | undefined;
+    color: string | undefined;
+}) {
+    const textRef = useRef<HTMLSpanElement>(null);
+    useCardTextFit(textRef, text, CARD_TABOO_FIT);
+
+    return (
+        <span
+            ref={textRef}
+            lang={lang}
+            data-testid="game-card-taboo"
+            className="min-w-0 text-xl font-semibold tracking-tight"
+            style={{ color }}
+        >
+            {text}
+        </span>
+    );
+}
+
+export function GameCard({ card, theme, contentLocale }: GameCardProps) {
+    const wordRef = useRef<HTMLHeadingElement>(null);
+    const textLocale = resolveCardContentLocale(card.locale, contentLocale);
+    const textLang = getCardTextLang(textLocale);
+    const displayWord = formatCardText(card.word, textLocale);
+    useCardTextFit(wordRef, displayWord, CARD_WORD_FIT);
     const config = difficultyConfig[card.difficulty] || difficultyConfig[2];
     const Icon = config.icon;
     const motionClass = theme ? getCosmeticMotionClass(theme.motionPreset) : "";
@@ -67,6 +109,7 @@ export function GameCard({ card, theme }: GameCardProps) {
     return (
         <div className="w-full max-w-[320px] sm:max-w-[360px] mx-auto my-6">
             <div
+                data-testid="game-card"
                 className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden border-4 ring-1 dark:ring-slate-900 relative"
                 style={
                     theme
@@ -117,10 +160,13 @@ export function GameCard({ card, theme }: GameCardProps) {
                     </div>
 
                     <h2
-                        className="relative z-10 text-4xl font-black uppercase tracking-wider drop-shadow-md"
+                        ref={wordRef}
+                        lang={textLang}
+                        data-testid="game-card-word"
+                        className="relative z-10 w-full min-w-0 text-4xl font-black tracking-wider drop-shadow-md"
                         style={{ color: theme?.wordColor ?? "#ffffff" }}
                     >
-                        {card.word}
+                        {displayWord}
                     </h2>
 
                     <div
@@ -136,12 +182,11 @@ export function GameCard({ card, theme }: GameCardProps) {
                                 <span className="font-bold select-none" style={{ color: theme?.tabooColor ?? undefined }}>
                                     <X size={18} strokeWidth={3} />
                                 </span>
-                                <span
-                                    className="text-xl font-semibold tracking-tight uppercase"
-                                    style={{ color: theme?.wordColor ? `${theme.wordColor}DD` : undefined }}
-                                >
-                                    {word}
-                                </span>
+                                <CardTabooWord
+                                    text={formatCardText(word, textLocale)}
+                                    lang={textLang}
+                                    color={theme?.wordColor ? `${theme.wordColor}DD` : undefined}
+                                />
                             </div>
                         ))}
                     </div>

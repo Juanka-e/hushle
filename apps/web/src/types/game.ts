@@ -89,6 +89,8 @@ export interface CardData {
     difficulty: Difficulty;
     categoryColor: string | null;
     taboo: string[];
+    /** Word pack language; drives locale-aware upper-casing on the card. */
+    locale?: GameContentLocale;
 }
 
 // ─── Game State (from server) ──────────────────────────────────
