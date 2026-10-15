@@ -523,6 +523,13 @@ function testStaticContracts() {
     assert.match(partsSource, /aria-label=\{label\}/);
     assert.match(partsSource, /@max-xl\/card-header:col-start-1/, "the toggle wraps under the title on narrow cards");
 
+    // Real play reaching Admin Lab is proven end to end against a live server.
+    const integrationList = readFileSync("scripts/test-web-launch-readiness-integration.ts", "utf8");
+    assert.match(integrationList, /script: "test:admin-lab-data-flow-e2e",\s+env: \{ ADMIN_LAB_DATA_FLOW_E2E_TEST: "true"/);
+    const flowSource = readFileSync("scripts/test-admin-lab-data-flow-e2e.ts", "utf8");
+    assert.match(flowSource, /\/api\/admin\/lab\/connection-pauses\?days=7/);
+    assert.match(flowSource, /\/api\/admin\/lab\/guest-claims\?days=30/);
+
     const pageSource = readFileSync("apps/web/src/app/admin/(dashboard)/lab/page.tsx", "utf8");
     assert.ok(
         pageSource.indexOf("<ConnectionPauseCard />") < pageSource.indexOf("<GuestClaimCard />"),

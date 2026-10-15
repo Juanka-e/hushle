@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import bcryptjs from "bcryptjs";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "@hushle/platform-db";
 
@@ -268,6 +268,50 @@ test.describe("connection pause panel", () => {
         distinctAccounts: number;
     }
 
+    const labCount = new Intl.NumberFormat("tr-TR");
+    const labPercent = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 });
+
+    function waitForLab(page: Page, section: "guest-claims" | "connection-pauses", days: 7 | 30) {
+        return page.waitForResponse((response) => response.url().includes(`/api/admin/lab/${section}?days=${days}`));
+    }
+
+    // Other suites may write seats to the same database, so the page is checked against the
+    // exact payload it rendered.
+    async function expectGuestClaimCard(card: Locator, summary: GuestClaimLabSummary) {
+        const tiles: Array<[string, number]> = [
+            ["guest-claim-eligible", summary.eligible],
+            ["guest-claim-claimed", summary.claimed],
+            ["guest-claim-settled", summary.settled],
+            ["guest-claim-coins", summary.coinGranted],
+            ["guest-claim-waiting", summary.waiting],
+            ["guest-claim-closed", summary.closed],
+            ["guest-claim-accounts", summary.distinctAccounts],
+            ["guest-claim-unclaimed", summary.unclaimed],
+        ];
+        for (const [testId, value] of tiles) {
+            await expect(card.getByTestId(testId).locator("dd").first()).toHaveText(labCount.format(value));
+        }
+        await expect(card.getByTestId("guest-claim-claimed")).toContainText(
+            `Talep oranı %${labPercent.format(summary.claimRatePercent)}`
+        );
+        await expect(card.getByTestId("guest-claim-settled")).toContainText(
+            `Erken biten maçtan: ${labCount.format(summary.settledFromHostEnded)} (0 coin)`
+        );
+        for (const reason of ["email_verification", "suspension", "retry"] as const) {
+            await expect(card.getByTestId(`guest-claim-waiting-${reason}`)).toContainText(
+                labCount.format(summary.waitingByReason[reason])
+            );
+        }
+        await expect(card.getByTestId("guest-claim-closed-already_participant")).toContainText(
+            labCount.format(summary.closedByReason.already_participant)
+        );
+        await expect(card.getByTestId("guest-claim-closed-expired")).toContainText(
+            labCount.format(summary.closedByReason.expired)
+        );
+        await expect(card.getByText(new RegExp(`son ${summary.days} × 24 saat`))).toBeVisible();
+        await expect(card.getByText(/Koltuk verisi 30 gün tutulur/)).toBeVisible();
+    }
+
     async function seedGuestSeat(input: {
         endedAt: Date;
         status: "unclaimed" | "pending" | "settled" | "rejected" | "expired";
@@ -335,47 +379,7 @@ test.describe("connection pause panel", () => {
         await seedGuestSeat({ endedAt: older, status: "unclaimed" });
         await seedGuestSeat({ endedAt: older, status: "settled", coin: 40, claimUserId: userA });
 
-        const count = new Intl.NumberFormat("tr-TR");
-        const percent = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 });
-        const labResponse = (days: 7 | 30) =>
-            page.waitForResponse((response) => response.url().includes(`/api/admin/lab/guest-claims?days=${days}`));
-        // Other suites may write seats to the same database, so the page is checked against the
-        // exact payload it rendered and the seeded seats give lower bounds.
-        async function expectRendered(card: Locator, summary: GuestClaimLabSummary) {
-            const tiles: Array<[string, number]> = [
-                ["guest-claim-eligible", summary.eligible],
-                ["guest-claim-claimed", summary.claimed],
-                ["guest-claim-settled", summary.settled],
-                ["guest-claim-coins", summary.coinGranted],
-                ["guest-claim-waiting", summary.waiting],
-                ["guest-claim-closed", summary.closed],
-                ["guest-claim-accounts", summary.distinctAccounts],
-                ["guest-claim-unclaimed", summary.unclaimed],
-            ];
-            for (const [testId, value] of tiles) {
-                await expect(card.getByTestId(testId).locator("dd").first()).toHaveText(count.format(value));
-            }
-            await expect(card.getByTestId("guest-claim-claimed")).toContainText(
-                `Talep oranı %${percent.format(summary.claimRatePercent)}`
-            );
-            await expect(card.getByTestId("guest-claim-settled")).toContainText(
-                `Erken biten maçtan: ${count.format(summary.settledFromHostEnded)} (0 coin)`
-            );
-            await expect(card.getByTestId("guest-claim-waiting-email_verification")).toContainText(
-                count.format(summary.waitingByReason.email_verification)
-            );
-            await expect(card.getByTestId("guest-claim-waiting-suspension")).toContainText(
-                count.format(summary.waitingByReason.suspension)
-            );
-            await expect(card.getByTestId("guest-claim-closed-already_participant")).toContainText(
-                count.format(summary.closedByReason.already_participant)
-            );
-            await expect(card.getByTestId("guest-claim-closed-expired")).toContainText(
-                count.format(summary.closedByReason.expired)
-            );
-            await expect(card.getByText(new RegExp(`son ${summary.days} × 24 saat`))).toBeVisible();
-            await expect(card.getByText(/Koltuk verisi 30 gün tutulur/)).toBeVisible();
-        }
+        const labResponse = (days: 7 | 30) => waitForLab(page, "guest-claims", days);
 
         await loginAdmin(page);
         const sevenLoaded = labResponse(7);
@@ -409,7 +413,7 @@ test.describe("connection pause panel", () => {
             }
         };
         await expect(card.getByText("Misafir maç aktarımı").first()).toBeVisible();
-        await expectRendered(card, seven);
+        await expectGuestClaimCard(card, seven);
         await expect(card.getByRole("button", { name: /7 gün/i })).toHaveAttribute("aria-pressed", "true");
         await card.scrollIntoViewIfNeeded();
         await card.screenshot({ path: join(screenshotDir, "09-guest-claim-lab-7d.png") });
@@ -425,12 +429,12 @@ test.describe("connection pause panel", () => {
         await expect(card.getByRole("button", { name: /30 gün/i })).toHaveAttribute("aria-pressed", "true");
         await expect(card.getByRole("button", { name: /7 gün/i })).toHaveAttribute("aria-pressed", "false");
         await expect(pauseCard.getByRole("button", { name: /7 gün/i })).toHaveAttribute("aria-pressed", "true");
-        await expectRendered(card, thirty);
+        await expectGuestClaimCard(card, thirty);
         await card.screenshot({ path: join(screenshotDir, "10-guest-claim-lab-30d.png") });
 
         const backToSeven = labResponse(7);
         await card.getByRole("button", { name: /7 gün/i }).click();
-        await expectRendered(card, (await (await backToSeven).json()) as GuestClaimLabSummary);
+        await expectGuestClaimCard(card, (await (await backToSeven).json()) as GuestClaimLabSummary);
 
         // A slow 7-day refresh must never paint over a newer 30-day result.
         let releaseSlowRefresh: () => void = () => undefined;
@@ -451,17 +455,17 @@ test.describe("connection pause panel", () => {
         const newerThirty = labResponse(30);
         await card.getByRole("button", { name: /30 gün/i }).click();
         const newer = (await (await newerThirty).json()) as GuestClaimLabSummary;
-        await expectRendered(card, newer);
+        await expectGuestClaimCard(card, newer);
         releaseSlowRefresh();
         await slowRefreshDone;
         await page.unroute("**/api/admin/lab/guest-claims?days=7");
         // Give a late response time to land; the card must still show the 30-day payload.
         await page.waitForTimeout(750);
-        await expectRendered(card, newer);
+        await expectGuestClaimCard(card, newer);
         await expect(card.getByRole("button", { name: /30 gün/i })).toHaveAttribute("aria-pressed", "true");
         const sevenAgain = labResponse(7);
         await card.getByRole("button", { name: /7 gün/i }).click();
-        await expectRendered(card, (await (await sevenAgain).json()) as GuestClaimLabSummary);
+        await expectGuestClaimCard(card, (await (await sevenAgain).json()) as GuestClaimLabSummary);
 
         // Phone: nothing pushes the page or the card sideways.
         await page.setViewportSize(phone);
@@ -509,7 +513,96 @@ test.describe("connection pause panel", () => {
         await page.unroute("**/api/admin/lab/guest-claims**");
         const recovered = labResponse(7);
         await card.getByRole("button", { name: "Tekrar dene" }).click();
-        await expectRendered(card, (await (await recovered).json()) as GuestClaimLabSummary);
+        await expectGuestClaimCard(card, (await (await recovered).json()) as GuestClaimLabSummary);
         await expect(card.getByRole("alert")).toHaveCount(0);
+    });
+    interface PauseLabSummary {
+        days: number;
+        paused: number;
+        byTrigger: Record<"narrator" | "inspector" | "team_below_minimum", number>;
+        outcomes: Record<string, number>;
+        averageResolutionSeconds: Record<string, number | null>;
+    }
+
+    const pauseOutcomeLabels: Record<string, string> = {
+        resumed_after_reconnect: "Oyuncu dönünce devam",
+        continued_without_missing: "Onsuz devam",
+        ended_by_host: "Yönetici bitirdi",
+        reset_by_host: "Sıfırlandı",
+        abandoned: "Terk edildi",
+    };
+    const pauseTriggerLabels = {
+        narrator: "Anlatıcı",
+        inspector: "Gözetmen",
+        team_below_minimum: "Takım 2'nin altına düştü",
+    } as const;
+
+    async function expectPauseCard(card: Locator, summary: PauseLabSummary) {
+        const kpis = card.locator('section[aria-labelledby="connection-pause-kpis"]');
+        const tile = (label: string) =>
+            kpis.locator("dt").filter({ hasText: new RegExp(`^${label}$`) }).locator("xpath=..").locator("dd").first();
+        await expect(tile("Toplam duraklatma")).toHaveText(labCount.format(summary.paused));
+        for (const [outcome, label] of Object.entries(pauseOutcomeLabels)) {
+            await expect(tile(label)).toHaveText(labCount.format(summary.outcomes[outcome]));
+        }
+        const triggers = card.locator('section[aria-labelledby="connection-pause-triggers"] li');
+        for (const [trigger, label] of Object.entries(pauseTriggerLabels)) {
+            await expect(triggers.filter({ hasText: label })).toContainText(
+                `${labCount.format(summary.byTrigger[trigger as keyof typeof pauseTriggerLabels])} ·`
+            );
+        }
+        const durations = card.locator('section[aria-labelledby="connection-pause-durations"]');
+        for (const [outcome, label] of Object.entries(pauseOutcomeLabels)) {
+            const seconds = summary.averageResolutionSeconds[outcome];
+            const row = durations.locator("dt").filter({ hasText: label }).locator("xpath=..").locator("dd");
+            if (seconds === null) await expect(row).toContainText("—");
+            else if (seconds < 60) await expect(row).toHaveText(`${Math.round(seconds)} sn`);
+        }
+    }
+
+    // Opens Admin Lab on the data test:admin-lab-data-flow-e2e kept (KEEP mode), with the smoke
+    // server on that run's database and REDIS_KEY_PREFIX.
+    const dataFlowFile = process.env.ADMIN_LAB_DATA_FLOW_FILE?.trim();
+
+    test("Admin Lab shows the numbers real play produced", async ({ page }) => {
+        test.skip(!dataFlowFile, "set ADMIN_LAB_DATA_FLOW_FILE to a kept test:admin-lab-data-flow-e2e run");
+        const flow = JSON.parse(readFileSync(dataFlowFile!, "utf8")) as {
+            after: { pause7: PauseLabSummary; pause30: PauseLabSummary; claims7: GuestClaimLabSummary; claims30: GuestClaimLabSummary };
+        };
+        // The claim window moves with the clock; every count must match.
+        const counts = (summary: GuestClaimLabSummary) => ({ ...summary, windowStart: null, windowEnd: null });
+        await loginAdmin(page);
+        const pauseSeven = waitForLab(page, "connection-pauses", 7);
+        const claimsSeven = waitForLab(page, "guest-claims", 7);
+        await page.goto("/admin/lab");
+        const pause7 = (await (await pauseSeven).json()) as PauseLabSummary;
+        const claims7 = (await (await claimsSeven).json()) as GuestClaimLabSummary;
+        // The browser receives exactly what the e2e read right after playing.
+        expect(pause7).toEqual(flow.after.pause7);
+        expect(counts(claims7)).toEqual(counts(flow.after.claims7));
+        const pauseCard = page.getByTestId("connection-pause-lab");
+        const claimCard = page.getByTestId("guest-claim-lab");
+        await expectPauseCard(pauseCard, pause7);
+        await expectGuestClaimCard(claimCard, claims7);
+        await page.screenshot({ path: join(screenshotDir, "13-admin-lab-real-play-7d.png"), fullPage: true });
+
+        const pauseThirty = waitForLab(page, "connection-pauses", 30);
+        await pauseCard.getByRole("button", { name: /30 gün/i }).click();
+        const pause30 = (await (await pauseThirty).json()) as PauseLabSummary;
+        const claimsThirty = waitForLab(page, "guest-claims", 30);
+        await claimCard.getByRole("button", { name: /30 gün/i }).click();
+        const claims30 = (await (await claimsThirty).json()) as GuestClaimLabSummary;
+        expect(pause30).toEqual(flow.after.pause30);
+        expect(counts(claims30)).toEqual(counts(flow.after.claims30));
+        await expectPauseCard(pauseCard, pause30);
+        await expectGuestClaimCard(claimCard, claims30);
+        await page.screenshot({ path: join(screenshotDir, "14-admin-lab-real-play-30d.png"), fullPage: true });
+
+        await page.setViewportSize(phone);
+        await expect
+            .poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth))
+            .toBeLessThanOrEqual(1);
+        await claimCard.scrollIntoViewIfNeeded();
+        await claimCard.screenshot({ path: join(screenshotDir, "15-admin-lab-real-play-phone-claims.png") });
     });
 });
