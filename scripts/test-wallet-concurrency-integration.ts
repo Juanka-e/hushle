@@ -5,7 +5,6 @@ import { fulfillPaidPaymentOrder } from "@hushle/platform-payments";
 import { updatePlayerProfile } from "@hushle/platform-player";
 import {
     applyWalletLedgerMutation,
-    ensureWallet,
     WalletLedgerInsufficientBalanceError,
     type WalletLedgerMutationResult,
 } from "@hushle/platform-wallet";
@@ -122,27 +121,20 @@ async function assertLedgerChain(userId: number): Promise<{ id: number; coinBala
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// A wallet-touching transaction fails while admin adjustments and coin
-// fulfillments for the same, wallet-less user wait behind it. Every path opens
-// the wallet before its transaction, so the failure leaves nothing to deadlock on.
-async function rollbackWhileOthersWait(adminId: number): Promise<void> {
-    for (let round = 1; round <= 3; round += 1) {
+// An admin adjustment fails after touching the wallet (its admin account no
+// longer exists, so the ledger insert fails) while admin adjustments and coin
+// fulfillments for the same wallet-less user queue behind it. A wallet row
+// inserted by the failing transaction used to leave the waiters deadlocked.
+async function rollbackWhileOthersWait(adminId: number, deletedAdminId: number): Promise<void> {
+    for (let round = 1; round <= 5; round += 1) {
         const userId = await createUser("rollback");
         const orderIds = await Promise.all([1, 2, 3].map(() => createPaidCoinOrder(userId, 25)));
-        const opener = (async () => {
-            await ensureWallet(prisma, userId);
-            await prisma.$transaction(async (tx) => {
-                await applyWalletLedgerMutation(tx, {
-                    userId,
-                    source: "admin_adjustment",
-                    deltaCoin: 5,
-                    idempotencyKey: `wcc:${runId}:rollback:${userId}`,
-                });
-                await sleep(250);
-                throw new Error("planned rollback");
-            }, TX_OPTIONS);
-        })().then(() => "committed", () => "rolled back");
-        await sleep(60);
+        const opener = applyAdminWalletAdjustment({
+            admin: { id: deletedAdminId, role: "admin", name: "deleted admin" },
+            targetUserId: userId,
+            adjustment: { adjustmentType: "credit", amount: 5, reason: "deleted admin credit" },
+        }).then(() => "committed", () => "rolled back");
+        await sleep(3);
         const waiters = await Promise.allSettled([
             ...[11, 12, 13].map(async (amount) => {
                 const result = await applyAdminWalletAdjustment({
@@ -383,7 +375,9 @@ async function run(): Promise<void> {
 
     try {
         const adminId = await createUser("admin", { role: "admin" });
-        await rollbackWhileOthersWait(adminId);
+        const deletedAdminId = await createUser("gone", { role: "admin" });
+        await prisma.user.delete({ where: { id: deletedAdminId } });
+        await rollbackWhileOthersWait(adminId, deletedAdminId);
         await concurrentProfileOpens();
         await paidCoinDebitsRacingTopUps();
         await sameKeyAtOnce();
