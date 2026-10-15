@@ -81,4 +81,33 @@ for (const path of [
     );
 }
 
+assert.match(
+    walletPackage,
+    /FROM payment_coin_lots[\s\S]*?remaining_coin > 0[\s\S]*?FOR UPDATE/,
+    "debits must read paid-coin lots with a locking read after the wallet lock"
+);
+for (const path of [
+    "apps/web/src/lib/admin-user-operations/service.ts",
+    "packages/platform-payments/src/fulfillment.ts",
+]) {
+    assert.match(read(path), /ensureWallet\(prisma,/, `${path} must open the wallet before its transaction`);
+}
+for (const path of [
+    "apps/web/src/lib/economy.ts",
+    "apps/web/src/lib/admin-inventory-operations/service.ts",
+    "packages/platform-inventory/src/index.ts",
+    "packages/platform-player/src/index.ts",
+]) {
+    assert.doesNotMatch(
+        read(path),
+        /userProfile\.upsert\s*\(/,
+        `${path} must open profiles with ensureUserProfile, not a racing Prisma upsert`
+    );
+}
+assert.doesNotMatch(
+    read("apps/web/src/lib/coin-grants/service.ts"),
+    /TransactionIsolationLevel\.Serializable/,
+    "coin grant redemption must not use serializable reads that deadlock under contention"
+);
+
 console.log("test:wallet-ledger-foundation ok");
