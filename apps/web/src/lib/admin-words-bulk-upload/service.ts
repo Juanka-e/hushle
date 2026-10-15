@@ -1,15 +1,25 @@
 import { prisma } from "@/lib/prisma";
 import {
     DEFAULT_GAME_CONTENT_LOCALE,
-    getGameContentLocaleDefinition,
     type GameContentLocale,
 } from "@hushle/domain-game";
+import {
+    normalizeLabel,
+    parseBulkWordUploadRow,
+    parsePositiveInteger,
+    splitBulkWordUploadLines,
+    type BulkUploadMode,
+} from "./parser";
 
-export type BulkUploadMode = "fixed_categories" | "csv_categories";
-export const MAX_BULK_WORD_UPLOAD_FILE_BYTES = 2 * 1024 * 1024;
-export const MAX_BULK_WORD_UPLOAD_ROWS = 1_000;
-export const MAX_BULK_TABOO_WORDS_PER_ROW = 12;
-const MAX_WORD_FIELD_LENGTH = 255;
+export {
+    MAX_BULK_TABOO_WORDS_PER_ROW,
+    MAX_BULK_WORD_UPLOAD_FILE_BYTES,
+    MAX_BULK_WORD_UPLOAD_ROWS,
+    normalizeLabel,
+    parsePositiveInteger,
+    parseRow,
+    type BulkUploadMode,
+} from "./parser";
 
 export interface BulkUploadResults {
     success: number;
@@ -22,24 +32,6 @@ interface CategoryRecord {
     id: number;
     name: string;
     parentId: number | null;
-}
-
-export function normalizeLabel(
-    value: string,
-    locale: GameContentLocale = DEFAULT_GAME_CONTENT_LOCALE
-): string {
-    return value
-        .trim()
-        .toLocaleLowerCase(getGameContentLocaleDefinition(locale).intlLocale);
-}
-
-export function parsePositiveInteger(value: string): number | null {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-export function parseRow(line: string): string[] {
-    return line.split(",").map((column) => column.trim());
 }
 
 export async function resolveFixedCategoryIds(
@@ -156,21 +148,9 @@ export async function processBulkWordUpload(options: {
         locale = DEFAULT_GAME_CONTENT_LOCALE,
     } = options;
 
-    const lines = text.split("\n").filter((line) => line.trim());
-    if (lines.length === 0) {
-        return { error: "CSV dosyasi bos." } as const;
-    }
-
-    const firstLine = lines[0].toLocaleLowerCase(
-        getGameContentLocaleDefinition(locale).intlLocale
-    ).trim();
-    const startIndex = firstLine.startsWith("word") || firstLine.startsWith("kelime")
-        ? 1
-        : 0;
-    if (lines.length - startIndex > MAX_BULK_WORD_UPLOAD_ROWS) {
-        return {
-            error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satiri icerebilir.`,
-        } as const;
+    const split = splitBulkWordUploadLines(text, locale);
+    if ("error" in split) {
+        return { error: split.error } as const;
     }
 
     let fixedCategoryIds: number[] = [];
@@ -198,65 +178,28 @@ export async function processBulkWordUpload(options: {
         skippedRows: [],
     };
 
-    for (let i = startIndex; i < lines.length; i++) {
-        const rowNumber = i + 1;
-        const cols = parseRow(lines[i]);
-
-        const minimumColumns = mode === "csv_categories" ? 5 : 3;
-        if (cols.length < minimumColumns) {
-            results.errors.push(
-                mode === "csv_categories"
-                    ? `Satir ${rowNumber}: En az 5 sutun gerekli (kelime, zorluk, kategori, alt_kategori, yasakli1).`
-                    : `Satir ${rowNumber}: En az 3 sutun gerekli (kelime, zorluk, yasakli1).`
-            );
+    for (const row of split.rows) {
+        const parsed = parseBulkWordUploadRow(row, mode);
+        if ("error" in parsed) {
+            results.errors.push(parsed.error);
             continue;
         }
 
-        const wordText = cols[0];
-        const difficulty = Number.parseInt(cols[1], 10);
-
+        const { rowNumber, wordText, difficulty, tabooWords } = parsed;
         let categoryIds = fixedCategoryIds;
-        let tabooOffset = 2;
 
+        // Category lookup errors keep their precedence over field errors.
         if (mode === "csv_categories") {
-            const resolved = extractCsvCategoryIds(rowNumber, cols, categoryIndex!, locale);
+            const resolved = extractCsvCategoryIds(rowNumber, parsed.columns, categoryIndex!, locale);
             if ("error" in resolved) {
                 results.errors.push(resolved.error);
                 continue;
             }
             categoryIds = resolved.categoryIds;
-            tabooOffset = resolved.tabooOffset;
         }
 
-        const tabooWords = cols.slice(tabooOffset).filter(Boolean);
-
-        if (!wordText) {
-            results.errors.push(`Satir ${rowNumber}: Kelime bos.`);
-            continue;
-        }
-
-        if (wordText.length > MAX_WORD_FIELD_LENGTH) {
-            results.errors.push(`Satir ${rowNumber}: Kelime en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`);
-            continue;
-        }
-
-        if (Number.isNaN(difficulty) || difficulty < 1 || difficulty > 3) {
-            results.errors.push(`Satir ${rowNumber}: Zorluk 1-3 arasinda olmali.`);
-            continue;
-        }
-
-        if (tabooWords.length === 0) {
-            results.errors.push(`Satir ${rowNumber}: En az 1 yasakli kelime gerekli.`);
-            continue;
-        }
-
-        if (tabooWords.length > MAX_BULK_TABOO_WORDS_PER_ROW) {
-            results.errors.push(`Satir ${rowNumber}: En fazla ${MAX_BULK_TABOO_WORDS_PER_ROW} yasakli kelime eklenebilir.`);
-            continue;
-        }
-
-        if (tabooWords.some((tabooWord) => tabooWord.length > MAX_WORD_FIELD_LENGTH)) {
-            results.errors.push(`Satir ${rowNumber}: Yasakli kelimeler en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`);
+        if (parsed.fieldError) {
+            results.errors.push(parsed.fieldError);
             continue;
         }
 

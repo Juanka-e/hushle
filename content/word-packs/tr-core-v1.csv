@@ -1,0 +1,521 @@
+kelime,zorluk,kategori,alt_kategori,yasak1,yasak2,yasak3,yasak4,yasak5
+Diş fırçası,1,Günlük Yaşam,,Macun,Ağız,Banyo,Sabah,Temiz
+Şemsiye,1,Günlük Yaşam,,Yağmur,Islanmak,Açmak,Sap,Bulut
+Buzdolabı,1,Günlük Yaşam,,Soğuk,Mutfak,Yiyecek,Dondurucu,Saklamak
+Yastık,1,Günlük Yaşam,,Uyku,Yatak,Baş,Kılıf,Yumuşak
+Ayna,1,Günlük Yaşam,,Yansıma,Bakmak,Cam,Yüz,Görüntü
+Anahtar,1,Günlük Yaşam,,Kapı,Kilit,Açmak,Ev,Çevirmek
+Gözlük,1,Günlük Yaşam,,Cam,Görmek,Miyop,Çerçeve,Burun
+Cüzdan,1,Günlük Yaşam,,Para,Kart,Cep,Kimlik,Deri
+Çalar saat,1,Günlük Yaşam,,Sabah,Uyanmak,Alarm,Zil,Erken
+Havlu,1,Günlük Yaşam,,Banyo,Kurulanmak,Duş,Islak,Kumaş
+Sabun,1,Günlük Yaşam,,Köpük,El,Yıkamak,Temiz,Koku
+Merdiven,1,Günlük Yaşam,,Basamak,Çıkmak,İnmek,Kat,Asansör
+Terlik,1,Günlük Yaşam,,Ayak,Ev,Giymek,Pantufla,Rahat
+Pijama,1,Günlük Yaşam,,Gece,Uyku,Yatak,Giymek,Rahat
+Battaniye,1,Günlük Yaşam,,Sıcak,Örtü,Kış,Yün,Üşümek
+Çöp kutusu,1,Günlük Yaşam,,Atık,Poşet,Kapak,Mutfak,Pis
+Otobüs,1,Günlük Yaşam,,Durak,Şoför,Yolcu,Toplu taşıma,Koltuk
+Bisiklet,1,Günlük Yaşam,,Pedal,Tekerlek,Sürmek,Zincir,Kask
+Doğum günü,1,Günlük Yaşam,,Pasta,Mum,Hediye,Parti,Yaş
+Telefon,1,Günlük Yaşam,,Aramak,Konuşmak,Mesaj,Cep,Numara
+Televizyon,1,Günlük Yaşam,,Kanal,Ekran,Kumanda,Dizi,İzlemek
+Uzaktan kumanda,2,Günlük Yaşam,,Televizyon,Kanal,Tuş,Pil,Ses
+Ütü,2,Günlük Yaşam,,Kırışık,Gömlek,Buhar,Sıcak,Düzeltmek
+Kalemtıraş,2,Günlük Yaşam,,Uç,Açmak,Kurşun,Okul,Talaş
+Mandal,2,Günlük Yaşam,,Çamaşır,Asmak,İp,Kurutmak,Balkon
+Fatura,2,Günlük Yaşam,,Ödemek,Elektrik,Doğal gaz,Borç,Aylık
+Kira,2,Günlük Yaşam,,Ev sahibi,Aylık,Ödemek,Daire,Depozito
+Komşu,2,Günlük Yaşam,,Yan daire,Apartman,Mahalle,Kapı,Selam
+Misafir,2,Günlük Yaşam,,Ziyaret,Ağırlamak,Konuk,Gelmek,İkram
+Alışveriş,2,Günlük Yaşam,,Market,Para,Almak,Sepet,Mağaza
+Hafta sonu,2,Günlük Yaşam,,Cumartesi,Pazar,Tatil,Dinlenmek,Okul
+Asansör,2,Günlük Yaşam,,Kat,Bina,Düğme,Yukarı,Merdiven
+Priz,2,Günlük Yaşam,,Elektrik,Fiş,Duvar,Takmak,Şarj
+Kumbara,2,Günlük Yaşam,,Para,Biriktirmek,Tasarruf,Kırmak,Çocuk
+Valiz,2,Günlük Yaşam,,Bavul,Seyahat,Tatil,Eşya,Havalimanı
+Zarf,2,Günlük Yaşam,,Mektup,Pul,Posta,Kapatmak,Adres
+Takvim,2,Günlük Yaşam,,Gün,Ay,Yıl,Tarih,Yaprak
+Trafik lambası,2,Günlük Yaşam,,Kırmızı,Yeşil,Sarı,Durmak,Kavşak
+Emniyet kemeri,2,Günlük Yaşam,,Araba,Takmak,Güvenlik,Koltuk,Kaza
+Hapşırık,2,Günlük Yaşam,,Burun,Grip,Çok yaşa,Mendil,Alerji
+Hıçkırık,2,Günlük Yaşam,,Hık,Korkutmak,Su içmek,Nefes,Diyafram
+Esnemek,2,Günlük Yaşam,,Uykusuz,Ağız,Yorgun,Sıkılmak,Bulaşıcı
+Taşınmak,3,Günlük Yaşam,,Kamyon,Koli,Eşya,Nakliyat,Yeni ev
+Uykusuzluk,3,Günlük Yaşam,,Gece,Yatak,Koyun saymak,Yorgun,Sabah
+Ev arkadaşı,3,Günlük Yaşam,,Kira,Paylaşmak,Öğrenci,Oda,Birlikte
+Fazla mesai,3,Günlük Yaşam,,İş,Ofis,Geç,Saat,Patron
+Kayıp eşya,3,Günlük Yaşam,,Unutmak,Büro,Sahibi,Bulmak,Otobüs
+Erteleme,3,Günlük Yaşam,,Sonra,Yarın,Tembellik,Bekletmek,Son dakika
+Rutin,3,Günlük Yaşam,,Her gün,Alışkanlık,Tekrar,Düzen,Sabah
+Kuyruk,3,Günlük Yaşam,,Sıra,Beklemek,Hayvan,Uzun,Banka
+Faraş,3,Günlük Yaşam,,Süpürge,Çöp,Toz,Kürek,Sap
+Abonelik,3,Günlük Yaşam,,Aylık,Üyelik,Ödeme,Dergi,İptal
+Ekmek,1,Yiyecek ve İçecek,,Fırın,Un,Dilim,Somun,Kahvaltı
+Peynir,1,Yiyecek ve İçecek,,Beyaz,Kahvaltı,Süt,Kaşar,Tost
+Yumurta,1,Yiyecek ve İçecek,,Tavuk,Kabuk,Haşlamak,Omlet,Sarı
+Elma,1,Yiyecek ve İçecek,,Kırmızı,Meyve,Yeşil,Ağaç,Isırmak
+Muz,1,Yiyecek ve İçecek,,Sarı,Maymun,Kabuk,Meyve,Uzun
+Çilek,1,Yiyecek ve İçecek,,Kırmızı,Meyve,Reçel,Pasta,Tohum
+Karpuz,1,Yiyecek ve İçecek,,Yaz,Çekirdek,Kırmızı,Yeşil,Kavun
+Domates,1,Yiyecek ve İçecek,,Kırmızı,Salata,Salça,Sebze,Ketçap
+Patates,1,Yiyecek ve İçecek,,Kızartma,Cips,Toprak,Haşlama,Püre
+Pilav,1,Yiyecek ve İçecek,,Pirinç,Tencere,Bulgur,Tane,Tereyağı
+Çorba,1,Yiyecek ve İçecek,,Kaşık,Sıcak,Mercimek,Kâse,Tencere
+Makarna,1,Yiyecek ve İçecek,,Spagetti,İtalya,Sos,Haşlamak,Peynir
+Pizza,1,Yiyecek ve İçecek,,Hamur,Peynir,Dilim,İtalya,Fırın
+Hamburger,1,Yiyecek ve İçecek,,Köfte,Ekmek,Ketçap,Marul,Turşu
+Dondurma,1,Yiyecek ve İçecek,,Soğuk,Külah,Yaz,Çikolata,Vanilya
+Çikolata,1,Yiyecek ve İçecek,,Kakao,Tatlı,Bitter,Sütlü,Kahverengi
+Bal,1,Yiyecek ve İçecek,,Arı,Petek,Tatlı,Kovan,Sarı
+Çay,1,Yiyecek ve İçecek,,Demlik,Bardak,Şeker,Sıcak,Rize
+Kahve,1,Yiyecek ve İçecek,,Fincan,Kafein,Sabah,Telve,Köpük
+Simit,1,Yiyecek ve İçecek,,Susam,Halka,Çay,Kahvaltı,Fırın
+Döner,1,Yiyecek ve İçecek,,Et,Şiş,Dürüm,Ekmek arası,Tavuk
+Mantı,2,Yiyecek ve İçecek,,Hamur,Kıyma,Yoğurt,Kayseri,Küçük
+Lahmacun,2,Yiyecek ve İçecek,,İnce,Hamur,Kıyma,Limon,Maydanoz
+Baklava,2,Yiyecek ve İçecek,,Şerbet,Fıstık,Tatlı,Gaziantep,Yufka
+Menemen,2,Yiyecek ve İçecek,,Yumurta,Domates,Biber,Kahvaltı,Tava
+Ayran,2,Yiyecek ve İçecek,,Yoğurt,Su,Tuz,Köpük,İçecek
+Turşu,2,Yiyecek ve İçecek,,Sirke,Salatalık,Ekşi,Kavanoz,Lahana
+Reçel,2,Yiyecek ve İçecek,,Kavanoz,Meyve,Şeker,Kahvaltı,Ekmek
+Tereyağı,2,Yiyecek ve İçecek,,Süt,Kahvaltı,Erimek,Margarin,Ekmek
+Köfte,2,Yiyecek ve İçecek,,Kıyma,Izgara,Yuvarlak,Ekmek,Mangal
+Kebap,2,Yiyecek ve İçecek,,Et,Şiş,Izgara,Adana,Mangal
+Börek,2,Yiyecek ve İçecek,,Yufka,Peynir,Fırın,Kıyma,Hamur
+Lokum,2,Yiyecek ve İçecek,,Şeker,Pudra,Yumuşak,Kahve,Gül
+Mercimek,2,Yiyecek ve İçecek,,Çorba,Kırmızı,Bakliyat,Yeşil,Köfte
+Patlıcan,2,Yiyecek ve İçecek,,Mor,Karnıyarık,Közlemek,Sebze,Musakka
+Sarımsak,2,Yiyecek ve İçecek,,Koku,Diş,Beyaz,Vampir,Yoğurt
+Nar,2,Yiyecek ve İçecek,,Kırmızı,Tane,Ekşi,Meyve suyu,Kabuk
+Kiraz,2,Yiyecek ve İçecek,,Kırmızı,Sap,Çekirdek,Küpe,Yaz
+Ceviz,2,Yiyecek ve İçecek,,Kabuk,Beyin,Kırmak,Ağaç,Kuruyemiş
+Fındık,2,Yiyecek ve İçecek,,Karadeniz,Kuruyemiş,Kabuk,Giresun,Çikolata
+Limonata,2,Yiyecek ve İçecek,,Ekşi,Şeker,Serin,Sarı,Yaz
+Salep,2,Yiyecek ve İçecek,,Kış,Tarçın,Sıcak,Süt,Dondurma
+Künefe,3,Yiyecek ve İçecek,,Kadayıf,Peynir,Hatay,Şerbet,Sıcak
+Tantuni,3,Yiyecek ve İçecek,,Mersin,Dürüm,Et,Lavaş,Acı
+Revani,3,Yiyecek ve İçecek,,İrmik,Şerbet,Tatlı,Hindistan cevizi,Kek
+Kazandibi,3,Yiyecek ve İçecek,,Muhallebi,Yanık,Tatlı,Süt,Tarçın
+Tarhana,3,Yiyecek ve İçecek,,Çorba,Kurutmak,Yoğurt,Kış,Un
+Pekmez,3,Yiyecek ve İçecek,,Üzüm,Kahvaltı,Tahin,Koyu,Tatlı
+Şalgam,3,Yiyecek ve İçecek,,Adana,Mor,Turşu,Acı,Kebap
+Zencefil,3,Yiyecek ve İçecek,,Baharat,Kök,Acı,Çay,Soğuk algınlığı
+Kimyon,3,Yiyecek ve İçecek,,Baharat,Köfte,Sucuk,Tohum,Hint yemeği
+Mücver,3,Yiyecek ve İçecek,,Kabak,Kızartma,Dereotu,Yumurta,Yoğurt
+Kedi,1,Hayvanlar,,Miyav,Fare,Tüy,Bıyık,Evcil
+Köpek,1,Hayvanlar,,Havlamak,Kemik,Kuyruk,Sadık,Kulübe
+Aslan,1,Hayvanlar,,Kral,Yele,Kükremek,Afrika,Savan
+Fil,1,Hayvanlar,,Hortum,Kulak,Gri,Büyük,Hafıza
+Zürafa,1,Hayvanlar,,Boyun,Uzun,Benek,Afrika,Yaprak
+Maymun,1,Hayvanlar,,Muz,Ağaç,Kuyruk,Taklit,Şempanze
+Kaplan,1,Hayvanlar,,Çizgi,Turuncu,Yırtıcı,Orman,Kedi
+Ayı,1,Hayvanlar,,Bal,Kış uykusu,Kahverengi,Orman,Pençe
+Tavşan,1,Hayvanlar,,Havuç,Kulak,Zıplamak,Hızlı,Kaplumbağa
+Kaplumbağa,1,Hayvanlar,,Kabuk,Yavaş,Deniz,Yumurta,Sürüngen
+Penguen,1,Hayvanlar,,Buz,Kutup,Kuş,Smokin,Soğuk
+Kelebek,1,Hayvanlar,,Kanat,Renkli,Tırtıl,Çiçek,Uçmak
+Arı,1,Hayvanlar,,Bal,Sokmak,Kovan,Vızıltı,Çiçek
+Karınca,1,Hayvanlar,,Küçük,Çalışkan,Yuva,Kraliçe,Ağustos böceği
+Yılan,1,Hayvanlar,,Sürünmek,Zehir,Tıslamak,Uzun,Deri
+İnek,1,Hayvanlar,,Süt,Çiftlik,Boynuz,Ahır,Otlamak
+Koyun,1,Hayvanlar,,Yün,Kuzu,Sürü,Çoban,Melemek
+At,1,Hayvanlar,,Nal,Binmek,Yele,Koşu,Eyer
+Balık,1,Hayvanlar,,Su,Yüzgeç,Pul,Deniz,Olta
+Tavuk,1,Hayvanlar,,Yumurta,Kümes,Horoz,Civciv,Gıdaklamak
+Ördek,1,Hayvanlar,,Göl,Yüzmek,Gaga,Kuş,Vak vak
+Timsah,2,Hayvanlar,,Nehir,Diş,Yeşil,Sürüngen,Gözyaşı
+Kanguru,2,Hayvanlar,,Avustralya,Kese,Zıplamak,Yavru,Boks
+Zebra,2,Hayvanlar,,Çizgili,Siyah,Beyaz,At,Yaya geçidi
+Gergedan,2,Hayvanlar,,Boynuz,Afrika,Gri,Deri,Ağır
+Su aygırı,2,Hayvanlar,,Nehir,Afrika,Ağız,Şişman,Hipopotam
+Yunus,2,Hayvanlar,,Akıllı,Deniz,Atlamak,Gösteri,Memeli
+Balina,2,Hayvanlar,,Okyanus,Dev,Mavi,Memeli,Fışkırtmak
+Ahtapot,2,Hayvanlar,,Kol,Mürekkep,Sekiz,Deniz,Vantuz
+Kartal,2,Hayvanlar,,Pençe,Gaga,Kanat,Yırtıcı,Dağ
+Baykuş,2,Hayvanlar,,Gece,Bilge,Göz,Kafa,Uğursuz
+Papağan,2,Hayvanlar,,Konuşmak,Renkli,Tüy,Taklit,Kafes
+Deve,2,Hayvanlar,,Hörgüç,Çöl,Kervan,Su,Kum
+Kirpi,2,Hayvanlar,,Diken,Top olmak,Küçük,Gece,Elma
+Sincap,2,Hayvanlar,,Ceviz,Fındık,Ağaç,Kuyruk,Kabarık
+Tilki,2,Hayvanlar,,Kurnaz,Turuncu,Kuyruk,Tavuk,Orman
+Kurt,2,Hayvanlar,,Uluma,Sürü,Ay,Orman,Kırmızı Başlıklı Kız
+Geyik,2,Hayvanlar,,Boynuz,Orman,Karaca,Avcı,Kahverengi
+Panda,2,Hayvanlar,,Bambu,Çin,Siyah,Beyaz,Ayı
+Koala,2,Hayvanlar,,Avustralya,Okaliptüs,Ağaç,Uyku,Gri
+Kurbağa,2,Hayvanlar,,Vıraklamak,Zıplamak,Gölet,Yeşil,Prens
+Salyangoz,2,Hayvanlar,,Kabuk,Yavaş,Anten,Yağmur,Bahçe
+Bukalemun,3,Hayvanlar,,Renk değiştirmek,Dil,Sürüngen,Kamuflaj,Göz
+Ornitorenk,3,Hayvanlar,,Gaga,Ördek,Avustralya,Memeli,Yumurta
+Tembel hayvan,3,Hayvanlar,,Yavaş,Ağaç,Uyku,Asılı,Dal
+Akbaba,3,Hayvanlar,,Leş,Kel,Yırtıcı,Kanat,Çöl
+Vaşak,3,Hayvanlar,,Kedi,Püskül,Kulak,Orman,Vahşi
+Sırtlan,3,Hayvanlar,,Gülmek,Afrika,Leş,Aslan,Benek
+İribaş,3,Hayvanlar,,Kurbağa,Yavru,Kuyruk,Göl,Su
+Mors,3,Hayvanlar,,Diş,Bıyık,Buz,Fok,Kutup
+Ağaçkakan,3,Hayvanlar,,Gaga,Vurmak,Tak tak,Kuş,Gövde
+Kunduz,3,Hayvanlar,,Baraj,Diş,Ağaç,Nehir,Kuyruk
+Doktor,1,Meslekler,,Hastane,Hasta,İlaç,Muayene,Önlük
+Öğretmen,1,Meslekler,,Okul,Sınıf,Ders,Tahta,Not
+Polis,1,Meslekler,,Suç,Hırsız,Karakol,Kelepçe,Üniforma
+Aşçı,1,Meslekler,,Yemek,Mutfak,Restoran,Tencere,Şef
+Pilot,1,Meslekler,,Uçak,Kokpit,Kaptan,Havalimanı,Uçmak
+Hemşire,1,Meslekler,,Hastane,İğne,Hasta,Doktor,Serum
+İtfaiyeci,1,Meslekler,,Yangın,Hortum,Ateş,Merdiven,Söndürmek
+Garson,1,Meslekler,,Restoran,Sipariş,Bahşiş,Tepsi,Masa
+Berber,1,Meslekler,,Saç,Sakal,Tıraş,Makas,Ayna
+Kasap,1,Meslekler,,Et,Bıçak,Kıyma,Pirzola,Dükkân
+Fırıncı,1,Meslekler,,Ekmek,Hamur,Sabah,Un,Simit
+Postacı,1,Meslekler,,Mektup,Zarf,Kargo,Adres,Kapı
+Şoför,1,Meslekler,,Araba,Direksiyon,Ehliyet,Otobüs,Sürmek
+Çiftçi,1,Meslekler,,Tarla,Traktör,Hasat,Tohum,Köy
+Ressam,1,Meslekler,,Fırça,Tuval,Boya,Tablo,Sanatçı
+Şarkıcı,1,Meslekler,,Mikrofon,Ses,Sahne,Konser,Albüm
+Diş hekimi,1,Meslekler,,Ağız,Çürük,Dolgu,Çekmek,Koltuk
+Veteriner,1,Meslekler,,Hayvan,Kedi,Köpek,Klinik,Tedavi
+Terzi,1,Meslekler,,Dikiş,İğne,İplik,Kumaş,Ölçü
+Bahçıvan,1,Meslekler,,Çiçek,Çim,Budamak,Hortum,Toprak
+Kuaför,1,Meslekler,,Saç,Fön,Boya,Makas,Kesim
+Avukat,2,Meslekler,,Mahkeme,Dava,Hâkim,Savunma,Hukuk
+Hâkim,2,Meslekler,,Mahkeme,Tokmak,Karar,Dava,Cübbe
+Mühendis,2,Meslekler,,Proje,Hesap,İnşaat,Makine,Tasarım
+Mimar,2,Meslekler,,Bina,Çizim,Proje,Plan,Tasarım
+Eczacı,2,Meslekler,,İlaç,Reçete,Hap,Şurup,Doktor
+Fotoğrafçı,2,Meslekler,,Kamera,Deklanşör,Poz,Çekmek,Flaş
+Gazeteci,2,Meslekler,,Haber,Muhabir,Röportaj,Manşet,Yazı
+Kasiyer,2,Meslekler,,Market,Para,Fiş,Ödeme,Barkod
+Tamirci,2,Meslekler,,Alet,Bozuk,Usta,Araba,Anahtar
+Astronot,2,Meslekler,,Uzay,Roket,Ay,Kask,Yer çekimi
+Dalgıç,2,Meslekler,,Deniz,Tüp,Palet,Oksijen,Maske
+Palyaço,2,Meslekler,,Sirk,Kırmızı burun,Güldürmek,Makyaj,Şaka
+Sihirbaz,2,Meslekler,,Şapka,Tavşan,Değnek,Numara,Gösteri
+Kabin memuru,2,Meslekler,,Uçak,Hostes,İkram,Yolcu,Can yeleği
+Çoban,2,Meslekler,,Koyun,Sürü,Köpek,Kaval,Dağ
+Kaptan,2,Meslekler,,Gemi,Dümen,Denizci,Şapka,Tayfa
+Bekçi,2,Meslekler,,Gece,Düdük,Mahalle,Nöbet,Sopa
+Madenci,2,Meslekler,,Kazmak,Kömür,Yer altı,Kask,Ocak
+Tesisatçı,2,Meslekler,,Boru,Su,Musluk,Kaçak,Anahtar
+Hakem,2,Meslekler,,Düdük,Kart,Maç,Kural,Faul
+Spiker,2,Meslekler,,Haber,Televizyon,Mikrofon,Sunmak,Ses
+Çevirmen,3,Meslekler,,Dil,Tercüme,Yabancı,Kitap,Sözlük
+Arkeolog,3,Meslekler,,Kazı,Antik,Tarih,Fırça,Kalıntı
+Muhasebeci,3,Meslekler,,Hesap,Vergi,Para,Defter,Bilanço
+Diyetisyen,3,Meslekler,,Kilo,Beslenme,Sağlıklı,Liste,Kalori
+Çilingir,3,Meslekler,,Kilit,Anahtar,Kapı,Açmak,Maymuncuk
+Kuyumcu,3,Meslekler,,Altın,Yüzük,Bilezik,Mücevher,Gram
+Akrobat,3,Meslekler,,Sirk,Takla,Denge,Esnek,Trapez
+Psikolog,3,Meslekler,,Terapi,Ruh,Danışan,Seans,Dinlemek
+Noter,3,Meslekler,,İmza,Belge,Onay,Mühür,Resmî
+Meteorolog,3,Meslekler,,Hava durumu,Tahmin,Yağmur,Sıcaklık,Bulut
+Futbol,1,Spor,,Top,Gol,Kale,Stadyum,Maç
+Basketbol,1,Spor,,Pota,Smaç,Top,Sayı,Uzun
+Voleybol,1,Spor,,File,Smaç,Top,Manşet,Blok
+Tenis,1,Spor,,Raket,File,Kort,Top,Servis
+Yüzme,1,Spor,,Havuz,Su,Kulaç,Mayo,Bone
+Koşu,1,Spor,,Hız,Pist,Maraton,Ayakkabı,Bitiş
+Kayak,1,Spor,,Kar,Dağ,Pist,Kış,Baton
+Boks,1,Spor,,Eldiven,Ring,Yumruk,Nakavt,Raunt
+Güreş,1,Spor,,Minder,Yağlı,Kırkpınar,Tuş,Pehlivan
+Maç,1,Spor,,Takım,Skor,Futbol,Hakem,Seyirci
+Golf,1,Spor,,Delik,Sopa,Çim,Top,Bayrak
+Penaltı,1,Spor,,Kaleci,Nokta,Şut,Faul,Gol
+Şampiyon,1,Spor,,Birinci,Kupa,Kazanmak,Lig,Madalya
+Madalya,1,Spor,,Altın,Gümüş,Bronz,Birinci,Kürsü
+Kupa,1,Spor,,Şampiyon,Final,Kazanmak,Kaldırmak,Turnuva
+Stadyum,1,Spor,,Taraftar,Maç,Tribün,Saha,Seyirci
+Forma,1,Spor,,Numara,Takım,Giymek,Renk,Oyuncu
+Olimpiyat,1,Spor,,Halka,Meşale,Madalya,Dört yıl,Ülke
+Paten,1,Spor,,Tekerlek,Buz,Kaymak,Kask,Ayakkabı
+Karate,1,Spor,,Kuşak,Japonya,Tekme,Dövüş,Tahta kırmak
+Taraftar,1,Spor,,Tribün,Takım,Destek,Tezahürat,Forma
+Maraton,2,Spor,,Uzun,Koşu,Kilometre,Dayanıklılık,Yarış
+Okçuluk,2,Spor,,Yay,Hedef,Nişan,Atış,Tam isabet
+Eskrim,2,Spor,,Kılıç,Maske,Düello,Beyaz,Dokunuş
+Halter,2,Spor,,Ağırlık,Kaldırmak,Kas,Güç,Kilo
+Jimnastik,2,Spor,,Esneklik,Takla,Denge,Minder,Çember
+Sörf,2,Spor,,Dalga,Tahta,Deniz,Kaymak,Rüzgâr
+Yelken,2,Spor,,Tekne,Rüzgâr,Deniz,Direk,Regata
+Kürek,2,Spor,,Tekne,Çekmek,Sandal,Takım,Göl
+Binicilik,2,Spor,,At,Engel,Eyer,Dörtnala,Jokey
+Badminton,2,Spor,,Raket,Tüylü top,File,Hafif,Salon
+Hentbol,2,Spor,,El,Top,Kale,Yedi kişi,Atış
+Beyzbol,2,Spor,,Sopa,Eldiven,Amerika,Top,Vuruş
+Bilardo,2,Spor,,Masa,Istaka,Top,Delik,Yeşil
+Dart,2,Spor,,Ok,Tahta,Hedef,Atmak,Puan
+Dağcılık,2,Spor,,Tırmanmak,Zirve,İp,Kamp,Everest
+Kaykay,2,Spor,,Tahta,Tekerlek,Rampa,Kask,Sokak
+Ralli,2,Spor,,Araba,Yarış,Toprak yol,Pilot,Hız
+Tekvando,2,Spor,,Kore,Tekme,Kuşak,Dövüş,Olimpiyat
+Antrenman,2,Spor,,Çalışma,Hazırlık,Ter,Saha,Isınma
+Derbi,2,Spor,,Rakip,Maç,Taraftar,Heyecan,Rekabet
+Smaç,2,Spor,,Pota,Basketbol,Zıplamak,Hava,Vurmak
+Ofsayt,3,Spor,,Kural,Futbol,Bayrak,Yan hakem,Pozisyon
+Serbest vuruş,3,Spor,,Faul,Futbol,Duvar,Frikik,Şut
+Sırıkla atlama,3,Spor,,Çubuk,Yüksek,Çıta,Atlet,Esnek
+Gülle atma,3,Spor,,Ağır,Top,Demir,Atletizm,Omuz
+Cirit,3,Spor,,Atlı,Mızrak,Erzurum,Geleneksel,Oyun
+Triatlon,3,Spor,,Yüzme,Bisiklet,Koşu,Üç,Dayanıklılık
+Fotofiniş,3,Spor,,Bitiş çizgisi,Kamera,Yarış,Saniye,Kazanan
+Doping,3,Spor,,İlaç,Yasak,Test,Hile,Sporcu
+Yamaç paraşütü,3,Spor,,Uçmak,Dağ,Rüzgâr,Ölüdeniz,Kanat
+Uzatma,3,Spor,,Dakika,Ek süre,Hakem,Beraberlik,Son
+Bilgisayar,1,Bilim ve Teknoloji,,Ekran,Klavye,Fare,İnternet,Program
+Robot,1,Bilim ve Teknoloji,,Makine,Metal,Otomatik,Yapay zekâ,Fabrika
+İnternet,1,Bilim ve Teknoloji,,Ağ,Bağlantı,Site,Modem,Kablosuz
+Mıknatıs,1,Bilim ve Teknoloji,,Çekmek,Demir,Kutup,Manyetik,Buzdolabı
+Teleskop,1,Bilim ve Teknoloji,,Yıldız,Uzay,Gözlem,Mercek,Gökyüzü
+Mikroskop,1,Bilim ve Teknoloji,,Küçük,Büyütmek,Mercek,Hücre,Laboratuvar
+Roket,1,Bilim ve Teknoloji,,Uzay,Fırlatmak,Yakıt,Astronot,Ay
+Uydu,1,Bilim ve Teknoloji,,Uzay,Yörünge,Sinyal,Çanak anten,Dünya
+Elektrik,1,Bilim ve Teknoloji,,Akım,Kablo,Priz,Enerji,Çarpmak
+Klavye,1,Bilim ve Teknoloji,,Tuş,Harf,Yazmak,Bilgisayar,Piyano
+Yazıcı,1,Bilim ve Teknoloji,,Kâğıt,Mürekkep,Çıktı,Belge,Toner
+Hesap makinesi,1,Bilim ve Teknoloji,,Toplama,Sayı,Matematik,Tuş,İşlem
+Termometre,1,Bilim ve Teknoloji,,Ateş,Derece,Sıcaklık,Hasta,Cıva
+Gezegen,1,Bilim ve Teknoloji,,Güneş sistemi,Mars,Dünya,Yörünge,Jüpiter
+Uzay,1,Bilim ve Teknoloji,,Boşluk,Yıldız,Astronot,Galaksi,Roket
+Atom,1,Bilim ve Teknoloji,,Proton,Elektron,Çekirdek,Küçük,Madde
+Pil,1,Bilim ve Teknoloji,,Enerji,Şarj,Artı,Eksi,Kumanda
+Deney,1,Bilim ve Teknoloji,,Bilim,Laboratuvar,Test,Sonuç,Gözlem
+Matematik,1,Bilim ve Teknoloji,,Sayı,Ders,Problem,Toplama,Formül
+Virüs,1,Bilim ve Teknoloji,,Hastalık,Bulaşmak,Mikrop,Bilgisayar,Grip
+Kamera,1,Bilim ve Teknoloji,,Fotoğraf,Video,Çekmek,Lens,Kayıt
+Oksijen,2,Bilim ve Teknoloji,,Nefes,Hava,Gaz,Ağaç,Tüp
+Yer çekimi,2,Bilim ve Teknoloji,,Düşmek,Elma,Ağırlık,Kuvvet,Dünya
+Galaksi,2,Bilim ve Teknoloji,,Yıldız,Samanyolu,Uzay,Sarmal,Evren
+Kara delik,2,Bilim ve Teknoloji,,Uzay,Çekim,Işık,Yutmak,Yıldız
+Meteor,2,Bilim ve Teknoloji,,Göktaşı,Kayan yıldız,Düşmek,Atmosfer,Krater
+Ay tutulması,2,Bilim ve Teknoloji,,Gölge,Dünya,Güneş,Gece,Kırmızı
+Molekül,2,Bilim ve Teknoloji,,Atom,Bağ,Su,Kimya,Küçük
+Asit,2,Bilim ve Teknoloji,,Kimya,Yakmak,Limon,Baz,Ekşi
+Fotosentez,2,Bilim ve Teknoloji,,Bitki,Güneş,Yaprak,Klorofil,Oksijen
+Hücre,2,Bilim ve Teknoloji,,Canlı,Çekirdek,Zar,Mikroskop,Biyoloji
+Mercek,2,Bilim ve Teknoloji,,Cam,Büyüteç,Gözlük,Işık,Odak
+Lazer,2,Bilim ve Teknoloji,,Işın,Kırmızı,Işık,Kesmek,Nokta
+Algoritma,2,Bilim ve Teknoloji,,Adım,Program,Kod,Çözüm,Talimat
+Şifre,2,Bilim ve Teknoloji,,Gizli,Giriş,Parola,Hesap,Kilit
+Yazılım,2,Bilim ve Teknoloji,,Program,Kod,Bilgisayar,Uygulama,Donanım
+Uygulama,2,Bilim ve Teknoloji,,Telefon,İndirmek,Mağaza,Program,Simge
+E-posta,2,Bilim ve Teknoloji,,Mesaj,Gelen kutusu,Adres,Gönder,Ek
+Arama motoru,2,Bilim ve Teknoloji,,İnternet,Bulmak,Site,Sorgu,Sonuç
+Barkod,2,Bilim ve Teknoloji,,Çizgi,Market,Okutmak,Fiyat,Kasa
+Radar,2,Bilim ve Teknoloji,,Sinyal,Uçak,Tespit,Dalga,Ekran
+Sanal gerçeklik,2,Bilim ve Teknoloji,,Gözlük,Oyun,Üç boyut,Dünya,Simülasyon
+Yapay zekâ,3,Bilim ve Teknoloji,,Robot,Öğrenmek,Makine,Bilgisayar,Akıllı
+Periyodik tablo,3,Bilim ve Teknoloji,,Element,Kimya,Sembol,Atom,Sıra
+Işık yılı,3,Bilim ve Teknoloji,,Uzaklık,Uzay,Yıldız,Mesafe,Hız
+Sürtünme,3,Bilim ve Teknoloji,,Kuvvet,Isı,Yüzey,Kaymak,Fren
+Buharlaşma,3,Bilim ve Teknoloji,,Su,Isı,Gaz,Kaynamak,Bulut
+Hologram,3,Bilim ve Teknoloji,,Üç boyut,Işık,Görüntü,Kart,Lazer
+Donanım,3,Bilim ve Teknoloji,,Parça,Bilgisayar,Yazılım,Ekran kartı,İşlemci
+İşlemci,3,Bilim ve Teknoloji,,Bilgisayar,Çip,Hız,Beyin,Çekirdek
+Stetoskop,3,Bilim ve Teknoloji,,Doktor,Kalp,Dinlemek,Kulak,Göğüs
+Barometre,3,Bilim ve Teknoloji,,Basınç,Hava,Ölçmek,Yağmur,Cıva
+Hastane,1,Coğrafya ve Yerler,,Doktor,Hemşire,Ameliyat,Ambulans,Acil
+Okul,1,Coğrafya ve Yerler,,Öğrenci,Öğretmen,Ders,Sınıf,Teneffüs
+Kütüphane,1,Coğrafya ve Yerler,,Kitap,Sessiz,Raf,Ödünç,Okumak
+Müze,1,Coğrafya ve Yerler,,Tarih,Eser,Sergi,Bilet,Antik
+Havalimanı,1,Coğrafya ve Yerler,,Uçak,Bavul,Pasaport,Pist,Kalkış
+Plaj,1,Coğrafya ve Yerler,,Kum,Deniz,Güneş,Havlu,Şemsiye
+Park,1,Coğrafya ve Yerler,,Salıncak,Bank,Ağaç,Çocuk,Kaydırak
+Market,1,Coğrafya ve Yerler,,Alışveriş,Sepet,Kasa,Raf,Ürün
+Eczane,1,Coğrafya ve Yerler,,İlaç,Reçete,Nöbetçi,Hap,Sağlık
+Köprü,1,Coğrafya ve Yerler,,Nehir,Geçmek,Boğaz,Karşı,Ayak
+Ada,1,Coğrafya ve Yerler,,Deniz,Su,Vapur,Kara parçası,Issız
+Köy,1,Coğrafya ve Yerler,,Şehir,Tarla,Muhtar,Küçük,Kırsal
+Harita,1,Coğrafya ve Yerler,,Yol,Ülke,Pusula,Kıta,Bulmak
+Dünya,1,Coğrafya ve Yerler,,Gezegen,Yuvarlak,Kıta,Okyanus,Güneş
+İstanbul,1,Coğrafya ve Yerler,,Boğaz,Köprü,Kalabalık,Galata,Vapur
+Japonya,1,Coğrafya ve Yerler,,Tokyo,Suşi,Samuray,Kimono,Ada
+İtalya,1,Coğrafya ve Yerler,,Pizza,Roma,Makarna,Çizme,Venedik
+Fransa,1,Coğrafya ve Yerler,,Paris,Eyfel,Kruvasan,Bere,Avrupa
+Brezilya,1,Coğrafya ve Yerler,,Futbol,Samba,Karnaval,Rio,Kahve
+Avustralya,1,Coğrafya ve Yerler,,Kanguru,Koala,Sidney,Kıta,Uzak
+Kanada,1,Coğrafya ve Yerler,,Akçaağaç,Soğuk,Hokey,Ayı,Kuzey
+Liman,2,Coğrafya ve Yerler,,Gemi,Deniz,Yük,Rıhtım,Konteyner
+Otogar,2,Coğrafya ve Yerler,,Otobüs,Bilet,Peron,Yolcu,Terminal
+Postane,2,Coğrafya ve Yerler,,Mektup,Kargo,Pul,Zarf,Gişe
+Yarımada,2,Coğrafya ve Yerler,,Üç taraf,Deniz,Su,Kara,Kıyı
+Körfez,2,Coğrafya ve Yerler,,Deniz,Koy,Kıyı,Girinti,İzmit
+Boğaz,2,Coğrafya ve Yerler,,İstanbul,Deniz,Geçit,Boyun,Yutmak
+Ekvator,2,Coğrafya ve Yerler,,Çizgi,Sıcak,Dünya,Orta,Yarım küre
+Kıta,2,Coğrafya ve Yerler,,Asya,Avrupa,Afrika,Büyük,Yedi
+Okyanus,2,Coğrafya ve Yerler,,Pasifik,Deniz,Büyük,Mavi,Atlas
+Kapadokya,2,Coğrafya ve Yerler,,Balon,Peri bacası,Nevşehir,Mağara,Ürgüp
+Pamukkale,2,Coğrafya ve Yerler,,Travertin,Beyaz,Denizli,Termal,Havuz
+Kapalıçarşı,2,Coğrafya ve Yerler,,Alışveriş,İstanbul,Dükkân,Eski,Halı
+Kız Kulesi,2,Coğrafya ve Yerler,,Üsküdar,Deniz,İstanbul,Efsane,Yılan
+Venedik,2,Coğrafya ve Yerler,,Gondol,Kanal,İtalya,Su,Maske
+Eyfel Kulesi,2,Coğrafya ve Yerler,,Paris,Fransa,Demir,Yüksek,Işık
+Çin Seddi,2,Coğrafya ve Yerler,,Duvar,Uzun,Asya,Taş,Koruma
+Everest,2,Coğrafya ve Yerler,,Dağ,Zirve,Yüksek,Himalaya,Tırmanmak
+Sahra,2,Coğrafya ve Yerler,,Çöl,Afrika,Kum,Sıcak,Deve
+Nil,2,Coğrafya ve Yerler,,Nehir,Mısır,Afrika,Uzun,Firavun
+Antarktika,2,Coğrafya ve Yerler,,Buz,Penguen,Güney,Kutup,Soğuk
+Hollanda,2,Coğrafya ve Yerler,,Lale,Bisiklet,Yel değirmeni,Amsterdam,Peynir
+Delta,3,Coğrafya ve Yerler,,Nehir,Denize dökülmek,Üçgen,Alüvyon,Bereketli
+Meridyen,3,Coğrafya ve Yerler,,Boylam,Çizgi,Kuzey,Güney,Saat dilimi
+Enlem,3,Coğrafya ve Yerler,,Paralel,Ekvator,Derece,Yatay,Boylam
+Takımada,3,Coğrafya ve Yerler,,Grup,Deniz,Endonezya,Küme,Japonya
+Vaha,3,Coğrafya ve Yerler,,Çöl,Su,Palmiye,Serap,Kervan
+Fiyort,3,Coğrafya ve Yerler,,Norveç,Buzul,Uçurum,Deniz,Vadi
+Kanyon,3,Coğrafya ve Yerler,,Vadi,Derin,Nehir,Kaya,Uçurum
+Saat dilimi,3,Coğrafya ve Yerler,,Dünya,Fark,Ülke,Yerel,Greenwich
+Safranbolu,3,Coğrafya ve Yerler,,Konak,Karabük,Ahşap,Lokum,Eski evler
+Ova,3,Coğrafya ve Yerler,,Düz,Tarım,Geniş,Verimli,Toprak
+Güneş,1,Doğa,,Sıcak,Işık,Sarı,Gündüz,Yaz
+Ay,1,Doğa,,Gece,Hilal,Uzay,Yıldız,Dünya
+Yıldız,1,Doğa,,Gökyüzü,Gece,Parlamak,Uzay,Işık
+Bulut,1,Doğa,,Gökyüzü,Yağmur,Beyaz,Pamuk,Gri
+Yağmur,1,Doğa,,Damla,Şemsiye,Islak,Bulut,Su
+Kar,1,Doğa,,Beyaz,Kış,Soğuk,Kayak,Lapa lapa
+Rüzgâr,1,Doğa,,Esmek,Hava,Uçurtma,Fırtına,Yel
+Gökkuşağı,1,Doğa,,Renk,Yağmur,Yedi,Güneş,Kırmızı
+Şimşek,1,Doğa,,Yıldırım,Işık,Fırtına,Gök gürültüsü,Çakmak
+Ağaç,1,Doğa,,Yaprak,Dal,Gövde,Orman,Kök
+Çiçek,1,Doğa,,Bahçe,Koku,Arı,Gül,Saksı
+Gül,1,Doğa,,Kırmızı,Diken,Çiçek,Koku,Sevgili
+Lale,1,Doğa,,Hollanda,Çiçek,İstanbul,Bahar,Soğan
+Orman,1,Doğa,,Ağaç,Yeşil,Ayı,Kamp,Yaban
+Deniz,1,Doğa,,Dalga,Mavi,Tuz,Balık,Yüzmek
+Göl,1,Doğa,,Su,Durgun,Ördek,Kıyı,Van
+Nehir,1,Doğa,,Akmak,Su,Köprü,Irmak,Dere
+Dağ,1,Doğa,,Zirve,Yüksek,Tırmanmak,Kar,Tepe
+Çöl,1,Doğa,,Kum,Deve,Sıcak,Susuz,Kaktüs
+Kum,1,Doğa,,Plaj,Çöl,Tane,Kale,Sarı
+Yaprak,1,Doğa,,Ağaç,Yeşil,Sonbahar,Dal,Dökülmek
+Şelale,2,Doğa,,Su,Düşmek,Yüksek,Çağlayan,Akmak
+Mağara,2,Doğa,,Karanlık,Yarasa,Kaya,Sarkıt,Delik
+Yanardağ,2,Doğa,,Lav,Patlamak,Kül,Volkan,Krater
+Fırtına,2,Doğa,,Rüzgâr,Yağmur,Şimşek,Dalga,Şiddetli
+Sis,2,Doğa,,Görüş,Bulanık,Sabah,Duman,Beyaz
+Dolu,2,Doğa,,Buz,Yağmur,Tane,Cam,Fırtına
+Kasırga,2,Doğa,,Rüzgâr,Fırtına,Dönmek,Okyanus,Hortum
+İlkbahar,2,Doğa,,Mevsim,Çiçek,Mart,Nisan,Yeşil
+Sonbahar,2,Doğa,,Yaprak,Eylül,Mevsim,Sarı,Yağmur
+Kaktüs,2,Doğa,,Diken,Çöl,Su,Saksı,Yeşil
+Papatya,2,Doğa,,Beyaz,Sarı,Seviyor sevmiyor,Çiçek,Yaprak
+Ayçiçeği,2,Doğa,,Sarı,Güneş,Çekirdek,Yağ,Tarla
+Çam,2,Doğa,,Ağaç,Kozalak,Yeşil,İğne,Reçine
+Kök,2,Doğa,,Toprak,Ağaç,Bitki,Su,Gövde
+Tohum,2,Doğa,,Ekmek,Toprak,Bitki,Filiz,Çekirdek
+Gün batımı,2,Doğa,,Akşam,Kızıl,Ufuk,Manzara,Deniz
+Dalga,2,Doğa,,Deniz,Sörf,Köpük,Kıyı,Rüzgâr
+Buzul,2,Doğa,,Kutup,Erimek,Kar,Soğuk,Kütle
+Sel,2,Doğa,,Su,Taşkın,Yağmur,Baskın,Dere
+Çığ,2,Doğa,,Kar,Dağ,Kayak,Düşmek,Tehlike
+Kozalak,2,Doğa,,Çam,Ağaç,Tohum,Sert,Kahverengi
+Lodos,3,Doğa,,Rüzgâr,Güney,İstanbul,Ilık,Vapur
+Poyraz,3,Doğa,,Rüzgâr,Kuzey,Soğuk,Karadeniz,Sert
+Meltem,3,Doğa,,Rüzgâr,Serin,Hafif,Yaz,Ege
+Çiy,3,Doğa,,Sabah,Damla,Çimen,Nem,Yaprak
+Kırağı,3,Doğa,,Buz,Sabah,Soğuk,Beyaz,Çimen
+Gelgit,3,Doğa,,Ay,Deniz,Çekilmek,Yükselmek,Okyanus
+Kuraklık,3,Doğa,,Susuz,Yağmur,Çatlak,Toprak,Kıtlık
+Sarmaşık,3,Doğa,,Duvar,Tırmanmak,Bitki,Yeşil,Dolanmak
+Nilüfer,3,Doğa,,Göl,Su,Çiçek,Beyaz,Yaprak
+Erozyon,3,Doğa,,Toprak,Su,Rüzgâr,Aşınma,Ağaç
+Kale,1,Tarih ve Kültür,,Sur,Burç,Savunma,Taş,Kuşatma
+Kral,1,Tarih ve Kültür,,Taç,Taht,Saray,Hükümdar,Prens
+Prenses,1,Tarih ve Kültür,,Masal,Taç,Saray,Elbise,Kral
+Şövalye,1,Tarih ve Kültür,,Zırh,At,Kılıç,Kalkan,Kale
+Korsan,1,Tarih ve Kültür,,Gemi,Hazine,Göz bandı,Papağan,Tahta bacak
+Piramit,1,Tarih ve Kültür,,Mısır,Firavun,Üçgen,Mumya,Çöl
+Mumya,1,Tarih ve Kültür,,Sargı,Mısır,Firavun,Lahit,Piramit
+Taç,1,Tarih ve Kültür,,Kral,Baş,Altın,Mücevher,Saray
+Kılıç,1,Tarih ve Kültür,,Keskin,Şövalye,Savaş,Kın,Bıçak
+Kalkan,1,Tarih ve Kültür,,Korumak,Savaş,Kılıç,Zırh,Şövalye
+Saray,1,Tarih ve Kültür,,Kral,Padişah,Büyük,Topkapı,Taht
+Hazine,1,Tarih ve Kültür,,Altın,Sandık,Harita,Korsan,Gömülü
+Ejderha,1,Tarih ve Kültür,,Ateş,Kanat,Masal,Pul,Mağara
+Dev,1,Tarih ve Kültür,,Büyük,Kocaman,Masal,Uzun boylu,Sihirli fasulye
+Peri,1,Tarih ve Kültür,,Kanat,Masal,Sihir,Değnek,Küçük
+Cadı,1,Tarih ve Kültür,,Süpürge,Büyü,Kazan,Kara kedi,Şapka
+Hayalet,1,Tarih ve Kültür,,Korku,Beyaz,Görünmez,Çarşaf,Perili ev
+Uçan halı,1,Tarih ve Kültür,,Masal,Alaaddin,Sihirli,Gökyüzü,Binmek
+Keloğlan,1,Tarih ve Kültür,,Masal,Saçsız,Kahraman,Kurnaz,Köylü
+Tekerlek,1,Tarih ve Kültür,,Yuvarlak,İcat,Araba,Dönmek,Lastik
+Kovboy,1,Tarih ve Kültür,,Şapka,At,Kement,Vahşi Batı,Çiftlik
+Firavun,2,Tarih ve Kültür,,Mısır,Piramit,Kral,Mumya,Nil
+Gladyatör,2,Tarih ve Kültür,,Roma,Arena,Kılıç,Dövüş,Kolezyum
+Viking,2,Tarih ve Kültür,,Kuzey,Gemi,Miğfer,Boynuz,Balta
+Samuray,2,Tarih ve Kültür,,Japonya,Kılıç,Savaşçı,Onur,Zırh
+Padişah,2,Tarih ve Kültür,,Osmanlı,Saray,Sultan,Taht,Hükümdar
+Yeniçeri,2,Tarih ve Kültür,,Osmanlı,Asker,Ocak,Mehter,Kazan
+Mehter,2,Tarih ve Kültür,,Davul,Zurna,Osmanlı,Marş,Asker
+Karagöz,2,Tarih ve Kültür,,Hacivat,Gölge,Perde,Deri,Tasvir
+Kervan,2,Tarih ve Kültür,,Deve,Tüccar,Yolculuk,Çöl,İpek Yolu
+Matbaa,2,Tarih ve Kültür,,Kitap,Baskı,Kâğıt,Harf,Mürekkep
+Pusula,2,Tarih ve Kültür,,Kuzey,İğne,Yön,Mıknatıs,Harita
+Barut,2,Tarih ve Kültür,,Patlamak,Çin,Top,Siyah,İcat
+Zırh,2,Tarih ve Kültür,,Demir,Korumak,Şövalye,Savaş,Giymek
+Miğfer,2,Tarih ve Kültür,,Baş,Asker,Korumak,Metal,Kask
+Mızrak,2,Tarih ve Kültür,,Uzun,Sivri,Atmak,Savaş,Cirit
+Truva atı,2,Tarih ve Kültür,,Tahta,Hile,Asker,Çanakkale,Destan
+Telgraf,2,Tarih ve Kültür,,Mesaj,Kablo,Mors,Uzak,Posta
+Daktilo,2,Tarih ve Kültür,,Yazmak,Tuş,Kâğıt,Eski,Harf
+Plak,2,Tarih ve Kültür,,Müzik,Gramofon,Siyah,İğne,Pikap
+Kilim,2,Tarih ve Kültür,,Halı,Dokuma,Desen,Yün,Tezgâh
+Nazar boncuğu,2,Tarih ve Kültür,,Mavi,Göz,Uğur,Cam,Koruma
+İpek Yolu,3,Tarih ve Kültür,,Ticaret,Çin,Kervan,Asya,Tüccar
+Ebru,3,Tarih ve Kültür,,Su,Boya,Kâğıt,Desen,Sanat
+Meddah,3,Tarih ve Kültür,,Hikâye,Anlatıcı,Kahvehane,Mendil,Sopa
+Çini,3,Tarih ve Kültür,,İznik,Mavi,Seramik,Desen,Duvar
+Sfenks,3,Tarih ve Kültür,,Mısır,Aslan,Bilmece,Piramit,Heykel
+Rönesans,3,Tarih ve Kültür,,İtalya,Sanat,Avrupa,Yeniden doğuş,Resim
+Hiyeroglif,3,Tarih ve Kültür,,Mısır,Yazı,Sembol,Resim,Firavun
+Papirüs,3,Tarih ve Kültür,,Kâğıt,Mısır,Nil,Yazı,Rulo
+Mancınık,3,Tarih ve Kültür,,Kale,Taş,Fırlatmak,Kuşatma,Savaş
+Göçebe,3,Tarih ve Kültür,,Çadır,Sürü,Gezgin,Hayvancılık,Yayla
+Resim,1,Sanat ve Eğlence,,Boya,Fırça,Tuval,Tablo,Çizmek
+Müzik,1,Sanat ve Eğlence,,Şarkı,Nota,Dinlemek,Ses,Enstrüman
+Gitar,1,Sanat ve Eğlence,,Tel,Akor,Çalmak,Akustik,Elektro
+Piyano,1,Sanat ve Eğlence,,Tuş,Kuyruklu,Çalmak,Nota,Klavye
+Davul,1,Sanat ve Eğlence,,Tokmak,Vurmak,Zurna,Ritim,Gümbür
+Keman,1,Sanat ve Eğlence,,Yay,Tel,Çene,Çalmak,Orkestra
+Dans,1,Sanat ve Eğlence,,Müzik,Ritim,Adım,Pist,Oynamak
+Sinema,1,Sanat ve Eğlence,,Film,Perde,Patlamış mısır,Bilet,Salon
+Tiyatro,1,Sanat ve Eğlence,,Sahne,Oyuncu,Perde,Seyirci,Alkış
+Konser,1,Sanat ve Eğlence,,Sahne,Şarkıcı,Müzik,Bilet,Kalabalık
+Heykel,1,Sanat ve Eğlence,,Mermer,Taş,Yontmak,Müze,Büst
+Çizgi film,1,Sanat ve Eğlence,,Animasyon,Çocuk,Karakter,Televizyon,Kahraman
+Sirk,1,Sanat ve Eğlence,,Palyaço,Çadır,Akrobat,Hayvan,Gösteri
+Lunapark,1,Sanat ve Eğlence,,Dönme dolap,Hız treni,Eğlence,Bilet,Atlıkarınca
+Saklambaç,1,Sanat ve Eğlence,,Ebe,Sobe,Saymak,Bulmak,Oyun
+Satranç,1,Sanat ve Eğlence,,Şah,Vezir,Piyon,Mat,Tahta
+Uçurtma,1,Sanat ve Eğlence,,Rüzgâr,İp,Gökyüzü,Kuyruk,Kâğıt
+Balon,1,Sanat ve Eğlence,,Hava,Şişirmek,Patlamak,Renkli,Doğum günü
+Masal,1,Sanat ve Eğlence,,Prenses,Hikâye,Çocuk,Uyku,Kahraman
+Şiir,1,Sanat ve Eğlence,,Dize,Kafiye,Kıta,Edebiyat,Ezberlemek
+Mikrofon,1,Sanat ve Eğlence,,Ses,Şarkıcı,Konuşmak,Sahne,Hoparlör
+Akordeon,2,Sanat ve Eğlence,,Körük,Tuş,Çalmak,Sıkıştırmak,Müzik
+Saksafon,2,Sanat ve Eğlence,,Caz,Üflemek,Nefesli,Sarı,Metal
+Bağlama,2,Sanat ve Eğlence,,Saz,Tel,Türkü,Halk müziği,Mızrap
+Flüt,2,Sanat ve Eğlence,,Üflemek,Nefesli,Delik,Kaval,Gümüş
+Bale,2,Sanat ve Eğlence,,Dans,Parmak ucu,Kuğu Gölü,Tütü,Zarif
+Opera,2,Sanat ve Eğlence,,Şarkı,Tenor,Soprano,Sahne,İtalyanca
+Orkestra,2,Sanat ve Eğlence,,Şef,Müzisyen,Keman,Senfoni,Konser
+Koro,2,Sanat ve Eğlence,,Şarkı,Toplu,Ses,Şef,Soprano
+Karikatür,2,Sanat ve Eğlence,,Mizah,Çizim,Dergi,Komik,Abartı
+Çizgi roman,2,Sanat ve Eğlence,,Süper kahraman,Balon,Kare,Dergi,Resimli
+Belgesel,2,Sanat ve Eğlence,,Gerçek,Doğa,Film,Bilgi,Anlatıcı
+Fragman,2,Sanat ve Eğlence,,Film,Tanıtım,Kısa,Sinema,Sahne
+Senaryo,2,Sanat ve Eğlence,,Film,Yazar,Diyalog,Sahne,Metin
+Festival,2,Sanat ve Eğlence,,Müzik,Kalabalık,Etkinlik,Yaz,Sahne
+Sergi,2,Sanat ve Eğlence,,Müze,Galeri,Tablo,Ziyaret,Eser
+Bulmaca,2,Sanat ve Eğlence,,Kare,Çözmek,Gazete,Kelime,Soru
+Tavla,2,Sanat ve Eğlence,,Zar,Pul,Kapı,Mars,Hamle
+Okey,2,Sanat ve Eğlence,,Taş,Istaka,Çift,Joker,Dört kişi
+Pandomim,2,Sanat ve Eğlence,,Sessiz,Taklit,Hareket,Jest,Sahne
+Karaoke,2,Sanat ve Eğlence,,Şarkı,Mikrofon,Ekran,Söz,Eğlence
+Origami,2,Sanat ve Eğlence,,Kâğıt,Katlamak,Japon,Turna,Sanat
+Natürmort,3,Sanat ve Eğlence,,Resim,Meyve,Vazo,Cansız,Tablo
+Doğaçlama,3,Sanat ve Eğlence,,Hazırlıksız,Tiyatro,Anında,Senaryo,Rol
+Kulis,3,Sanat ve Eğlence,,Sahne arkası,Tiyatro,Oyuncu,Hazırlık,Makyaj
+Senfoni,3,Sanat ve Eğlence,,Orkestra,Klasik,Besteci,Bölüm,Uzun
+Mızıka,3,Sanat ve Eğlence,,Ağız,Üflemek,Küçük,Delik,Armonika
+Grafiti,3,Sanat ve Eğlence,,Duvar,Sprey,Boya,Sokak,Yazı
+Tekerleme,3,Sanat ve Eğlence,,Hızlı,Söylemek,Dil,Tekrar,Kelime
+Kanun,3,Sanat ve Eğlence,,Çalgı,Tel,Mızrap,Klasik,Diz
+Minyatür,3,Sanat ve Eğlence,,Küçük,Resim,Osmanlı,Kitap,Nakkaş
+Mozaik,3,Sanat ve Eğlence,,Taş,Parça,Duvar,Desen,Antik
