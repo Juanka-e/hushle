@@ -236,13 +236,15 @@ test.describe("connection pause panel", () => {
         await expect(pauseCard.getByText(/^Toplam duraklatma$/i)).toBeVisible({ timeout: 20_000 });
         await page.setViewportSize({ width: 768, height: 1024 });
         await page.screenshot({ path: join(screenshotDir, "08-admin-lab-30d-tablet.png"), fullPage: true });
-        // The admin shell is desktop-first (fixed sidebar); the Lab card must still not push the page sideways.
+        // Below md the admin sidebar is an icon rail; neither the page nor the card may scroll sideways.
         for (const width of [768, 390]) {
             await page.setViewportSize({ width, height: 900 });
             await expect
                 .poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth))
                 .toBeLessThanOrEqual(1);
+            await expect.poll(() => pauseCard.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
         }
+        await page.screenshot({ path: join(screenshotDir, "08b-admin-lab-phone.png") });
     });
 
     interface GuestClaimLabSummary {
@@ -466,7 +468,15 @@ test.describe("connection pause panel", () => {
         await expect
             .poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth))
             .toBeLessThanOrEqual(1);
-        expect(await card.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+        const cardOverflow = await card.evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const offenders = [...element.querySelectorAll("*")]
+                .filter((node) => node.getBoundingClientRect().right > box.right + 1)
+                .slice(0, 5)
+                .map((node) => `${node.tagName.toLowerCase()} "${(node.textContent ?? "").trim().slice(0, 40)}" +${Math.round(node.getBoundingClientRect().right - box.right)}px`);
+            return { overflow: element.scrollWidth - element.clientWidth, offenders };
+        });
+        expect(cardOverflow.overflow, cardOverflow.offenders.join("\n")).toBeLessThanOrEqual(1);
         await card.scrollIntoViewIfNeeded();
         await page.screenshot({ path: join(screenshotDir, "11-guest-claim-lab-phone.png"), fullPage: true });
         await card.screenshot({ path: join(screenshotDir, "11b-guest-claim-lab-phone-card.png") });
