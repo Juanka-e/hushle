@@ -505,6 +505,19 @@ function testStaticContracts() {
     assert.match(cardSource, /data-testid="guest-claim-lab"/);
     assert.doesNotMatch(cardSource, /\b(claimUserId|guestPlayerId|username|email)\b/i, "the card never shows identities");
 
+    // Both Lab cards load through one hook: a newer request aborts the older one and only
+    // the latest may update the card, so a slow refresh never paints over a newer range.
+    const hookSource = readFileSync("apps/web/src/components/admin/lab/use-lab-summary.ts", "utf8");
+    assert.match(hookSource, /inFlight\.current\?\.abort\(\);\s+const controller = new AbortController\(\);/);
+    assert.match(hookSource, /if \(isLatest\(\)\) setSummary\(payload\);/);
+    assert.match(hookSource, /if \(!isLatest\(\)\) return;/);
+    assert.match(hookSource, /if \(isLatest\(\)\) setLoading\(false\);/);
+    const pauseCardSource = readFileSync("apps/web/src/components/admin/lab/connection-pause-card.tsx", "utf8");
+    for (const source of [cardSource, pauseCardSource]) {
+        assert.match(source, /useLabSummary\(\{\s+url: summaryUrl,/);
+        assert.doesNotMatch(source, /await fetch\(/, "cards fetch through the shared hook only");
+    }
+
     const partsSource = readFileSync("apps/web/src/components/admin/lab/lab-card-parts.tsx", "utf8");
     assert.match(partsSource, /aria-pressed=\{active\}/);
     assert.match(partsSource, /aria-label=\{label\}/);

@@ -430,6 +430,37 @@ test.describe("connection pause panel", () => {
         await card.getByRole("button", { name: /7 gün/i }).click();
         await expectRendered(card, (await (await backToSeven).json()) as GuestClaimLabSummary);
 
+        // A slow 7-day refresh must never paint over a newer 30-day result.
+        let releaseSlowRefresh: () => void = () => undefined;
+        const slowRefreshHeld = new Promise<void>((resolve) => {
+            releaseSlowRefresh = resolve;
+        });
+        let slowRefreshDone: Promise<void> = Promise.resolve();
+        const slowRefreshSeen = new Promise<void>((resolve) => {
+            void page.route("**/api/admin/lab/guest-claims?days=7", (route) => {
+                resolve();
+                // The page aborts this request when the newer one starts; continuing it then fails.
+                slowRefreshDone = slowRefreshHeld.then(() => route.continue().catch(() => undefined));
+                return slowRefreshDone;
+            });
+        });
+        await card.getByRole("button", { name: /^Yenile$/ }).click();
+        await slowRefreshSeen;
+        const newerThirty = labResponse(30);
+        await card.getByRole("button", { name: /30 gün/i }).click();
+        const newer = (await (await newerThirty).json()) as GuestClaimLabSummary;
+        await expectRendered(card, newer);
+        releaseSlowRefresh();
+        await slowRefreshDone;
+        await page.unroute("**/api/admin/lab/guest-claims?days=7");
+        // Give a late response time to land; the card must still show the 30-day payload.
+        await page.waitForTimeout(750);
+        await expectRendered(card, newer);
+        await expect(card.getByRole("button", { name: /30 gün/i })).toHaveAttribute("aria-pressed", "true");
+        const sevenAgain = labResponse(7);
+        await card.getByRole("button", { name: /7 gün/i }).click();
+        await expectRendered(card, (await (await sevenAgain).json()) as GuestClaimLabSummary);
+
         // Phone: nothing pushes the page or the card sideways.
         await page.setViewportSize(phone);
         await expect

@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Info, WifiOff } from "lucide-react";
 import { AdminEmptyState } from "@/components/admin/admin-table-shell";
 import {
@@ -11,6 +10,7 @@ import {
     LabSectionHeading as SectionHeading,
     type LabRangeDays as RangeDays,
 } from "@/components/admin/lab/lab-card-parts";
+import { useLabSummary } from "@/components/admin/lab/use-lab-summary";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -109,6 +109,10 @@ function formatDuration(seconds: number | null): string {
 function formatDay(isoDate: string): string {
     const parsed = new Date(`${isoDate}T00:00:00.000Z`);
     return Number.isFinite(parsed.getTime()) ? dayFormatter.format(parsed) : isoDate;
+}
+
+function summaryUrl(range: RangeDays): string {
+    return `/api/admin/lab/connection-pauses?days=${range}`;
 }
 
 function isSummary(value: unknown): value is ConnectionPauseAnalyticsSummary {
@@ -306,45 +310,11 @@ function SummaryView({ summary }: { summary: ConnectionPauseAnalyticsSummary }) 
 }
 
 export function ConnectionPauseCard() {
-    const [days, setDays] = useState<RangeDays>(7);
-    const [summary, setSummary] = useState<ConnectionPauseAnalyticsSummary | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState<string | null>(null);
-
-    const load = useCallback(async (range: RangeDays, signal?: AbortSignal) => {
-        setLoading(true);
-        setLoadError(null);
-        try {
-            const response = await fetch(`/api/admin/lab/connection-pauses?days=${range}`, {
-                cache: "no-store",
-                signal,
-            });
-            const payload = (await response.json().catch(() => null)) as unknown;
-            if (!response.ok || !isSummary(payload)) {
-                const message =
-                    payload && typeof payload === "object" && "error" in payload
-                        ? String((payload as { error: unknown }).error)
-                        : null;
-                throw new Error(message || "Bağlantı kopması verileri yüklenemedi.");
-            }
-            setSummary(payload);
-        } catch (error) {
-            if (error instanceof DOMException && error.name === "AbortError") return;
-            setLoadError(
-                error instanceof Error && error.message
-                    ? error.message
-                    : "Bağlantı kopması verileri yüklenemedi."
-            );
-        } finally {
-            if (!signal?.aborted) setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        void load(days, controller.signal);
-        return () => controller.abort();
-    }, [days, load]);
+    const { days, setDays, summary, loading, loadError, reload } = useLabSummary({
+        url: summaryUrl,
+        isSummary,
+        fallbackError: "Bağlantı kopması verileri yüklenemedi.",
+    });
 
     const showingStale = summary !== null && summary.days !== days;
 
@@ -365,7 +335,7 @@ export function ConnectionPauseCard() {
                     days={days}
                     loading={loading}
                     onDaysChange={setDays}
-                    onRefresh={() => void load(days)}
+                    onRefresh={() => void reload()}
                 />
             </CardHeader>
 
@@ -378,7 +348,7 @@ export function ConnectionPauseCard() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => void load(days)}
+                                onClick={() => void reload()}
                                 disabled={loading}
                             >
                                 Tekrar dene

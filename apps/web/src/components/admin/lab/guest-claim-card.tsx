@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, ArrowRightLeft, DatabaseZap, Info } from "lucide-react";
 import {
     formatLabCount,
@@ -10,6 +9,7 @@ import {
     LabSectionHeading,
     type LabRangeDays,
 } from "@/components/admin/lab/lab-card-parts";
+import { useLabSummary } from "@/components/admin/lab/use-lab-summary";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -75,6 +75,10 @@ const percentFormatter = new Intl.NumberFormat("tr-TR", { maximumFractionDigits:
 
 function formatPercent(value: number): string {
     return `%${percentFormatter.format(value)}`;
+}
+
+function summaryUrl(range: LabRangeDays): string {
+    return `/api/admin/lab/guest-claims?days=${range}`;
 }
 
 function isSummary(value: unknown): value is GuestClaimAnalyticsSummary {
@@ -252,45 +256,11 @@ function SummaryView({ summary }: { summary: GuestClaimAnalyticsSummary }) {
 }
 
 export function GuestClaimCard() {
-    const [days, setDays] = useState<LabRangeDays>(7);
-    const [summary, setSummary] = useState<GuestClaimAnalyticsSummary | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState<string | null>(null);
-
-    const load = useCallback(async (range: LabRangeDays, signal?: AbortSignal) => {
-        setLoading(true);
-        setLoadError(null);
-        try {
-            const response = await fetch(`/api/admin/lab/guest-claims?days=${range}`, {
-                cache: "no-store",
-                signal,
-            });
-            const payload = (await response.json().catch(() => null)) as unknown;
-            if (!response.ok || !isSummary(payload)) {
-                const message =
-                    payload && typeof payload === "object" && "error" in payload
-                        ? String((payload as { error: unknown }).error)
-                        : null;
-                throw new Error(message || "Misafir maç aktarımı verileri yüklenemedi.");
-            }
-            setSummary(payload);
-        } catch (error) {
-            if (error instanceof DOMException && error.name === "AbortError") return;
-            setLoadError(
-                error instanceof Error && error.message
-                    ? error.message
-                    : "Misafir maç aktarımı verileri yüklenemedi."
-            );
-        } finally {
-            if (!signal?.aborted) setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        void load(days, controller.signal);
-        return () => controller.abort();
-    }, [days, load]);
+    const { days, setDays, summary, loading, loadError, reload } = useLabSummary({
+        url: summaryUrl,
+        isSummary,
+        fallbackError: "Misafir maç aktarımı verileri yüklenemedi.",
+    });
 
     const showingStale = summary !== null && summary.days !== days;
 
@@ -311,7 +281,7 @@ export function GuestClaimCard() {
                     days={days}
                     loading={loading}
                     onDaysChange={setDays}
-                    onRefresh={() => void load(days)}
+                    onRefresh={() => void reload()}
                 />
             </CardHeader>
 
@@ -324,7 +294,7 @@ export function GuestClaimCard() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => void load(days)}
+                                onClick={() => void reload()}
                                 disabled={loading}
                             >
                                 Tekrar dene
@@ -343,7 +313,7 @@ export function GuestClaimCard() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => void load(days)}
+                                onClick={() => void reload()}
                                 disabled={loading}
                             >
                                 Tekrar dene
