@@ -726,6 +726,16 @@ export const dictionaries = {
             ORDER_NOT_FOUND: "Sipariş bulunamadı.",
             ORDER_NOT_ELIGIBLE: "Bu sipariş için ödeme başlatılamaz.",
         },
+        // Player-facing server success notices, keyed by PlayerNoticeCode (apps/web/src/lib/errors/player-notice-codes.ts).
+        // The Turkish text is also the `message` older clients show, so keep it in sync with what they expect.
+        notices: {
+            REGISTRATION_COMPLETE: "Kayıt başarılı.",
+            REGISTRATION_VERIFY_EMAIL: "Hesabını etkinleştirmek için e-posta adresini doğrula.",
+            EMAIL_ALREADY_VERIFIED: "E-posta adresin zaten doğrulanmış.",
+            VERIFICATION_EMAIL_QUEUED: "Doğrulama bağlantısı gönderim kuyruğuna alındı.",
+            EMAIL_CHANGE_VERIFICATION_QUEUED: "Yeni adrese doğrulama bağlantısı gönderim kuyruğuna alındı.",
+            PASSWORD_RESET_REQUESTED: "Bilgiler bir hesapla eşleşiyorsa parola sıfırlama bağlantısı gönderilecek.",
+        },
     },
     en: {
         common: {
@@ -1450,6 +1460,14 @@ export const dictionaries = {
             INVALID_PROVIDER_RESPONSE: "The payment provider sent an unexpected response. Your order status is kept safe.",
             ORDER_NOT_FOUND: "Order not found.",
             ORDER_NOT_ELIGIBLE: "A payment cannot be started for this order.",
+        },
+        notices: {
+            REGISTRATION_COMPLETE: "Registration successful.",
+            REGISTRATION_VERIFY_EMAIL: "Verify your email address to activate your account.",
+            EMAIL_ALREADY_VERIFIED: "Your email address is already verified.",
+            VERIFICATION_EMAIL_QUEUED: "The verification link has been queued for delivery.",
+            EMAIL_CHANGE_VERIFICATION_QUEUED: "A verification link for your new address has been queued for delivery.",
+            PASSWORD_RESET_REQUESTED: "If the details match an account, a password reset link will be sent.",
         },
     },
 } as const satisfies Record<AppLocale, Record<string, unknown>>;

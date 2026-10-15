@@ -57,6 +57,28 @@ Every player-facing server error carries a stable code from
   contract. The same test still checks that its text is spelled with Turkish letters (no ASCII-folded
   words such as "gecersiz"), using `scripts/lib/folded-turkish.ts`.
 
+## Player success notices
+
+Success and status text that the server sends to players has stable codes too, from
+`apps/web/src/lib/errors/player-notice-codes.ts`, with text in `dictionaries.<locale>.notices`.
+
+- **HTTP:** success bodies spread `playerNotice()` (`apps/web/src/lib/errors/player-notice.ts`) and
+  return `{ ...data, message, messageCode, messageParams? }`. `message` stays the Turkish text that
+  older clients show. The field is `messageCode`, not `code`, so it never looks like an error code.
+  Current notices: registration (`REGISTRATION_COMPLETE`, `REGISTRATION_VERIFY_EMAIL`), email
+  verification (`EMAIL_ALREADY_VERIFIED`, `VERIFICATION_EMAIL_QUEUED`), email change
+  (`EMAIL_CHANGE_VERIFICATION_QUEUED`) and password reset (`PASSWORD_RESET_REQUESTED`).
+- `GET /api/payments/offers` keeps `checkout.unavailableReason` (Turkish) and adds
+  `checkout.unavailableReasonCode` (`CHECKOUT_UNAVAILABLE`, an error code) for the status line.
+- **Clients** call `resolveApiNoticeMessage` (`apps/web/src/lib/errors/resolve-player-notice.ts`): a
+  known code is translated in the viewer's locale, an unknown code or a body without one shows the
+  server text, and an empty body shows the caller's localized fallback.
+- **Socket:** no server event carries success text (events send structured state), so there are no
+  socket notice codes.
+- `npm run test:player-error-codes` checks that player routes send no Turkish text without a code,
+  that every notice code has Turkish and English text, and that the Turkish text matches what older
+  clients already show.
+
 ## March 9, 2026 Regression Note
 
 - Guest room creation/join was broken because the custom Socket.IO middleware in `server.ts` rejected unauthenticated sockets.

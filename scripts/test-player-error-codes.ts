@@ -29,6 +29,17 @@ import {
 } from "../apps/web/src/lib/socket/player-error-emit";
 import { passwordPolicyError } from "../apps/web/src/lib/auth/password-policy-error";
 import { getCheckoutProviderErrorCode } from "../apps/web/src/lib/payments/checkout-player-errors";
+import {
+    PLAYER_NOTICE_CODES,
+    PlayerNoticeCode,
+    isPlayerNoticeCode,
+} from "../apps/web/src/lib/errors/player-notice-codes";
+import { getPlayerNoticeMessage, playerNotice } from "../apps/web/src/lib/errors/player-notice";
+import {
+    readApiPlayerNotice,
+    resolveApiNoticeMessage,
+    resolvePlayerNoticeMessage,
+} from "../apps/web/src/lib/errors/resolve-player-notice";
 import { findFoldedTurkishWords } from "./lib/folded-turkish";
 
 const API_ROOT = "apps/web/src/app/api";
@@ -431,6 +442,160 @@ for (const file of clientSources) {
     }
 }
 
+// ── 7. Success notices: player-facing success text carries a code with tr and en text ──
+
+const noticeViolations: string[] = [];
+let playerNoticeUses = 0;
+for (const file of playerRoutes) {
+    const sf = parse(file);
+    walk(sf, (node) => {
+        if (ts.isCallExpression(node) && node.expression.getText(sf) === "playerNotice") {
+            playerNoticeUses += 1;
+        }
+        // Response bodies spread playerNotice() instead of writing their own `message`.
+        if (ts.isObjectLiteralExpression(node) && propertyNames(node, sf).includes("message")) {
+            const call = node.parent;
+            if (
+                ts.isCallExpression(call) &&
+                /(NextResponse|Response)\.json$/.test(call.expression.getText(sf)) &&
+                call.arguments[0] === node
+            ) {
+                noticeViolations.push(`${lineOf(sf, node)} literal { message } in a player response`);
+            }
+        }
+        // Any other Turkish text in a player route reaches players without a code. Role names compared
+        // against stored values and zod messages (replaced by codes in playerErrorFromValidation) are not text.
+        if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateLiteralToken(node)) {
+            if (!TURKISH_LETTERS.test(node.text)) return;
+            const parent = node.parent;
+            const isComparison =
+                ts.isBinaryExpression(parent) && /^[!=]==?$/.test(parent.operatorToken.getText(sf));
+            const isSchemaMessage = ts.isCallExpression(parent) && /^z\./.test(parent.expression.getText(sf));
+            if (!isComparison && !isSchemaMessage) {
+                noticeViolations.push(`${lineOf(sf, node)} Turkish text without a code: ${node.text}`);
+            }
+        }
+    });
+}
+assert.deepEqual(noticeViolations, [], noticeViolations.join("\n"));
+assert.ok(playerNoticeUses >= 5, `expected the success notices, found ${playerNoticeUses}`);
+const offersRoute = readFileSync(`${API_ROOT}/payments/offers/route.ts`, "utf8");
+assert.match(offersRoute, /getPlayerErrorMessage\(PlayerErrorCode\.CHECKOUT_UNAVAILABLE\)/, "offers reason is dictionary text");
+assert.match(offersRoute, /unavailableReasonCode: checkoutAvailable \? null : PlayerErrorCode\.CHECKOUT_UNAVAILABLE/);
+
+for (const [key, value] of Object.entries(PlayerNoticeCode)) {
+    assert.equal(key, value, `PlayerNoticeCode.${key} must map to itself`);
+    assert.ok(!isPlayerErrorCode(value), `${value} is not also an error code`);
+}
+assert.equal(new Set(PLAYER_NOTICE_CODES).size, PLAYER_NOTICE_CODES.length);
+assert.deepEqual(Object.keys(dictionaries.tr.notices).sort(), [...PLAYER_NOTICE_CODES].sort(), "tr notices match the codes");
+assert.deepEqual(Object.keys(dictionaries.en.notices).sort(), [...PLAYER_NOTICE_CODES].sort(), "en notices match the codes");
+for (const code of PLAYER_NOTICE_CODES) {
+    const tr = (dictionaries.tr.notices as Record<string, string>)[code];
+    const en = (dictionaries.en.notices as Record<string, string>)[code];
+    assert.ok(tr?.trim(), `${code} has Turkish text`);
+    assert.ok(en?.trim(), `${code} has English text`);
+    assert.deepEqual(placeholders(tr), placeholders(en), `${code} placeholders match`);
+    assert.doesNotMatch(en, TURKISH_LETTERS, `${code} English text has no Turkish letters`);
+    assert.ok(!hasFoldedTurkish(tr), `${code} Turkish text is not ASCII-folded`);
+    assert.notEqual(tr, en, `${code} is translated`);
+}
+// The Turkish `message` is what servers sent before codes existed; older clients keep showing it.
+assert.deepEqual(Object.fromEntries(PLAYER_NOTICE_CODES.map((code) => [code, getPlayerNoticeMessage(code)])), {
+    REGISTRATION_COMPLETE: "Kayıt başarılı.",
+    REGISTRATION_VERIFY_EMAIL: "Hesabını etkinleştirmek için e-posta adresini doğrula.",
+    EMAIL_ALREADY_VERIFIED: "E-posta adresin zaten doğrulanmış.",
+    VERIFICATION_EMAIL_QUEUED: "Doğrulama bağlantısı gönderim kuyruğuna alındı.",
+    EMAIL_CHANGE_VERIFICATION_QUEUED: "Yeni adrese doğrulama bağlantısı gönderim kuyruğuna alındı.",
+    PASSWORD_RESET_REQUESTED: "Bilgiler bir hesapla eşleşiyorsa parola sıfırlama bağlantısı gönderilecek.",
+});
+assert.equal(getPlayerErrorMessage(PlayerErrorCode.CHECKOUT_UNAVAILABLE), "Ödeme altyapısı şu anda kullanıma hazır değil.");
+
+// Server helper.
+assert.deepEqual(playerNotice(PlayerNoticeCode.EMAIL_ALREADY_VERIFIED), {
+    message: "E-posta adresin zaten doğrulanmış.",
+    messageCode: "EMAIL_ALREADY_VERIFIED",
+});
+assert.deepEqual(
+    playerNotice(PlayerNoticeCode.EMAIL_ALREADY_VERIFIED, {}),
+    playerNotice(PlayerNoticeCode.EMAIL_ALREADY_VERIFIED),
+    "empty params are dropped"
+);
+assert.deepEqual(playerNotice(PlayerNoticeCode.REGISTRATION_COMPLETE, { count: 2 }).messageParams, { count: 2 });
+assert.equal(
+    getPlayerNoticeMessage(PlayerNoticeCode.REGISTRATION_VERIFY_EMAIL, undefined, "en"),
+    "Verify your email address to activate your account."
+);
+assert.ok(isPlayerNoticeCode("PASSWORD_RESET_REQUESTED"));
+assert.ok(!isPlayerNoticeCode("ROOM_NOT_FOUND"));
+assert.ok(!isPlayerNoticeCode("constructor"));
+
+// Client resolver: known code in the viewer's locale, otherwise the server text, otherwise the fallback.
+const queuedBody = { status: "queued", ...playerNotice(PlayerNoticeCode.VERIFICATION_EMAIL_QUEUED) };
+assert.equal(resolveApiNoticeMessage("en", queuedBody, "fallback"), "The verification link has been queued for delivery.");
+assert.equal(
+    resolveApiNoticeMessage("tr", { ...queuedBody, message: "eski metin" }, "fallback"),
+    "Doğrulama bağlantısı gönderim kuyruğuna alındı."
+);
+assert.equal(resolveApiNoticeMessage("en", { message: "  Kayıt başarılı.  " }, "fallback"), "Kayıt başarılı.", "servers without codes");
+assert.equal(resolveApiNoticeMessage("en", { message: "Yeni metin", messageCode: "SOMETHING_NEW" }, "fallback"), "Yeni metin");
+assert.equal(
+    resolveApiNoticeMessage("en", { message: "Bu oda bulunamadı.", messageCode: "ROOM_NOT_FOUND" }, "fallback"),
+    "Bu oda bulunamadı.",
+    "error codes are not notices"
+);
+assert.equal(
+    resolveApiNoticeMessage("en", { message: "m", code: "VERIFICATION_EMAIL_QUEUED" }, "fallback"),
+    "m",
+    "notices read messageCode, not code"
+);
+assert.equal(resolveApiNoticeMessage("en", null, "Link sent."), "Link sent.");
+assert.equal(resolveApiNoticeMessage("en", "nope", "Link sent."), "Link sent.");
+assert.equal(resolveApiNoticeMessage("en", { message: "   ", messageCode: 7 }, "Link sent."), "Link sent.");
+assert.equal(resolveApiNoticeMessage("en", { message: 42, messageCode: "constructor" }, "Link sent."), "Link sent.");
+assert.equal(
+    resolveApiNoticeMessage("en", { messageCode: "PASSWORD_RESET_REQUESTED", messageParams: { evil: {} } }, "fallback"),
+    "If the details match an account, a password reset link will be sent.",
+    "bad params are dropped"
+);
+assert.deepEqual(readApiPlayerNotice([1, 2]), {});
+assert.deepEqual(readApiPlayerNotice({ message: "m", messageCode: "X", messageParams: { a: 1 }, code: "Y" }), {
+    message: "m",
+    code: "X",
+    params: { a: 1 },
+});
+assert.equal(
+    resolvePlayerNoticeMessage("en", { code: "EMAIL_ALREADY_VERIFIED" }, "fallback"),
+    "Your email address is already verified."
+);
+for (const code of PLAYER_NOTICE_CODES) {
+    const body = JSON.parse(JSON.stringify({ ok: true, ...playerNotice(code) }));
+    const en = resolveApiNoticeMessage("en", body, "fallback");
+    assert.equal(en, translate("en", `notices.${code}`));
+    assert.doesNotMatch(en, TURKISH_LETTERS, `${code} resolves to English`);
+    assert.equal(resolveApiNoticeMessage("tr", body, "fallback"), body.message);
+}
+// The checkout status reason reuses the CHECKOUT_UNAVAILABLE error text.
+assert.equal(
+    resolvePlayerErrorMessage("en", { message: "Ödeme altyapısı şu anda kullanıma hazır değil.", code: "CHECKOUT_UNAVAILABLE" }),
+    "Payments are not available right now."
+);
+
+// Client call sites resolve success text by code.
+const noticeClientSources: Record<string, RegExp> = {
+    "apps/web/src/app/forgot-password/page.tsx": /resolveApiNoticeMessage\(locale, payload, t\("auth\.resetRequestSent"\)\)/,
+    "apps/web/src/app/verify-email/verify-email-client.tsx": /resolveApiNoticeMessage\(locale, payload, t\("auth\.verificationQueued"\)\)/,
+    "apps/web/src/components/game/dashboard-pages/settings-content.tsx":
+        /resolveApiNoticeMessage\(locale, payload, t\("settings\.verificationLinkSent"\)\)[\s\S]*resolveApiNoticeMessage\(locale, payload, t\("auth\.verificationQueued"\)\)/,
+    "apps/web/src/components/payments/checkout-content.tsx": /code: data\.checkout\.unavailableReasonCode/,
+};
+for (const [file, usage] of Object.entries(noticeClientSources)) {
+    const source = readFileSync(file, "utf8");
+    assert.match(source, usage, `${file} resolves the notice by code`);
+    assert.doesNotMatch(source, /\b(?:payload|data|response|result)\??\.message\s*(?:\|\||\?\?)/, `${file} does not show raw server text`);
+    assert.doesNotMatch(source, /\{data\.checkout\.unavailableReason\}/, `${file} does not show raw server text`);
+}
+
 console.log(
-    `player error codes passed: ${PLAYER_ERROR_CODES.length} codes, ${emitPlayerErrorCalls} socket emits, ${playerErrorUses} HTTP error bodies in ${playerRoutes.length} routes`
+    `player error codes passed: ${PLAYER_ERROR_CODES.length} codes, ${emitPlayerErrorCalls} socket emits, ${playerErrorUses} HTTP error bodies in ${playerRoutes.length} routes; ${PLAYER_NOTICE_CODES.length} notice codes, ${playerNoticeUses} success notices; ${adminTexts} admin texts`
 );
