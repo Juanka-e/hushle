@@ -126,6 +126,30 @@ jobs:
         env:
           PAYMENT_FULFILLMENT_INTEGRATION_TEST: "true"
 
+      - name: Test payment contracts and provider spec vectors
+        run: |
+          npm run test:payment-orders
+          npm run test:payment-webhook
+          npm run test:payment-checkout
+          npm run test:payment-fulfillment
+          npm run test:payment-paytr-adapter
+          npm run test:payment-paytr-checkout
+          npm run test:payment-paytr-webhook
+          npm run test:payment-iyzico-sandbox-acceptance
+          npm run test:payment-provider-spec-vectors
+
+      - name: Test payment orders, checkout and webhook inbox persistence
+        run: |
+          npm run test:payment-orders-integration
+          npm run test:payment-checkout-integration
+          npm run test:payment-webhook-integration
+          npm run test:payment-iyzico-sandbox-acceptance-integration
+        env:
+          PAYMENT_ORDERS_INTEGRATION_TEST: "true"
+          PAYMENT_CHECKOUT_INTEGRATION_TEST: "true"
+          PAYMENT_WEBHOOK_INTEGRATION_TEST: "true"
+          IYZICO_ACCEPTANCE_INTEGRATION_TEST: "true"
+
       - name: Test payment provider adapters and checkout orchestration
         run: |
           npm run test:payment-iyzico-adapter
