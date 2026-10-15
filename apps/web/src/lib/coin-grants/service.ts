@@ -213,6 +213,26 @@ function buildCodeAvailabilityError(code: {
     return null;
 }
 
+// Locks the campaign row and then the code row, the same order as the counter
+// updates, and reads both after the locks. In read committed these reads
+// return the latest committed values, so an admin change that commits while
+// this redemption waits (deactivation, a lower budget or limit, a closed
+// window) decides the outcome instead of the values read before the wait.
+async function lockCodeWithCampaign(tx: Prisma.TransactionClient, code: string) {
+    const located = await tx.coinGrantCode.findUnique({
+        where: { code },
+        select: { id: true, campaignId: true },
+    });
+    if (!located) return null;
+    await tx.$queryRaw`SELECT id FROM coin_grant_campaigns WHERE id = ${located.campaignId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM coin_grant_codes WHERE id = ${located.id} FOR UPDATE`;
+    const codeRecord = await tx.coinGrantCode.findUnique({
+        where: { id: located.id },
+        include: { campaign: true },
+    });
+    return codeRecord?.campaignId === located.campaignId ? codeRecord : null;
+}
+
 async function reserveCampaignBudget(
     tx: Prisma.TransactionClient,
     campaign: {
@@ -541,11 +561,27 @@ export async function createCoinGrantCodes(input: CoinGrantCodeBatchCreateInput)
     return createdCodes.map(mapCoinGrantCode);
 }
 
+// Admin code changes lock the campaign row first, like redemptions do. A code
+// update also takes a shared lock on its campaign (foreign key check), and
+// holding the code row while waiting for the campaign could deadlock with a
+// redemption that holds the campaign and waits for the code.
+async function updateCodeWithCampaignLock(
+    id: number,
+    campaignId: number,
+    data: Prisma.CoinGrantCodeUpdateInput
+): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM coin_grant_campaigns WHERE id = ${campaignId} FOR UPDATE`;
+        await tx.coinGrantCode.update({ where: { id }, data });
+    });
+}
+
 export async function deactivateCoinGrantCode(id: number): Promise<"deactivated" | "archived" | null> {
     const existing = await prisma.coinGrantCode.findUnique({
         where: { id },
         select: {
             id: true,
+            campaignId: true,
             isActive: true,
             archivedAt: true,
         },
@@ -563,10 +599,7 @@ export async function deactivateCoinGrantCode(id: number): Promise<"deactivated"
         return "deactivated";
     }
 
-    await prisma.coinGrantCode.update({
-        where: { id },
-        data: { isActive: false },
-    });
+    await updateCodeWithCampaignLock(existing.id, existing.campaignId, { isActive: false });
 
     return "deactivated";
 }
@@ -608,6 +641,7 @@ export async function archiveCoinGrantCode(id: number): Promise<"archived" | nul
         where: { id },
         select: {
             id: true,
+            campaignId: true,
             isActive: true,
             archivedAt: true,
         },
@@ -625,12 +659,7 @@ export async function archiveCoinGrantCode(id: number): Promise<"archived" | nul
         return "conflict";
     }
 
-    await prisma.coinGrantCode.update({
-        where: { id },
-        data: {
-            archivedAt: new Date(),
-        },
-    });
+    await updateCodeWithCampaignLock(existing.id, existing.campaignId, { archivedAt: new Date() });
 
     return "archived";
 }
@@ -668,6 +697,7 @@ export async function restoreCoinGrantCode(id: number): Promise<"restored" | nul
         where: { id },
         select: {
             id: true,
+            campaignId: true,
             archivedAt: true,
         },
     });
@@ -680,12 +710,9 @@ export async function restoreCoinGrantCode(id: number): Promise<"restored" | nul
         return "restored";
     }
 
-    await prisma.coinGrantCode.update({
-        where: { id },
-        data: {
-            archivedAt: null,
-            isActive: false,
-        },
+    await updateCodeWithCampaignLock(existing.id, existing.campaignId, {
+        archivedAt: null,
+        isActive: false,
     });
 
     return "restored";
@@ -700,18 +727,12 @@ export async function redeemCoinGrantCode(input: {
 
     try {
         await ensureWallet(prisma, input.userId);
-        // Read committed: every limit below is enforced by a conditional update
-        // or a unique key, and the campaign row update serializes redemptions
-        // of one campaign. Serializable turned the code and campaign reads into
-        // shared locks that concurrent redemptions then had to upgrade, so most
-        // of them failed with a deadlock.
+        // Read committed: every rule below is checked on rows this transaction
+        // has locked (see lockCodeWithCampaign). Serializable turned the plain
+        // reads into shared locks that concurrent redemptions then had to
+        // upgrade, so most of them failed with a deadlock.
         const result = await prisma.$transaction(async (tx) => {
-            const codeRecord = await tx.coinGrantCode.findUnique({
-                where: { code: normalizedCode },
-                include: {
-                    campaign: true,
-                },
-            });
+            const codeRecord = await lockCodeWithCampaign(tx, normalizedCode);
 
             if (!codeRecord) {
                 throw new CoinGrantRedeemFailure("not_found");
