@@ -266,8 +266,9 @@ const paytrStatusResponseSchema = z.discriminatedUnion("status", [
         test_mode: z.union([z.string(), z.number(), z.boolean()]),
         returns: z.array(z.unknown()).max(100).optional().default([]),
     }),
+    // The durum-sorgu store table documents both "error" and "failed" as error statuses.
     z.object({
-        status: z.literal("error"),
+        status: z.enum(["error", "failed"]),
         err_no: z.union([z.string(), z.number()]).optional(),
         err_msg: z.string().max(1000).optional(),
     }),
@@ -321,7 +322,7 @@ export async function queryPaytrPaymentStatus(input: {
         }
         const parsed = paytrStatusResponseSchema.safeParse(json);
         if (!parsed.success) throw new PaytrAdapterError("invalid_provider_response");
-        if (parsed.data.status === "error") {
+        if (parsed.data.status !== "success") {
             return {
                 status: "error",
                 errorCode: String(parsed.data.err_no ?? "provider_error").slice(0, 80),

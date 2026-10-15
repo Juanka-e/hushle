@@ -99,7 +99,9 @@ function normalizeSignatureDecimal(value: string | number): string {
     return normalized.replace(/0+$/, "").replace(/\.$/, "");
 }
 
-function buildResponseSignature(secretKey: string, values: readonly string[]): string {
+// Response Signature Validation: HMAC-SHA256(secretKey) over the documented response
+// parameters joined with ":", hex encoded. Price values must already be normalized.
+export function buildIyzicoResponseSignature(secretKey: string, values: readonly string[]): string {
     if (!secretKey.startsWith("sandbox-") || secretKey.length > 512) {
         throw new IyzicoAdapterError("invalid_request");
     }
@@ -120,7 +122,7 @@ export function buildIyzicoCfInitializeResponseSignature(input: {
     conversationId: string;
     token: string;
 }): string {
-    return buildResponseSignature(input.secretKey, [input.conversationId, input.token]);
+    return buildIyzicoResponseSignature(input.secretKey, [input.conversationId, input.token]);
 }
 
 export function buildIyzicoCfRetrieveResponseSignature(input: {
@@ -134,7 +136,7 @@ export function buildIyzicoCfRetrieveResponseSignature(input: {
     price: string | number;
     token: string;
 }): string {
-    return buildResponseSignature(input.secretKey, [
+    return buildIyzicoResponseSignature(input.secretKey, [
         input.paymentStatus,
         input.paymentId,
         input.currency,
@@ -144,6 +146,20 @@ export function buildIyzicoCfRetrieveResponseSignature(input: {
         normalizeSignatureDecimal(input.price),
         input.token,
     ]);
+}
+
+// HMACSHA256 Auth steps 2 and 3: base64 the "apiKey:..&randomKey:..&signature:.."
+// string and prefix it with "IYZWSv2 " (single space).
+export function encodeIyzicoV2Authorization(input: {
+    apiKey: string;
+    randomKey: string;
+    signature: string;
+}): string {
+    const authorization = Buffer.from(
+        `apiKey:${input.apiKey}&randomKey:${input.randomKey}&signature:${input.signature}`,
+        "utf8"
+    ).toString("base64");
+    return `IYZWSv2 ${authorization}`;
 }
 
 export function buildIyzicoV2Authorization(input: {
@@ -159,11 +175,11 @@ export function buildIyzicoV2Authorization(input: {
     const signature = createHmac("sha256", input.secretKey)
         .update(`${input.randomKey}${input.uriPath}${input.requestBody}`, "utf8")
         .digest("hex");
-    const authorization = Buffer.from(
-        `apiKey:${input.apiKey}&randomKey:${input.randomKey}&signature:${signature}`,
-        "utf8"
-    ).toString("base64");
-    return `IYZWSv2 ${authorization}`;
+    return encodeIyzicoV2Authorization({
+        apiKey: input.apiKey,
+        randomKey: input.randomKey,
+        signature,
+    });
 }
 
 export function isAllowedIyzicoHostedUrl(value: string): boolean {
@@ -390,11 +406,13 @@ export async function retrieveIyzicoCheckoutForm(input: z.input<typeof retrieveS
 }
 
 function parseDecimalToMinor(value: string | number): number {
-    const normalized = String(value).trim();
-    if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
+    // iyzico may return zero-padded decimals ("10.50", "5.20000000"); only zeros may
+    // follow the second fraction digit, so sub-minor amounts stay rejected.
+    const match = /^(\d+)(?:\.(\d{1,2})0*)?$/.exec(String(value).trim());
+    if (!match) {
         throw new IyzicoAdapterError("invalid_provider_response");
     }
-    const [whole, fraction = ""] = normalized.split(".");
+    const [, whole, fraction = ""] = match;
     const minor = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
     if (!Number.isSafeInteger(minor) || minor <= 0) {
         throw new IyzicoAdapterError("invalid_provider_response");

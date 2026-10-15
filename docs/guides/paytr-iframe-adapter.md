@@ -71,8 +71,15 @@ npm run test:payment-paytr-checkout
 npm run test:payment-paytr-checkout-integration
 npm run test:payment-paytr-webhook
 npm run test:payment-paytr-webhook-integration
+npm run test:payment-provider-spec-vectors
 npm run test:payment-checkout-e2e
 ```
+
+PayTR dokümanı beklenen hash çıktısı yayımlamaz, yalnız formülü verir.
+`test:payment-provider-spec-vectors` resmi Node.js örneğindeki sepeti ve get-token,
+callback, durum sorgu ve iade token sıralarını, bağımsız bir Python uygulamasıyla
+bir kez hesaplanmış sabit değerlere bağlar. Durum sorgu yanıtında belgelenen
+`failed` durumu da `error` gibi ele alınır.
 
 Entegrasyon testleri geçici MySQL şeması kullanır. Playwright testi transient
 iletişim alanlarını, legal kabulleri ve sandbox iFrame açılışını doğrular.

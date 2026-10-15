@@ -33,6 +33,7 @@ const checks: ReadinessCheck[] = [
     { area: "economy edge cases", script: "test:economy-guardrails-edge" },
     { area: "wallet ledger", script: "test:wallet-ledger" },
     { area: "store pricing", script: "test:store-pricing" },
+    { area: "payment provider spec vectors", script: "test:payment-provider-spec-vectors" },
     { area: "inventory ownership", script: "test:inventory-core" },
     { area: "system notifications", script: "test:system-notifications" },
 ];

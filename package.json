@@ -30,6 +30,7 @@
     "test:payment-checkout-integration": "tsx scripts/test-payment-checkout-integration.ts",
     "test:payment-checkout-e2e": "playwright test tests/payment-checkout-ui.spec.ts",
     "test:payment-paytr-adapter": "tsx scripts/test-paytr-iframe-adapter.ts",
+    "test:payment-provider-spec-vectors": "tsx scripts/test-payment-provider-spec-vectors.ts",
     "test:payment-iyzico-adapter": "tsx scripts/test-iyzico-checkout-adapter.ts",
     "test:payment-iyzico-buyer-data": "tsx scripts/test-iyzico-buyer-data-contract.ts",
     "test:payment-iyzico-checkout-integration": "tsx scripts/test-iyzico-checkout-orchestration-integration.ts",
