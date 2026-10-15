@@ -55,7 +55,7 @@ async function settleSeatSafely(seatId: number, options: GuestClaimOptions): Pro
         await prisma.matchSettlementGuestSeat
             .updateMany({
                 where: { id: seatId, status: "pending" },
-                data: { lastError, availableAt: new Date(now.getTime() + GUEST_CLAIM_RECHECK_MS) },
+                data: { outcome: "retry", lastError, availableAt: new Date(now.getTime() + GUEST_CLAIM_RECHECK_MS) },
             })
             .catch(() => undefined);
         await reportError({
@@ -182,6 +182,7 @@ export async function settleGuestSeatClaim(
         await prisma.matchSettlementGuestSeat.updateMany({
             where: { id: seat.id, status: "pending" },
             data: {
+                outcome: "suspended_waiting",
                 availableAt: new Date(Math.max(account.suspendedUntil.getTime(), now.getTime() + GUEST_CLAIM_RECHECK_MS)),
             },
         });
@@ -191,7 +192,7 @@ export async function settleGuestSeatClaim(
         // Email verification triggers the claim; this re-check is only the safety net.
         await prisma.matchSettlementGuestSeat.updateMany({
             where: { id: seat.id, status: "pending" },
-            data: { availableAt: new Date(now.getTime() + GUEST_CLAIM_RECHECK_MS) },
+            data: { outcome: "awaiting_verification", availableAt: new Date(now.getTime() + GUEST_CLAIM_RECHECK_MS) },
         });
         return seatResult(seat.id, "awaiting_verification");
     }
@@ -251,6 +252,7 @@ export async function settleGuestSeatClaim(
         await prisma.matchSettlementGuestSeat.updateMany({
             where: { id: seat.id, status: "pending" },
             data: {
+                outcome: "retry",
                 attemptCount: attempts,
                 lastError,
                 availableAt: new Date(now.getTime() + getSettlementRetryDelayMs(attempts)),

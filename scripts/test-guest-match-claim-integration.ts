@@ -464,6 +464,7 @@ async function run(): Promise<void> {
             assert.deepEqual(await claim(user.id, guest), okSummary({ matches: 1, awaitingVerification: 1 }));
             const waiting = await seatOf(record.id, guest);
             assert.equal(waiting.status, "pending");
+            assert.equal(waiting.outcome, "awaiting_verification", "the waiting reason is stored for Admin Lab");
             assert.equal(waiting.claimUserId, user.id);
             assert.ok(waiting.availableAt && waiting.availableAt.getTime() >= before + GUEST_CLAIM_RECHECK_MS - 5_000);
             assert.equal(await resultFor(snapshot, user.id), null, "no history or coins before verification");
@@ -581,6 +582,7 @@ async function run(): Promise<void> {
             assert.deepEqual(await claim(user.id, guest, { hooks }), okSummary({ matches: 1 }));
             const waiting = await seatOf(record.id, guest);
             assert.equal(waiting.status, "pending");
+            assert.equal(waiting.outcome, "retry");
             assert.equal(waiting.attemptCount, 1);
             assert.match(waiting.lastError ?? "", /simulated deadlock/);
             assert.equal(await resultFor(snapshot, user.id), null);
@@ -698,6 +700,7 @@ async function run(): Promise<void> {
             const seat = await seatOf(record.id, guest);
             assert.equal(seat.status, "pending");
             assert.equal(seat.attemptCount, 1, "only the first failure counted");
+            assert.equal(seat.outcome, "retry");
             await sweepDueGuestSeatClaims({ settings, now: new Date(seat.availableAt!.getTime() + 1_000) });
             assert.equal((await seatOf(record.id, guest)).status, "settled");
             assert.equal(await balance(user.id), 120);
@@ -719,6 +722,7 @@ async function run(): Promise<void> {
             assert.equal(waiting.outcome, "suspended_waiting");
             const held = await seatOf(record.id, guest);
             assert.equal(held.status, "pending");
+            assert.equal(held.outcome, "suspended_waiting");
             assert.equal(held.availableAt?.getTime(), until.getTime(), "waits until the suspension ends");
             assert.equal(await balance(user.id), 0);
             await prisma.user.update({ where: { id: user.id }, data: { isSuspended: false, suspendedUntil: null } });
@@ -774,6 +778,7 @@ async function run(): Promise<void> {
             const broken = await seatOf(brokenRecord.id, brokenGuest);
             assert.equal(broken.status, "pending");
             assert.match(broken.lastError ?? "", /database hiccup/);
+            assert.equal(broken.outcome, "retry");
             assert.ok(broken.availableAt && broken.availableAt.getTime() >= sweepAt.getTime() + GUEST_CLAIM_RECHECK_MS - 1_000, "pushed back");
             console.log("[claim] 24 a broken seat is isolated and retried later");
         }
