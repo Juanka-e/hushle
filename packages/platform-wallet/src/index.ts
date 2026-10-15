@@ -52,12 +52,34 @@ export function resolveWalletBalanceAfterDelta(balanceBefore: number, deltaCoin:
     return balanceAfter;
 }
 
-async function lockWallet(tx: TransactionClient, userId: number): Promise<LockedWallet> {
-    await tx.wallet.upsert({
+/**
+ * Opens the user's wallet with a zero balance if it does not exist yet. Safe
+ * when several requests open the same wallet at once. Callers whose
+ * transaction may roll back should call it with the plain client before the
+ * transaction, so the new row is committed and nobody queues behind it.
+ */
+export async function ensureWallet(tx: TransactionClient, userId: number): Promise<void> {
+    // Same plain read Prisma's upsert issued, so existing wallets lock as before.
+    const existing = await tx.wallet.findUnique({
         where: { userId },
-        update: {},
-        create: { userId, coinBalance: 0 },
+        select: { id: true },
     });
+    if (existing) return;
+
+    // Prisma's upsert is a read followed by an INSERT on MySQL, so two first
+    // opens could both insert and one failed on wallets_user_id_key. The
+    // duplicate check of ON DUPLICATE KEY UPDATE takes an exclusive lock, so
+    // later openers wait for the first insert and reuse its row. INSERT IGNORE
+    // would take shared locks, and two holders deadlock on SELECT ... FOR UPDATE.
+    await tx.$executeRaw`
+        INSERT INTO wallets (user_id, coin_balance, updated_at)
+        VALUES (${userId}, 0, ${new Date()})
+        ON DUPLICATE KEY UPDATE user_id = user_id
+    `;
+}
+
+async function lockWallet(tx: TransactionClient, userId: number): Promise<LockedWallet> {
+    await ensureWallet(tx, userId);
 
     const rows = await tx.$queryRaw<LockedWallet[]>(Prisma.sql`
         SELECT
@@ -94,22 +116,38 @@ async function ensureWalletLedgerBaseline(
         return existing;
     }
 
-    return tx.walletLedgerEntry.create({
-        data: {
+    // The read above uses the transaction snapshot, which can predate an
+    // opening entry committed while this transaction waited for the wallet
+    // lock. The opening key is unique per wallet: skip it if it exists and
+    // read the committed row with a locking read, which ignores the snapshot.
+    const idempotencyKey = `wallet:${wallet.id}:opening`;
+    await tx.walletLedgerEntry.createMany({
+        data: [{
             walletId: wallet.id,
             source,
             deltaCoin: wallet.coinBalance,
             balanceBefore: 0,
             balanceAfter: wallet.coinBalance,
-            idempotencyKey: `wallet:${wallet.id}:opening`,
+            idempotencyKey,
             referenceType: source === "account_opening" ? "user_registration" : "wallet_migration",
             referenceId: String(wallet.userId),
             metadata: {
                 strategy: source === "account_opening" ? "account_opening" : "lazy_legacy_snapshot",
             },
-        },
-        select: { id: true },
+        }],
+        skipDuplicates: true,
     });
+    const rows = await tx.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+        SELECT id
+        FROM wallet_ledger_entries
+        WHERE idempotency_key = ${idempotencyKey}
+        FOR SHARE
+    `);
+    const entry = rows[0];
+    if (!entry) {
+        throw new Error(`Wallet opening entry is missing for wallet ${wallet.id}.`);
+    }
+    return { id: Number(entry.id) };
 }
 
 async function allocatePaymentCoinLotsForDebit(

@@ -108,6 +108,7 @@
     "test:encoding-integrity": "tsx scripts/test-encoding-integrity.ts",
     "test:wallet-ledger": "tsx scripts/test-wallet-ledger-foundation.ts",
     "test:wallet-ledger-integration": "tsx scripts/test-wallet-ledger-integration.ts",
+    "test:wallet-first-open-integration": "tsx scripts/test-wallet-first-open-integration.ts",
     "test:payment-orders": "tsx scripts/test-payment-orders-foundation.ts",
     "test:payment-orders-integration": "tsx scripts/test-payment-orders-integration.ts",
     "test:payment-integrations-admin-e2e": "playwright test tests/admin-payment-integrations.spec.ts",

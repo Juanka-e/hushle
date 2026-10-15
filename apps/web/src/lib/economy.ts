@@ -22,6 +22,7 @@ import {
 import { getSystemSettings } from "@/lib/system-settings/service";
 import {
     applyWalletLedgerMutation,
+    ensureWallet,
     WalletLedgerInsufficientBalanceError,
 } from "@/lib/wallet-ledger/service";
 import type { SystemSettings } from "@/types/system-settings";
@@ -69,18 +70,12 @@ type CardCosmeticsProfileRecord = {
 };
 
 export async function ensureUserCore(userId: number) {
-    await prisma.$transaction([
-        prisma.wallet.upsert({
-            where: { userId },
-            update: {},
-            create: { userId, coinBalance: 0 },
-        }),
-        prisma.userProfile.upsert({
-            where: { userId },
-            update: {},
-            create: { userId },
-        }),
-    ]);
+    await ensureWallet(prisma, userId);
+    await prisma.userProfile.upsert({
+        where: { userId },
+        update: {},
+        create: { userId },
+    });
 }
 
 type DashboardMatchSummary = Omit<DashboardDataResponse, "coinBalance">;
@@ -1051,12 +1046,8 @@ export async function purchaseStoreItem(
 
     let result: PurchaseItemResult;
     try {
+        await ensureWallet(prisma, userId);
         result = await prisma.$transaction<PurchaseItemResult>(async (tx) => {
-        await tx.wallet.upsert({
-            where: { userId },
-            update: {},
-            create: { userId, coinBalance: 0 },
-        });
         await tx.userProfile.upsert({
             where: { userId },
             update: {},
@@ -1259,12 +1250,8 @@ export async function purchaseStoreBundle(
 
     let result: PurchaseBundleResult;
     try {
+        await ensureWallet(prisma, userId);
         result = await prisma.$transaction<PurchaseBundleResult>(async (tx) => {
-        await tx.wallet.upsert({
-            where: { userId },
-            update: {},
-            create: { userId, coinBalance: 0 },
-        });
         await tx.userProfile.upsert({
             where: { userId },
             update: {},
