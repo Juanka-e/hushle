@@ -1,4 +1,4 @@
-import type { Prisma } from "@hushle/platform-db";
+import { ensureUserProfile, type Prisma } from "@hushle/platform-db";
 import { getInventory } from "@hushle/platform-inventory";
 import { createUserNotificationWithClient } from "@/lib/notifications/service";
 import { invalidateNotificationUnreadCountCache } from "@/lib/cache/application-cache";
@@ -11,6 +11,13 @@ import type {
     AdminInventoryUserOption,
     AdminUserInventoryView,
 } from "@/types/admin-inventory-operations";
+
+// Open the target's profile before the transaction, so a rolled-back
+// operation never leaves other requests queued behind an uncommitted row.
+async function ensureTargetProfile(userId: number): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (user) await ensureUserProfile(prisma, userId);
+}
 
 function createEmptySummary(): AdminInventorySummary {
     return {
@@ -179,6 +186,7 @@ export async function grantAdminInventoryItem(input: {
     shopItemId: number;
     reason: string;
 }): Promise<AdminInventoryOperationResponse | null | "already_owned"> {
+    await ensureTargetProfile(input.targetUserId);
     const result = await prisma.$transaction(async (tx) => {
         const [user, item, existingInventory] = await Promise.all([
             tx.user.findUnique({
@@ -215,11 +223,7 @@ export async function grantAdminInventoryItem(input: {
             return "already_owned" as const;
         }
 
-        await tx.userProfile.upsert({
-            where: { userId: input.targetUserId },
-            update: {},
-            create: { userId: input.targetUserId },
-        });
+        await ensureUserProfile(tx, input.targetUserId);
 
         const inventoryItem = await tx.inventoryItem.create({
             data: {
@@ -381,6 +385,7 @@ export async function resetAdminInventoryEquipSlot(input: {
         card_face: "cardFaceItemId",
     } as const;
 
+    await ensureTargetProfile(input.targetUserId);
     const result = await prisma.$transaction(async (tx) => {
         const user = await tx.user.findUnique({
             where: { id: input.targetUserId },
@@ -393,11 +398,7 @@ export async function resetAdminInventoryEquipSlot(input: {
             return null;
         }
 
-        await tx.userProfile.upsert({
-            where: { userId: input.targetUserId },
-            update: {},
-            create: { userId: input.targetUserId },
-        });
+        await ensureUserProfile(tx, input.targetUserId);
 
         const profile = await tx.userProfile.findUnique({
             where: { userId: input.targetUserId },

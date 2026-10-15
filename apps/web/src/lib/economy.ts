@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { createUserNotificationWithClient } from "@/lib/notifications/service";
 import { getOrSetJsonCache } from "@hushle/platform-cache";
-import { Prisma } from "@hushle/platform-db";
+import { ensureUserProfile, Prisma } from "@hushle/platform-db";
 import { getStoreCatalog as getPlatformStoreCatalog } from "@hushle/platform-store";
 import {
     invalidateNotificationUnreadCountCache,
@@ -71,11 +71,7 @@ type CardCosmeticsProfileRecord = {
 
 export async function ensureUserCore(userId: number) {
     await ensureWallet(prisma, userId);
-    await prisma.userProfile.upsert({
-        where: { userId },
-        update: {},
-        create: { userId },
-    });
+    await ensureUserProfile(prisma, userId);
 }
 
 type DashboardMatchSummary = Omit<DashboardDataResponse, "coinBalance">;
@@ -1047,13 +1043,8 @@ export async function purchaseStoreItem(
     let result: PurchaseItemResult;
     try {
         await ensureWallet(prisma, userId);
+        await ensureUserProfile(prisma, userId);
         result = await prisma.$transaction<PurchaseItemResult>(async (tx) => {
-        await tx.userProfile.upsert({
-            where: { userId },
-            update: {},
-            create: { userId },
-        });
-
         const now = new Date();
         const normalizedCouponCode = couponCode ? normalizeCouponCode(couponCode) : "";
 
@@ -1251,13 +1242,8 @@ export async function purchaseStoreBundle(
     let result: PurchaseBundleResult;
     try {
         await ensureWallet(prisma, userId);
+        await ensureUserProfile(prisma, userId);
         result = await prisma.$transaction<PurchaseBundleResult>(async (tx) => {
-        await tx.userProfile.upsert({
-            where: { userId },
-            update: {},
-            create: { userId },
-        });
-
         const now = new Date();
         const normalizedCouponCode = couponCode ? normalizeCouponCode(couponCode) : "";
 

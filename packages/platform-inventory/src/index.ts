@@ -1,4 +1,4 @@
-import { Prisma, prisma } from "@hushle/platform-db";
+import { ensureUserProfile, Prisma, prisma } from "@hushle/platform-db";
 import { z } from "zod";
 
 export const INVENTORY_ITEM_TYPES = [
@@ -282,11 +282,7 @@ async function ensureInventoryProfile(userId: number): Promise<void> {
         select: { id: true },
     });
     if (!exists) throw new InventoryError("user_not_found");
-    await prisma.userProfile.upsert({
-        where: { userId },
-        update: {},
-        create: { userId },
-    });
+    await ensureUserProfile(prisma, userId);
 }
 
 function decodeCursor(value: string): InventoryCursor {

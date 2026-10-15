@@ -5,6 +5,7 @@ import type { WalletAdjustmentInput } from "@/lib/admin-user-operations/schema";
 import type { AdminWalletAdjustmentView } from "@/types/admin-user-operations";
 import {
     applyWalletLedgerMutation,
+    ensureWallet,
     WalletLedgerInsufficientBalanceError,
 } from "@/lib/wallet-ledger/service";
 
@@ -60,6 +61,10 @@ export async function applyAdminWalletAdjustment(input: {
     }
 
     const operationId = randomUUID();
+    // Open the wallet before the transaction, as purchases do, so a rolled-back
+    // adjustment never leaves other requests queued behind an uncommitted row.
+    const target = await prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true } });
+    if (target) await ensureWallet(prisma, targetUserId);
     return prisma.$transaction(async (tx) => {
         const targetUser = await tx.user.findUnique({
             where: { id: targetUserId },
