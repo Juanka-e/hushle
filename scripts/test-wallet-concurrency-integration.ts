@@ -8,6 +8,7 @@ import {
     WalletLedgerInsufficientBalanceError,
     type WalletLedgerMutationResult,
 } from "@hushle/platform-wallet";
+import type { CoinGrantRedeemResult } from "../apps/web/src/types/coin-grants";
 import { applyAdminWalletAdjustment } from "../apps/web/src/lib/admin-user-operations/service";
 import { redeemCoinGrantCode } from "../apps/web/src/lib/coin-grants/service";
 import { ensureUserCore } from "../apps/web/src/lib/economy";
@@ -121,36 +122,126 @@ async function assertLedgerChain(userId: number): Promise<{ id: number; coinBala
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// An admin adjustment fails after touching the wallet (its admin account no
-// longer exists, so the ledger insert fails) while admin adjustments and coin
-// fulfillments for the same wallet-less user queue behind it. A wallet row
-// inserted by the failing transaction used to leave the waiters deadlocked.
-async function rollbackWhileOthersWait(adminId: number, deletedAdminId: number): Promise<void> {
-    for (let round = 1; round <= 5; round += 1) {
+// Waits until at least `count` lock requests are queued on matching rows of
+// `table` in this database, so a scenario does not depend on timing.
+async function waitForLockWaits(table: string, lockDataPattern: string, count: number): Promise<void> {
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+        const rows = await prisma.$queryRaw<Array<{ waiting: bigint | number }>>`
+            SELECT COUNT(*) AS waiting
+            FROM performance_schema.data_locks
+            WHERE OBJECT_SCHEMA = DATABASE()
+              AND OBJECT_NAME = ${table}
+              AND LOCK_STATUS = 'WAITING'
+              AND LOCK_DATA LIKE ${lockDataPattern}`;
+        if (Number(rows[0]?.waiting ?? 0) >= count) return;
+        if (Date.now() > deadline) {
+            throw new Error(`Timed out waiting for ${count} lock waits on ${table} ${lockDataPattern}.`);
+        }
+        await sleep(10);
+    }
+}
+
+// An admin adjustment touches a wallet-less user's wallet and then fails: its
+// admin account is deleted while the adjustment waits on that row for its
+// ledger insert. Three admin adjustments and three coin fulfillments for the
+// same user queue on the wallet behind it first. A wallet row inserted by the
+// failing transaction used to leave the queued requests deadlocked.
+async function rollbackWhileOthersWait(adminId: number): Promise<void> {
+    for (let round = 1; round <= 3; round += 1) {
         const userId = await createUser("rollback");
         const orderIds = await Promise.all([1, 2, 3].map(() => createPaidCoinOrder(userId, 25)));
-        const opener = applyAdminWalletAdjustment({
-            admin: { id: deletedAdminId, role: "admin", name: "deleted admin" },
-            targetUserId: userId,
-            adjustment: { adjustmentType: "credit", amount: 5, reason: "deleted admin credit" },
-        }).then(() => "committed", () => "rolled back");
-        await sleep(3);
-        const waiters = await Promise.allSettled([
-            ...[11, 12, 13].map(async (amount) => {
-                const result = await applyAdminWalletAdjustment({
-                    admin: { id: adminId, role: "admin", name: "integration" },
-                    targetUserId: userId,
-                    adjustment: { adjustmentType: "credit", amount, reason: "integration credit" },
-                });
-                assert.ok(result.ok, "admin credit must succeed");
-                return result;
-            }),
-            ...orderIds.map((orderId) => fulfillPaidPaymentOrder({ orderId })),
-        ]);
+        const doomedAdminId = await createUser("doomed", { role: "admin" });
+        const { opener, waiters } = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM users WHERE id = ${doomedAdminId} FOR UPDATE`;
+            const opener = applyAdminWalletAdjustment({
+                admin: { id: doomedAdminId, role: "admin", name: "doomed admin" },
+                targetUserId: userId,
+                adjustment: { adjustmentType: "credit", amount: 5, reason: "doomed admin credit" },
+            }).then(() => "committed", () => "rolled back");
+            await waitForLockWaits("users", String(doomedAdminId), 1);
+            const waiters = [
+                ...[11, 12, 13].map(async (amount) => {
+                    const result = await applyAdminWalletAdjustment({
+                        admin: { id: adminId, role: "admin", name: "integration" },
+                        targetUserId: userId,
+                        adjustment: { adjustmentType: "credit", amount, reason: "integration credit" },
+                    });
+                    assert.ok(result.ok, "admin credit must succeed");
+                    return result;
+                }),
+                ...orderIds.map((orderId) => fulfillPaidPaymentOrder({ orderId })),
+            ];
+            waiters.forEach((waiter) => waiter.catch(() => undefined));
+            await waitForLockWaits("wallets", `${userId}, %`, waiters.length);
+            await tx.user.delete({ where: { id: doomedAdminId } });
+            return { opener, waiters };
+        }, TX_OPTIONS);
         assert.equal(await opener, "rolled back");
-        assertNoFailures(`rollback with 6 waiters, round ${round}`, waiters);
+        assertNoFailures(`rollback with 6 queued requests, round ${round}`, await Promise.allSettled(waiters));
         const wallet = await assertLedgerChain(userId);
-        assert.equal(wallet.coinBalance, 11 + 12 + 13 + 3 * 25, "only the waiters' coin is applied");
+        assert.equal(wallet.coinBalance, 11 + 12 + 13 + 3 * 25, "only the queued requests' coin is applied");
+    }
+}
+
+// Players with paid coin on neighbouring wallets: read-committed debits (like
+// store purchases), repeatable-read debits that read first, admin debits and
+// top-ups, all at once. The paid-coin lot read of one wallet must not lock
+// rows of the next wallet, and an opening entry written by a concurrent
+// request must not be inserted twice.
+async function neighbouringWalletDebits(adminId: number): Promise<void> {
+    counter += 1;
+    const batch = counter;
+    const players: number[] = [];
+    for (let index = 0; index < 16; index += 1) {
+        const userId = await createUser("neighbour", { coinBalance: 0 });
+        if (index % 2 === 0) {
+            await fulfillPaidPaymentOrder({ orderId: await createPaidCoinOrder(userId, 300) });
+        }
+        players.push(userId);
+    }
+    for (let round = 1; round <= 3; round += 1) {
+        const topUps = await Promise.all(players.map((userId) => createPaidCoinOrder(userId, 40)));
+        const settled = await Promise.allSettled(players.flatMap((userId, index) => [
+            applyAdminWalletAdjustment({
+                admin: { id: adminId, role: "admin", name: "integration" },
+                targetUserId: userId,
+                adjustment: { adjustmentType: "debit", amount: 15, reason: "integration debit" },
+            }),
+            prisma.$transaction(async (tx) => {
+                await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true } });
+                return applyWalletLedgerMutation(tx, {
+                    userId,
+                    source: "admin_adjustment",
+                    deltaCoin: -10,
+                    idempotencyKey: `wcc:${runId}:neighbour:${batch}:${round}:${index}:rr`,
+                });
+            }, TX_OPTIONS),
+            prisma.$transaction((tx) => applyWalletLedgerMutation(tx, {
+                userId,
+                source: "store_item_purchase",
+                deltaCoin: -5,
+                idempotencyKey: `wcc:${runId}:neighbour:${batch}:${round}:${index}:rc`,
+            }), { ...TX_OPTIONS, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }),
+            fulfillPaidPaymentOrder({ orderId: topUps[index]! }),
+        ]));
+        const unexpected = settled
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .filter((result) => !(result.reason instanceof WalletLedgerInsufficientBalanceError))
+            .map((result) => describeFailure(result.reason));
+        console.log(
+            `neighbouring wallet debits, round ${round}: ${settled.length} requests, unexpected failures: `
+                + (unexpected.length > 0 ? [...new Set(unexpected)].join(" | ") : "none")
+        );
+        assert.deepEqual(unexpected, [], "only an insufficient balance may stop a debit");
+    }
+    for (const userId of players) {
+        const wallet = await assertLedgerChain(userId);
+        const lots = await prisma.paymentCoinLot.findMany({ where: { walletId: wallet.id } });
+        assert.ok(lots.reduce((sum, lot) => sum + lot.remainingCoin, 0) <= wallet.coinBalance);
+        for (const lot of lots) {
+            assert.equal(lot.grantedCoin, lot.remainingCoin + lot.spentCoin + lot.reversedCoin);
+        }
     }
 }
 
@@ -350,6 +441,117 @@ async function concurrentCoinGrantRedemptions(): Promise<void> {
     assert.equal((await assertLedgerChain(singleUser)).coinBalance, 5);
 }
 
+// The admin side holds the campaign row while the redemption queues on it,
+// then commits a change; the redemption must decide on the changed rows.
+async function redeemDuringAdminChange(input: {
+    campaignId: number;
+    redeem: () => Promise<CoinGrantRedeemResult>;
+    change: (tx: Prisma.TransactionClient) => Promise<unknown>;
+}): Promise<CoinGrantRedeemResult> {
+    const { redemption } = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM coin_grant_campaigns WHERE id = ${input.campaignId} FOR UPDATE`;
+        const redemption = input.redeem();
+        redemption.catch(() => undefined);
+        await waitForLockWaits("coin_grant_campaigns", String(input.campaignId), 1);
+        await input.change(tx);
+        return { redemption };
+    }, TX_OPTIONS);
+    return redemption;
+}
+
+async function coinGrantChangesMidFlight(): Promise<void> {
+    const cases: Array<{
+        label: string;
+        campaign: { perUserClaimLimit?: number; totalBudgetCoin?: number; totalGrantedCoin?: number };
+        priorClaim?: boolean;
+        change: (tx: Prisma.TransactionClient, ids: { campaignId: number; codeId: number }) => Promise<unknown>;
+        expected: Exclude<CoinGrantRedeemResult, { ok: true }>["code"];
+    }> = [
+        {
+            label: "campaign deactivated",
+            campaign: {},
+            change: (tx, ids) => tx.coinGrantCampaign.update({ where: { id: ids.campaignId }, data: { isActive: false } }),
+            expected: "inactive",
+        },
+        {
+            label: "code deactivated",
+            campaign: {},
+            change: (tx, ids) => tx.coinGrantCode.update({ where: { id: ids.codeId }, data: { isActive: false } }),
+            expected: "inactive",
+        },
+        {
+            label: "budget lowered",
+            campaign: { totalBudgetCoin: 100, totalGrantedCoin: 50 },
+            change: (tx, ids) => tx.coinGrantCampaign.update({ where: { id: ids.campaignId }, data: { totalBudgetCoin: 50 } }),
+            expected: "campaign_budget_exhausted",
+        },
+        {
+            label: "per-user limit lowered",
+            campaign: { perUserClaimLimit: 2 },
+            priorClaim: true,
+            change: (tx, ids) => tx.coinGrantCampaign.update({ where: { id: ids.campaignId }, data: { perUserClaimLimit: 1 } }),
+            expected: "user_claim_limit_reached",
+        },
+        {
+            label: "window ended",
+            campaign: {},
+            change: (tx, ids) => tx.coinGrantCampaign.update({
+                where: { id: ids.campaignId },
+                data: { endsAt: new Date(Date.now() - 60_000) },
+            }),
+            expected: "campaign_ended",
+        },
+    ];
+    const mismatches: string[] = [];
+    for (const testCase of cases) {
+        counter += 1;
+        const campaign = await prisma.coinGrantCampaign.create({
+            data: {
+                code: `WCM${runId}${counter}`.toUpperCase(),
+                name: "Mid-flight campaign",
+                coinAmount: 10,
+                perUserClaimLimit: testCase.campaign.perUserClaimLimit ?? 1,
+                totalBudgetCoin: testCase.campaign.totalBudgetCoin ?? null,
+                totalGrantedCoin: testCase.campaign.totalGrantedCoin ?? 0,
+            },
+        });
+        createdCampaignIds.push(campaign.id);
+        const [code, spare] = await Promise.all(["A", "B"].map((suffix) => prisma.coinGrantCode.create({
+            data: { campaignId: campaign.id, code: `WCM-${runId}-${counter}-${suffix}`.toUpperCase() },
+        })));
+        const userId = await createUser("midflight", { coinBalance: 0 });
+        if (testCase.priorClaim) {
+            const prior = await redeemCoinGrantCode({ userId, redeem: { code: spare!.code } });
+            assert.ok(prior.ok, "the first claim within the old limit must succeed");
+        }
+        const before = await prisma.coinGrantCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+        const result = await redeemDuringAdminChange({
+            campaignId: campaign.id,
+            redeem: () => redeemCoinGrantCode({ userId, redeem: { code: code!.code } }),
+            change: (tx) => testCase.change(tx, { campaignId: campaign.id, codeId: code!.id }),
+        });
+        const after = await prisma.coinGrantCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+        const claims = await prisma.coinGrantClaim.count({ where: { campaignId: campaign.id, codeId: code!.id } });
+        const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId } });
+        const outcome = result.ok ? "granted" : result.code;
+        console.log(
+            `coin grant mid-flight, ${testCase.label}: ${outcome}`
+                + ` (granted coin ${before.totalGrantedCoin} -> ${after.totalGrantedCoin}, wallet ${wallet.coinBalance})`
+        );
+        if (
+            result.ok
+            || result.code !== testCase.expected
+            || after.totalGrantedCoin !== before.totalGrantedCoin
+            || after.totalClaimCount !== before.totalClaimCount
+            || claims !== 0
+            || wallet.coinBalance !== (testCase.priorClaim ? 10 : 0)
+        ) {
+            mismatches.push(`${testCase.label}: expected ${testCase.expected} and no grant, got ${outcome}`);
+        }
+    }
+    assert.deepEqual(mismatches, [], "admin changes that commit mid-flight must decide the redemption");
+}
+
 async function cleanup(): Promise<void> {
     await prisma.coinGrantClaim.deleteMany({ where: { campaignId: { in: createdCampaignIds } } });
     await prisma.coinGrantCampaign.deleteMany({ where: { id: { in: createdCampaignIds } } });
@@ -375,13 +577,13 @@ async function run(): Promise<void> {
 
     try {
         const adminId = await createUser("admin", { role: "admin" });
-        const deletedAdminId = await createUser("gone", { role: "admin" });
-        await prisma.user.delete({ where: { id: deletedAdminId } });
-        await rollbackWhileOthersWait(adminId, deletedAdminId);
+        await rollbackWhileOthersWait(adminId);
+        await neighbouringWalletDebits(adminId);
         await concurrentProfileOpens();
         await paidCoinDebitsRacingTopUps();
         await sameKeyAtOnce();
         await concurrentCoinGrantRedemptions();
+        await coinGrantChangesMidFlight();
     } finally {
         await cleanup();
         await prisma.$disconnect();

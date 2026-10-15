@@ -83,8 +83,13 @@ for (const path of [
 
 assert.match(
     walletPackage,
-    /FROM payment_coin_lots[\s\S]*?remaining_coin > 0[\s\S]*?FOR UPDATE/,
-    "debits must read paid-coin lots with a locking read after the wallet lock"
+    /FROM payment_coin_lots FORCE INDEX \(payment_coin_lots_wallet_id_created_at_idx\)\s+WHERE wallet_id = \$\{wallet\.id\}\s+ORDER BY[^`]*FOR UPDATE/,
+    "debits must lock only their own wallet's paid-coin lots, through the (wallet_id, created_at) index"
+);
+assert.doesNotMatch(
+    walletPackage,
+    /skipDuplicates/,
+    "a rolled-back duplicate ledger insert leaves a gap lock at the end of the table; check before inserting"
 );
 for (const path of [
     "apps/web/src/lib/admin-user-operations/service.ts",
@@ -104,10 +109,21 @@ for (const path of [
         `${path} must open profiles with ensureUserProfile, not a racing Prisma upsert`
     );
 }
+const coinGrants = read("apps/web/src/lib/coin-grants/service.ts");
 assert.doesNotMatch(
-    read("apps/web/src/lib/coin-grants/service.ts"),
+    coinGrants,
     /TransactionIsolationLevel\.Serializable/,
     "coin grant redemption must not use serializable reads that deadlock under contention"
+);
+assert.match(
+    coinGrants,
+    /FROM coin_grant_campaigns WHERE id = \$\{located\.campaignId\} FOR UPDATE[\s\S]*?FROM coin_grant_codes WHERE id = \$\{located\.id\} FOR UPDATE/,
+    "redemption must lock the campaign and then the code before checking any rule"
+);
+assert.doesNotMatch(
+    coinGrants,
+    /prisma\.coinGrantCode\.update\s*\(/,
+    "admin code changes must lock the campaign first, like redemptions"
 );
 
 console.log("test:wallet-ledger-foundation ok");
