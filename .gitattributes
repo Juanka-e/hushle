@@ -7,3 +7,7 @@ scripts/test-offsite-backups.sh text eol=lf
 scripts/test-offsite-backups-integration.sh text eol=lf
 scripts/design-prototypes/*.html whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 package-lock.json whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+scripts/ops/deploy.sh text eol=lf
+scripts/ops/lib/release.sh text eol=lf
+scripts/ops/release-gate.sh text eol=lf
+scripts/test-deploy-rollback.sh text eol=lf

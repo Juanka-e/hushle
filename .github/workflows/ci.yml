@@ -48,6 +48,13 @@ jobs:
           npm run test:ses-feedback-webhook
           npm run test:ses-feedback-route
 
+      - name: Test deploy, rollback and release gate
+        run: |
+          npm run test:deploy-rollback
+          bash -n scripts/ops/deploy.sh
+          bash -n scripts/ops/lib/release.sh
+          bash -n scripts/ops/release-gate.sh
+
   # ─── 2. Build Check ───────────────────────────────────────────────
   build:
     name: Build

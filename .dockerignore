@@ -18,3 +18,4 @@ tsconfig.tsbuildinfo
 .env.local
 .env.production
 npm-debug.log
+.deploy
