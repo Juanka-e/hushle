@@ -257,8 +257,14 @@ async function reserveCampaignBudget(
     });
 
     if (result.count !== 1) {
+        // The counters read earlier can be stale; name the limit that blocked it.
+        const latest = await tx.coinGrantCampaign.findUnique({
+            where: { id: campaign.id },
+            select: { totalGrantedCoin: true },
+        });
+        const grantedCoin = latest?.totalGrantedCoin ?? campaign.totalGrantedCoin;
         throw new CoinGrantRedeemFailure(
-            campaign.totalBudgetCoin !== null && campaign.totalGrantedCoin + campaign.coinAmount > campaign.totalBudgetCoin
+            campaign.totalBudgetCoin !== null && grantedCoin + campaign.coinAmount > campaign.totalBudgetCoin
                 ? "campaign_budget_exhausted"
                 : "campaign_claim_limit_reached"
         );
@@ -694,6 +700,11 @@ export async function redeemCoinGrantCode(input: {
 
     try {
         await ensureWallet(prisma, input.userId);
+        // Read committed: every limit below is enforced by a conditional update
+        // or a unique key, and the campaign row update serializes redemptions
+        // of one campaign. Serializable turned the code and campaign reads into
+        // shared locks that concurrent redemptions then had to upgrade, so most
+        // of them failed with a deadlock.
         const result = await prisma.$transaction(async (tx) => {
             const codeRecord = await tx.coinGrantCode.findUnique({
                 where: { code: normalizedCode },
@@ -782,7 +793,7 @@ export async function redeemCoinGrantCode(input: {
                 coinBalance: walletMutation.balanceAfter,
                 claim: mapCoinGrantClaim(claim),
             } satisfies CoinGrantRedeemResult;
-        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
         await invalidateNotificationUnreadCountCache(input.userId);
         return result;
     } catch (error) {
