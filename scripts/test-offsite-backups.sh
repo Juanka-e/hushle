@@ -5,6 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
+# The scripts call each other directly and operators run them as ./script, so
+# the executable bit must come from Git (the release archive keeps it).
+for script in data-backup.sh data-restore.sh mysql-backup.sh mysql-restore.sh mysql-restore-smoke.sh object-storage.sh; do
+  if [[ ! -x "$ROOT_DIR/scripts/ops/$script" ]]; then
+    echo "scripts/ops/$script is not executable; run: git update-index --chmod=+x scripts/ops/$script" >&2
+    exit 1
+  fi
+done
+
 MOCK_ROOT="$TEMP_DIR/remote"
 MOCK_CLI="$TEMP_DIR/mock-aws.sh"
 
