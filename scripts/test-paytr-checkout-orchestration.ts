@@ -5,6 +5,7 @@ import {
     getPaymentRuntimeReadiness,
     paytrCheckoutContactSchema,
 } from "@hushle/platform-payments";
+import { translate } from "../apps/web/src/lib/i18n/dictionaries";
 
 const credentials = {
     PAYMENTS_ENABLED: "true",
@@ -81,6 +82,16 @@ assert.match(route, /normalizePaymentGrantSnapshot/);
 assert.match(route, /INVALID_GRANT_SNAPSHOT/);
 assert.match(orderRoute, /userId: sessionUser\.id/);
 assert.match(checkout, /SANDBOX TEST/);
-assert.match(checkout, /Bu iletişim bilgileri yalnız ödeme oturumu için PayTR/);
+// Checkout copy lives in the i18n dictionary; the component must render the PayTR
+// request-only disclosure and both locales must keep its meaning.
+assert.match(checkout, /t\("checkout\.paytrPrivacy"\)/);
+assert.match(
+    translate("tr", "checkout.paytrPrivacy"),
+    /^Bu iletişim bilgileri yalnız ödeme oturumu için PayTR'ye iletilir; Hushle sipariş, audit veya log kayıtlarına kopyalanmaz\.$/
+);
+assert.match(
+    translate("en", "checkout.paytrPrivacy"),
+    /sent to PayTR only for this payment session and is not copied into Hushle orders, audit records, or logs/
+);
 
 console.log("PayTR checkout orchestration checks passed");

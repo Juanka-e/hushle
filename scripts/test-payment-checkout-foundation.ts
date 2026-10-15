@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dictionaries, translate } from "../apps/web/src/lib/i18n/dictionaries";
 import { getPaymentLegalReadiness } from "../apps/web/src/lib/payments/legal";
 
 const missing = getPaymentLegalReadiness({});
@@ -54,10 +55,20 @@ assert.match(route, /LEGAL_VERSION_MISMATCH/);
 assert.match(route, /createPaytrSandboxCheckoutSession/);
 assert.match(route, /VERIFIED_EMAIL_REQUIRED/);
 assert.match(route, /contact: paytrCheckoutContactSchema/);
-assert.match(checkout, /Ödeme Aydınlatma Metni/);
-assert.match(checkout, /Ödeme yükümlülüğü doğuran siparişi ver/);
-assert.match(checkout, /Fatura\/iletişim adresi/);
+// Checkout copy lives in the i18n dictionary: the component must render the legal
+// keys, and the Turkish wording that the legal review approved must stay intact.
+assert.match(checkout, /t\("checkout\.privacyNotice"\)/);
+assert.match(checkout, /t\("checkout\.placeOrder"\)/);
+assert.match(checkout, /t\("checkout\.address"\)/);
+assert.equal(translate("tr", "checkout.privacyNotice"), "Ödeme Aydınlatma Metni");
+assert.equal(translate("tr", "checkout.placeOrder"), "Ödeme yükümlülüğü doğuran siparişi ver");
+assert.equal(translate("tr", "checkout.address"), "Fatura/iletişim adresi");
+for (const key of ["checkout.privacyNotice", "checkout.placeOrder", "checkout.address"] as const) {
+    assert.notEqual(translate("en", key), translate("tr", key), `${key} must have English copy`);
+}
 assert.doesNotMatch(checkout, /pazarlama|ticari ileti/i);
+assert.doesNotMatch(JSON.stringify(dictionaries.tr.checkout), /pazarlama|ticari ileti/i);
+assert.doesNotMatch(JSON.stringify(dictionaries.en.checkout), /marketing|commercial message/i);
 assert.doesNotMatch(route, /PRODUCT_NOT_SELLABLE/);
 assert.doesNotMatch(offersRoute, /productKind !== "coin_pack"/);
 
