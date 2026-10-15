@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla istatistik istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla istatistik isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         console.error("Failed to fetch dashboard stats:", error);
         return NextResponse.json(
-            { error: "Istatistikler yuklenemedi." },
+            { error: "İstatistikler yüklenemedi." },
             { status: 500 }
         );
     }

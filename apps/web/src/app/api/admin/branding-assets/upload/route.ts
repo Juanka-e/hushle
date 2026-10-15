@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla branding asset yuklemesi gonderildi. Lutfen bekleyin." },
+            { error: "Çok fazla branding asset yüklemesi gönderildi. Lütfen bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -44,14 +44,14 @@ export async function POST(request: NextRequest) {
 
         if (!(file instanceof File)) {
             return NextResponse.json(
-                { error: "Dosya bulunamadi." },
+                { error: "Dosya bulunamadı." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 
         if (!isBrandingAssetType(assetTypeRaw)) {
             return NextResponse.json(
-                { error: "Gecersiz branding asset tipi." },
+                { error: "Geçersiz branding asset tipi." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -59,14 +59,14 @@ export async function POST(request: NextRequest) {
         const config = getBrandingAssetUploadConfig(assetTypeRaw);
         if (!config.allowedMimeTypes.includes(file.type)) {
             return NextResponse.json(
-                { error: "Gecersiz dosya turu. PNG, JPEG veya WebP olmali." },
+                { error: "Geçersiz dosya türü. PNG, JPEG veya WebP olmalı." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 
         if (file.size > config.maxSize) {
             return NextResponse.json(
-                { error: "Dosya boyutu bu asset tipi icin izin verilen siniri asiyor." },
+                { error: "Dosya boyutu bu asset tipi için izin verilen sınırı aşıyor." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         const extension = getBrandingAssetFileExtension(file.type);
         if (!extension) {
             return NextResponse.json(
-                { error: "Dosya uzantisi cozulmedi." },
+                { error: "Dosya uzantısı çözülmedi." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         const buffer = Buffer.from(bytes);
         if (!hasValidBrandingAssetSignature(buffer, file.type)) {
             return NextResponse.json(
-                { error: "Dosya icerigi belirtilen image tipi ile eslesmiyor." },
+                { error: "Dosya içeriği belirtilen image tipi ile eşleşmiyor." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error("Failed to upload branding asset:", error);
         return NextResponse.json(
-            { error: "Branding asset yuklenemedi." },
+            { error: "Branding asset yüklenemedi." },
             { status: 500, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla toplu kelime silme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla toplu kelime silme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
         if (uniqueIds.length >= REASON_THRESHOLD && reason.trim().length < 8) {
             return NextResponse.json(
-                { error: `${REASON_THRESHOLD} veya daha fazla kelime silerken aciklayici bir not girmelisin.` },
+                { error: `${REASON_THRESHOLD} veya daha fazla kelime silerken açıklayıcı bir not girmelisin.` },
                 { status: 422, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -83,14 +83,14 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: "Gecersiz toplu silme verisi.", details: error.issues },
+                { error: "Geçersiz toplu silme verisi.", details: error.issues },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 
         console.error("Failed to bulk delete words:", error);
         return NextResponse.json(
-            { error: "Kelime kayitlari silinemedi." },
+            { error: "Kelime kayıtları silinemedi." },
             { status: 500, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

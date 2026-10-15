@@ -304,13 +304,13 @@ export default function AdminDashboardPage() {
 
                     <div className="grid gap-3 border-t border-border/50 pt-4 sm:grid-cols-2 xl:grid-cols-4">
                         <div className="rounded-xl bg-muted/20 px-4 py-3">
-                            <p className="text-xs text-muted-foreground">Runtime hatalari</p>
+                            <p className="text-xs text-muted-foreground">Runtime hataları</p>
                             <p className="mt-1 text-lg font-bold text-foreground">
                                 {capacity?.observability.errors ?? 0}
                             </p>
                         </div>
                         <div className="rounded-xl bg-muted/20 px-4 py-3">
-                            <p className="text-xs text-muted-foreground">Uyarilar</p>
+                            <p className="text-xs text-muted-foreground">Uyarılar</p>
                             <p className="mt-1 text-lg font-bold text-foreground">
                                 {capacity?.observability.warnings ?? 0}
                             </p>
@@ -319,12 +319,12 @@ export default function AdminDashboardPage() {
                             <p className="text-xs text-muted-foreground">Merkezi exporter</p>
                             <p className="mt-1 text-sm font-bold text-foreground">
                                 {capacity?.observability.exporterConfigured
-                                    ? `${capacity.observability.exporterMode} bagli`
-                                    : "Henuz bagli degil"}
+                                    ? `${capacity.observability.exporterMode} bağlı`
+                                    : "Henüz bağlı değil"}
                             </p>
                         </div>
                         <div className="rounded-xl bg-muted/20 px-4 py-3">
-                            <p className="text-xs text-muted-foreground">Exporter hatasi</p>
+                            <p className="text-xs text-muted-foreground">Exporter hatası</p>
                             <p className="mt-1 text-lg font-bold text-foreground">
                                 {capacity?.observability.exporterFailures ?? 0}
                             </p>
@@ -333,7 +333,7 @@ export default function AdminDashboardPage() {
                     <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
                         <span>Kuyruk: {capacity?.observability.exporterQueued ?? 0}</span>
                         <span>Teslim: {capacity?.observability.exporterDelivered ?? 0}</span>
-                        <span>Dusurulen: {capacity?.observability.exporterDropped ?? 0}</span>
+                        <span>Düşürülen: {capacity?.observability.exporterDropped ?? 0}</span>
                     </div>
                 </CardContent>
             </Card>

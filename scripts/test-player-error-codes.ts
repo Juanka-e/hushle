@@ -29,6 +29,7 @@ import {
 } from "../apps/web/src/lib/socket/player-error-emit";
 import { passwordPolicyError } from "../apps/web/src/lib/auth/password-policy-error";
 import { getCheckoutProviderErrorCode } from "../apps/web/src/lib/payments/checkout-player-errors";
+import { findFoldedTurkishWords } from "./lib/folded-turkish";
 
 const API_ROOT = "apps/web/src/app/api";
 /** Provider and framework callbacks: their callers are payment/email services or NextAuth, not players. */
@@ -39,7 +40,7 @@ const NON_PLAYER_ROUTES = new Set([
     "payments/webhooks/[provider]/route.ts",
 ]);
 /** Admin-only messages that live outside api/admin; the admin panel is Turkish-only by design. */
-const ADMIN_ONLY_STRINGS = new Set(["Yetkisiz erisim."]);
+const ADMIN_ONLY_STRINGS = new Set(["Yetkisiz erişim."]);
 
 function listFiles(dir: string, filter: (file: string) => boolean): string[] {
     return (readdirSync(dir, { recursive: true }) as string[])
@@ -192,7 +193,7 @@ for (const code of [
     assert.ok(isPlayerErrorCode(code), `${code} stays a valid code`);
 }
 
-// ── 3. No ASCII-folded Turkish in player-facing server text ──
+// ── 3. No ASCII-folded Turkish in player-facing server text or in the admin panel ──
 
 const FOLDED_TURKISH =
     /(^|[^a-zçğıöşü])(gecersiz|lutfen|baslat|basla|sifirla|olustur|bulunamadi|cok fazla|gonder|guncelle|yukle|giris|basarisiz|dogrula|kullanici|kullanim|odasindasin|kapali|degil|islem|gecici|yonetici|takim|askiya|erisim|hizli|kusan|magaza|urun|odul|icin|su anda|tamamlanmadi|sahiplenilmis|alinmis|kullaniliyor)/i;
@@ -201,10 +202,19 @@ assert.ok(isFolded("Oyun zaten baslatiliyor. Lutfen bekleyin."), "heuristic catc
 assert.ok(isFolded("Gecersiz baglanti origin'i."), "heuristic catches folded text");
 assert.ok(!isFolded("Oyun zaten başlatılıyor. Lütfen bekleyin."), "heuristic accepts correct Turkish");
 assert.ok(!isFolded("oyun_baslat"), "event names are not messages");
+// The word list catches folded words the stems miss, including single-word labels.
+const hasFoldedTurkish = (value: string) => isFolded(value) || findFoldedTurkishWords(value).length > 0;
+assert.deepEqual(findFoldedTurkishWords("Duyuru olusturulamadi. Lutfen tekrar deneyin."), ["olusturulamadi", "Lutfen"]);
+assert.deepEqual(findFoldedTurkishWords("Duyuru oluşturulamadı. Lütfen tekrar deneyin."), []);
+assert.deepEqual(findFoldedTurkishWords("Askida"), ["Askida"], "single-word labels are checked");
+assert.deepEqual(findFoldedTurkishWords("Iptal · Tum durumlar"), ["Iptal", "Tum"], "dotted İ and short words");
+assert.deepEqual(findFoldedTurkishWords("İptal · Tüm durumlar · iptal"), []);
+assert.deepEqual(findFoldedTurkishWords("YENİ / SINIRLI"), [], "a capital I is correct for ı");
+assert.deepEqual(findFoldedTurkishWords("Retried once, sure. Turu tamamla."), [], "valid English and Turkish words pass");
 
 const foldedViolations: string[] = [];
 for (const [code, text] of Object.entries(dictionaries.tr.errors)) {
-    if (isFolded(text)) foldedViolations.push(`errors.${code}: ${text}`);
+    if (hasFoldedTurkish(text)) foldedViolations.push(`errors.${code}: ${text}`);
 }
 for (const file of [...playerRoutes, ...socketSources, ...supportSources]) {
     const sf = parse(file);
@@ -213,12 +223,58 @@ for (const file of [...playerRoutes, ...socketSources, ...supportSources]) {
         if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateLiteralToken(node)) {
             value = node.text;
         }
-        if (value === null || !isFolded(value) || ADMIN_ONLY_STRINGS.has(value)) return;
+        if (value === null || !hasFoldedTurkish(value) || ADMIN_ONLY_STRINGS.has(value)) return;
         const statement = node.parent?.parent?.getText(sf) ?? "";
         if (/^console\./.test(statement)) return;
         foldedViolations.push(`${lineOf(sf, node)}: ${value}`);
     });
 }
+
+/**
+ * The admin panel is Turkish-only (no i18n), so its text must be spelled with Turkish letters: admin API
+ * routes, admin pages and components, and the shared services whose messages reach the panel.
+ */
+const ADMIN_TEXT_SOURCES = [
+    ...listFiles(`${API_ROOT}/admin`, (file) => file.endsWith(".ts")),
+    ...readdirSync("apps/web/src/lib")
+        .filter((name) => name.startsWith("admin"))
+        .flatMap((name) => listFiles(`apps/web/src/lib/${name}`, (file) => /\.tsx?$/.test(file))),
+    ...listFiles("apps/web/src/app/admin", (file) => /\.tsx?$/.test(file)),
+    ...listFiles("apps/web/src/components/admin", (file) => /\.tsx?$/.test(file)),
+    "apps/web/src/lib/announcements/content.ts",
+    "apps/web/src/lib/categories/admin-category-policy.ts",
+    "apps/web/src/lib/coin-grants/schema.ts",
+    "apps/web/src/lib/integrations/service.ts",
+    "apps/web/src/lib/moderation/schema.ts",
+    "apps/web/src/lib/support/schema.ts",
+    "apps/web/src/lib/support/service.ts",
+    "apps/web/src/lib/system-settings/schema.ts",
+    "apps/web/src/lib/words/category-assignment-policy.ts",
+    "apps/web/src/lib/words/category-selection-ui.ts",
+];
+assert.ok(ADMIN_TEXT_SOURCES.length >= 100, `expected the admin sources, found ${ADMIN_TEXT_SOURCES.length}`);
+/** Values, keys, paths and URLs are not text: one lower-case token, or one token with path punctuation. */
+const isKeyLike = (value: string) =>
+    !/\s/.test(value) && (/^[a-z0-9_-]+$/.test(value) || /[/:=@#?&]|\w\.\w/.test(value));
+let adminTexts = 0;
+for (const file of ADMIN_TEXT_SOURCES) {
+    const sf = parse(file);
+    walk(sf, (node) => {
+        let value: string | null = null;
+        if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateLiteralToken(node)) {
+            value = node.text.trim();
+        } else if (ts.isJsxText(node)) {
+            value = node.text.trim();
+        }
+        if (!value || isKeyLike(value) || !/[A-Za-z]{2}/.test(value)) return;
+        adminTexts += 1;
+        if (!hasFoldedTurkish(value)) return;
+        const statement = node.parent?.parent?.getText(sf) ?? "";
+        if (/^console\./.test(statement)) return;
+        foldedViolations.push(`${lineOf(sf, node)}: ${value}`);
+    });
+}
+assert.ok(adminTexts >= 2000, `expected the admin texts, found ${adminTexts}`);
 assert.deepEqual(foldedViolations, [], foldedViolations.join("\n"));
 
 // ── 4. Server helpers ──

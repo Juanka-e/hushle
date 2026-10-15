@@ -62,7 +62,7 @@ export async function resolveFixedCategoryIds(
     });
 
     if (categories.length !== uniqueCategoryIds.length) {
-        return { error: "Secilen kategori veya alt kategori bulunamadi." };
+        return { error: "Seçilen kategori veya alt kategori bulunamadı." };
     }
 
     if (subcategoryIdValue) {
@@ -71,7 +71,7 @@ export async function resolveFixedCategoryIds(
         const subcategory = categories.find((category) => category.id === subcategoryId);
 
         if (!subcategory || subcategory.parentId !== parentCategoryId) {
-            return { error: "Alt kategori secimi ust kategori ile eslesmiyor." };
+            return { error: "Alt kategori seçimi üst kategori ile eşleşmiyor." };
         }
 
         return subcategoryId ? [subcategoryId] : [];
@@ -117,12 +117,12 @@ export function extractCsvCategoryIds(
     const subcategoryName = cols[3] ?? "";
 
     if (!categoryName) {
-        return { error: `Satir ${rowIndex}: CSV modunda kategori zorunlu.` };
+        return { error: `Satır ${rowIndex}: CSV modunda kategori zorunlu.` };
     }
 
     const rootCategory = categoryIndex.byRootName.get(normalizeLabel(categoryName, locale));
     if (!rootCategory) {
-        return { error: `Satir ${rowIndex}: "${categoryName}" kategorisi bulunamadi.` };
+        return { error: `Satır ${rowIndex}: "${categoryName}" kategorisi bulunamadı.` };
     }
 
     if (!subcategoryName) {
@@ -134,7 +134,7 @@ export function extractCsvCategoryIds(
     );
     if (!subcategory) {
         return {
-            error: `Satir ${rowIndex}: "${subcategoryName}" alt kategorisi "${categoryName}" altinda bulunamadi.`,
+            error: `Satır ${rowIndex}: "${subcategoryName}" alt kategorisi "${categoryName}" altında bulunamadı.`,
         };
     }
 
@@ -158,7 +158,7 @@ export async function processBulkWordUpload(options: {
 
     const lines = text.split("\n").filter((line) => line.trim());
     if (lines.length === 0) {
-        return { error: "CSV dosyasi bos." } as const;
+        return { error: "CSV dosyası boş." } as const;
     }
 
     const firstLine = lines[0].toLocaleLowerCase(
@@ -169,7 +169,7 @@ export async function processBulkWordUpload(options: {
         : 0;
     if (lines.length - startIndex > MAX_BULK_WORD_UPLOAD_ROWS) {
         return {
-            error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satiri icerebilir.`,
+            error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satırı içerebilir.`,
         } as const;
     }
 
@@ -206,8 +206,8 @@ export async function processBulkWordUpload(options: {
         if (cols.length < minimumColumns) {
             results.errors.push(
                 mode === "csv_categories"
-                    ? `Satir ${rowNumber}: En az 5 sutun gerekli (kelime, zorluk, kategori, alt_kategori, yasakli1).`
-                    : `Satir ${rowNumber}: En az 3 sutun gerekli (kelime, zorluk, yasakli1).`
+                    ? `Satır ${rowNumber}: En az 5 sütun gerekli (kelime, zorluk, kategori, alt_kategori, yasakli1).`
+                    : `Satır ${rowNumber}: En az 3 sütun gerekli (kelime, zorluk, yasakli1).`
             );
             continue;
         }
@@ -231,32 +231,32 @@ export async function processBulkWordUpload(options: {
         const tabooWords = cols.slice(tabooOffset).filter(Boolean);
 
         if (!wordText) {
-            results.errors.push(`Satir ${rowNumber}: Kelime bos.`);
+            results.errors.push(`Satır ${rowNumber}: Kelime boş.`);
             continue;
         }
 
         if (wordText.length > MAX_WORD_FIELD_LENGTH) {
-            results.errors.push(`Satir ${rowNumber}: Kelime en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`);
+            results.errors.push(`Satır ${rowNumber}: Kelime en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`);
             continue;
         }
 
         if (Number.isNaN(difficulty) || difficulty < 1 || difficulty > 3) {
-            results.errors.push(`Satir ${rowNumber}: Zorluk 1-3 arasinda olmali.`);
+            results.errors.push(`Satır ${rowNumber}: Zorluk 1-3 arasında olmalı.`);
             continue;
         }
 
         if (tabooWords.length === 0) {
-            results.errors.push(`Satir ${rowNumber}: En az 1 yasakli kelime gerekli.`);
+            results.errors.push(`Satır ${rowNumber}: En az 1 yasaklı kelime gerekli.`);
             continue;
         }
 
         if (tabooWords.length > MAX_BULK_TABOO_WORDS_PER_ROW) {
-            results.errors.push(`Satir ${rowNumber}: En fazla ${MAX_BULK_TABOO_WORDS_PER_ROW} yasakli kelime eklenebilir.`);
+            results.errors.push(`Satır ${rowNumber}: En fazla ${MAX_BULK_TABOO_WORDS_PER_ROW} yasaklı kelime eklenebilir.`);
             continue;
         }
 
         if (tabooWords.some((tabooWord) => tabooWord.length > MAX_WORD_FIELD_LENGTH)) {
-            results.errors.push(`Satir ${rowNumber}: Yasakli kelimeler en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`);
+            results.errors.push(`Satır ${rowNumber}: Yasaklı kelimeler en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`);
             continue;
         }
 
@@ -265,7 +265,7 @@ export async function processBulkWordUpload(options: {
         });
         if (existing) {
             results.skipped += 1;
-            results.skippedRows.push(`Satir ${rowNumber}: "${wordText}" zaten mevcut, atlandi.`);
+            results.skippedRows.push(`Satır ${rowNumber}: "${wordText}" zaten mevcut, atlandı.`);
             continue;
         }
 
@@ -290,7 +290,7 @@ export async function processBulkWordUpload(options: {
             });
             results.success += 1;
         } catch {
-            results.errors.push(`Satir ${rowNumber}: Veritabani hatasi.`);
+            results.errors.push(`Satır ${rowNumber}: Veritabanı hatası.`);
         }
     }
 

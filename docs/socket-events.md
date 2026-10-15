@@ -53,7 +53,9 @@ Every player-facing server error carries a stable code from
 - Codes are a wire contract: add new ones freely, never rename or reuse one. `npm run
   test:player-error-codes` checks that every emit and route error carries a code, that every code
   has Turkish and English text with matching placeholders, and that no Turkish text is ASCII-folded.
-- The admin panel (`/api/admin/**`) is Turkish-only and is not part of this contract.
+- The admin panel (`/api/admin/**`, admin pages and components) is Turkish-only and is not part of this
+  contract. The same test still checks that its text is spelled with Turkish letters (no ASCII-folded
+  words such as "gecersiz"), using `scripts/lib/folded-turkish.ts`.
 
 ## March 9, 2026 Regression Note
 

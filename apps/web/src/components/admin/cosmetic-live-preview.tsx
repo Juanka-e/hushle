@@ -78,7 +78,7 @@ export function CosmeticLivePreview({
                         {draft.name.trim() || "Untitled Cosmetic"}
                     </h3>
                     <p className="mt-1 text-xs text-slate-400">
-                        Oyun ici render mantigina yakin onizleme.
+                        Oyun içi render mantığına yakın önizleme.
                     </p>
                 </div>
                 <span className={cn("rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em]", rarityChipClass[draft.rarity])}>
@@ -304,7 +304,7 @@ function CardFacePreview({ draft }: { draft: CosmeticPreviewDraft }) {
                             SAHNE
                         </div>
                         <div className="space-y-3">
-                            {["MIKROFON", "SEYIRCI", "ALKIS", "SPOT", "PERDE"].map((word) => (
+                            {["MİKROFON", "SEYİRCİ", "ALKIŞ", "SPOT", "PERDE"].map((word) => (
                                 <div key={word} className="flex items-center gap-2">
                                     <span className="text-sm font-black" style={{ color: theme.tabooColor }}>X</span>
                                     <span className="text-sm font-bold uppercase tracking-wide" style={{ color: `${theme.wordColor}E0` }}>

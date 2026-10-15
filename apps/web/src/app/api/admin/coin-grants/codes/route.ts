@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2002") {
-            return NextResponse.json({ error: "Uretilen kodlardan biri zaten kullanimda." }, { status: 409 });
+            return NextResponse.json({ error: "Üretilen kodlardan biri zaten kullanımda." }, { status: 409 });
         }
 
         if (error instanceof z.ZodError) {

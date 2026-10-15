@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla shop item listeleme istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla shop item listeleme isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!parsedFilters.success) {
-        return NextResponse.json({ error: "Gecersiz filtre." }, { status: 422 });
+        return NextResponse.json({ error: "Geçersiz filtre." }, { status: 422 });
     }
 
     const { type, rarity, active } = parsedFilters.data;
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kozmetik olusturma denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kozmetik oluşturma denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

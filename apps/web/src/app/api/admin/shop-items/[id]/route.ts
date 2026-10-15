@@ -31,7 +31,7 @@ export async function GET(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kozmetik detay istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kozmetik detay isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -74,7 +74,7 @@ export async function PUT(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kozmetik guncelleme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kozmetik güncelleme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -137,7 +137,7 @@ export async function DELETE(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kozmetik pasife alma denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kozmetik pasife alma denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

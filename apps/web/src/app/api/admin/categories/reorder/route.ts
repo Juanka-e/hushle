@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kategori siralama denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kategori sıralama denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

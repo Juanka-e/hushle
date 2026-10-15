@@ -222,11 +222,11 @@ export function getAdminAccessFailureMessage(result: AdminAccessEvaluation): str
             return "Admin access policy eksik.";
         case "missing_header":
         case "mismatched_header":
-            return "Admin gateway dogrulamasi saglanmadi.";
+            return "Admin gateway doğrulaması sağlanmadı.";
         case "missing_email":
         case "disallowed_email":
-            return "Admin erisim politikasi bu istege izin vermiyor.";
+            return "Admin erişim politikası bu isteğe izin vermiyor.";
         default:
-            return "Admin erisim politikasi reddetti.";
+            return "Admin erişim politikası reddetti.";
     }
 }

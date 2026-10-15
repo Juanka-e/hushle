@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kozmetik dosyasi yukleme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kozmetik dosyası yükleme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -66,20 +66,20 @@ export async function POST(request: NextRequest) {
         const category = String(formData.get("category") || "general");
 
         if (!(file instanceof File)) {
-            return NextResponse.json({ error: "Dosya bulunamadi." }, { status: 400 });
+            return NextResponse.json({ error: "Dosya bulunamadı." }, { status: 400 });
         }
 
         const extension = MIME_TO_EXTENSION[file.type];
         if (!extension) {
             return NextResponse.json(
-                { error: "Gecersiz dosya turu. PNG, JPEG, WebP veya GIF olmali." },
+                { error: "Geçersiz dosya türü. PNG, JPEG, WebP veya GIF olmalı." },
                 { status: 400 }
             );
         }
 
         if (file.size > MAX_SIZE) {
             return NextResponse.json(
-                { error: "Dosya boyutu 2MB'i asamaz." },
+                { error: "Dosya boyutu 2 MB'ı aşamaz." },
                 { status: 400 }
             );
         }
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         const buffer = Buffer.from(bytes);
         if (!hasValidSignature(buffer, file.type)) {
             return NextResponse.json(
-                { error: "Dosya icerigi belirtilen image tipi ile eslesmiyor." },
+                { error: "Dosya içeriği belirtilen image tipi ile eşleşmiyor." },
                 { status: 400 }
             );
         }
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error("Failed to upload file:", error);
         return NextResponse.json(
-            { error: "Dosya yuklenemedi." },
+            { error: "Dosya yüklenemedi." },
             { status: 500 }
         );
     }

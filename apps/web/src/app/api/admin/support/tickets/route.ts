@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla destek listesi istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla destek listesi isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -43,13 +43,13 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: error.issues[0]?.message || "Gecersiz destek sorgusu." },
+                { error: error.issues[0]?.message || "Geçersiz destek sorgusu." },
                 { status: 422 }
             );
         }
 
         console.error("Failed to load support tickets:", error);
-        return NextResponse.json({ error: "Destek listesi yuklenemedi." }, { status: 500 });
+        return NextResponse.json({ error: "Destek listesi yüklenemedi." }, { status: 500 });
     }
 }
 

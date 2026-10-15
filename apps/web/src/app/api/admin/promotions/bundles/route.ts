@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla paket listeleme istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla paket listeleme isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla paket olusturma denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla paket oluşturma denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -139,13 +139,13 @@ export async function POST(request: NextRequest) {
         });
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return NextResponse.json({ error: "Gecersiz veri.", details: error.issues }, { status: 400 });
+            return NextResponse.json({ error: "Geçersiz veri.", details: error.issues }, { status: 400 });
         }
         if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2002") {
             return NextResponse.json({ error: "Bu paket kodu zaten kullanılıyor. Farklı bir kod gir." }, { status: 409 });
         }
 
         console.error("Failed to create shop bundle:", error);
-        return NextResponse.json({ error: "Bundle olusturulamadi." }, { status: 500 });
+        return NextResponse.json({ error: "Bundle oluşturulamadı." }, { status: 500 });
     }
 }

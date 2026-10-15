@@ -16,14 +16,14 @@ export async function validateAdminCategoryInput(
 ): Promise<NormalizedCategoryInput> {
     const normalizedName = input.name?.trim();
     if (input.name !== undefined && !normalizedName) {
-        throw new Error("Kategori adi bos olamaz.");
+        throw new Error("Kategori adı boş olamaz.");
     }
 
     const normalizedParentId =
         input.parentId === undefined ? undefined : input.parentId === null ? null : input.parentId;
 
     if (currentCategoryId && normalizedParentId === currentCategoryId) {
-        throw new Error("Bir kategori kendisini ust kategori yapamaz.");
+        throw new Error("Bir kategori kendisini üst kategori yapamaz.");
     }
 
     if (normalizedParentId !== undefined && normalizedParentId !== null) {
@@ -37,11 +37,11 @@ export async function validateAdminCategoryInput(
         });
 
         if (!parentCategory) {
-            throw new Error("Secilen ust kategori bulunamadi.");
+            throw new Error("Seçilen üst kategori bulunamadı.");
         }
 
         if (parentCategory.parentId !== null) {
-            throw new Error("Alt kategorinin altina tekrar kategori eklenemez. Su an yalnizca tek seviye destekleniyor.");
+            throw new Error("Alt kategorinin altına tekrar kategori eklenemez. Şu an yalnızca tek seviye destekleniyor.");
         }
 
         if (input.locale && parentCategory.locale !== input.locale) {
@@ -67,11 +67,11 @@ export async function assertCategoryCanBeDeleted(categoryId: number): Promise<vo
     ]);
 
     if (childCount > 0) {
-        throw new Error("Bu ana kategorinin alt kategorileri var. Once alt kategorileri tasiyin veya silin.");
+        throw new Error("Bu ana kategorinin alt kategorileri var. Önce alt kategorileri taşıyın veya silin.");
     }
 
     if (wordCount > 0) {
-        throw new Error("Bu kategoriye bagli kelimeler var. Once kelime baglarini temizleyin.");
+        throw new Error("Bu kategoriye bağlı kelimeler var. Önce kelime bağlarını temizleyin.");
     }
 }
 

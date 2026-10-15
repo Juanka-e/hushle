@@ -72,13 +72,13 @@ export function resolveWordCategoryToggle(
             }
         }
 
-        helperText = `"${meta.name}" ana kategorisi secildi. Bu secim yalniz genel havuza bagli ana kategori kelimelerini kapsar.`;
+        helperText = `"${meta.name}" ana kategorisi seçildi. Bu seçim yalnız genel havuza bağlı ana kategori kelimelerini kapsar.`;
     } else {
         if (selectionSet.delete(meta.parentId)) {
             const parentName = metaMap.get(meta.parentId)?.name ?? "Ana kategori";
-            helperText = `"${meta.name}" alt kategorisi secildi. Cakisma olmamasi icin "${parentName}" secimi kaldirildi.`;
+            helperText = `"${meta.name}" alt kategorisi seçildi. Çakışma olmaması için "${parentName}" seçimi kaldırıldı.`;
         } else {
-            helperText = `"${meta.name}" alt kategorisi yalniz kendi alt havuzuna baglanir.`;
+            helperText = `"${meta.name}" alt kategorisi yalnız kendi alt havuzuna bağlanır.`;
         }
     }
 
@@ -99,7 +99,7 @@ export function describeBulkCategoryAssignment(
     const subcategoryId = Number.parseInt(subcategoryIdValue, 10);
 
     if (!Number.isInteger(categoryId) || categoryId <= 0) {
-        return "Fixed modda kategori secmezsen ortak atama yapilmaz; CSV modunda ise her satir kendi kategori bilgisini tasir.";
+        return "Fixed modda kategori seçmezsen ortak atama yapılmaz; CSV modunda ise her satır kendi kategori bilgisini taşır.";
     }
 
     const root = categories.find((category) => category.id === categoryId);
@@ -108,7 +108,7 @@ export function describeBulkCategoryAssignment(
     }
 
     if (!Number.isInteger(subcategoryId) || subcategoryId <= 0) {
-        return `"${root.name}" secili. Tum kelimeler yalniz ana kategoriye bagli genel havuza yazilir.`;
+        return `"${root.name}" seçili. Tüm kelimeler yalnız ana kategoriye bağlı genel havuza yazılır.`;
     }
 
     const child = (root.children ?? []).find((item) => item.id === subcategoryId);
@@ -116,5 +116,5 @@ export function describeBulkCategoryAssignment(
         return "";
     }
 
-    return `"${root.name} / ${child.name}" secili. Fixed mod bu durumda yalniz alt kategoriyi kullanir.`;
+    return `"${root.name} / ${child.name}" seçili. Fixed mod bu durumda yalnız alt kategoriyi kullanır.`;
 }

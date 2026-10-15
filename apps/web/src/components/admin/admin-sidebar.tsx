@@ -34,14 +34,14 @@ const navItems = [
     { href: "/admin/inventory", icon: Shirt, label: "Envanter" },
     { href: "/admin/promotions", icon: TicketPercent, label: "Promosyonlar" },
     { href: "/admin/coin-grants", icon: Gift, label: "Coin Grants" },
-    { href: "/admin/users", icon: Users, label: "Kullanicilar" },
+    { href: "/admin/users", icon: Users, label: "Kullanıcılar" },
     { href: "/admin/support", icon: Headset, label: "Support" },
     { href: "/admin/email-delivery", icon: MailWarning, label: "E-posta Teslimatı" },
     { href: "/admin/payments", icon: CreditCard, label: "Ödemeler" },
     { href: "/admin/audit", icon: Activity, label: "Audit" },
     { href: "/admin/lab", icon: FlaskConical, label: "Lab" },
     { href: "/admin/integrations", icon: PlugZap, label: "Integrations" },
-    { href: "/admin/system-settings", icon: SlidersHorizontal, label: "Sistem Ayarlari" },
+    { href: "/admin/system-settings", icon: SlidersHorizontal, label: "Sistem Ayarları" },
     { href: "/admin/announcements", icon: Megaphone, label: "Duyurular" },
 ];
 
@@ -96,7 +96,7 @@ export function AdminSidebar({ username }: AdminSidebarProps) {
                         className="w-full justify-start gap-3 text-sm text-muted-foreground"
                     >
                         <Gamepad2 className="h-4 w-4" />
-                        Oyuna Don
+                        Oyuna Dön
                     </Button>
                 </Link>
                 <Button
@@ -105,7 +105,7 @@ export function AdminSidebar({ username }: AdminSidebarProps) {
                     onClick={() => signOut({ callbackUrl: "/admin/login" })}
                 >
                     <LogOut className="h-4 w-4" />
-                    Cikis Yap
+                    Çıkış Yap
                 </Button>
             </div>
         </aside>

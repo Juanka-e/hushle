@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla istek gonderildi. Lutfen bekleyin." },
+            { error: "Çok fazla istek gönderildi. Lütfen bekleyin." },
             {
                 status: 429,
                 headers: buildRateLimitHeaders(rateLimit),
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kelime olusturma denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kelime oluşturma denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
