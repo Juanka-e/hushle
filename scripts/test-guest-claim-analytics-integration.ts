@@ -374,6 +374,7 @@ async function run(): Promise<void> {
                     },
                 ],
             });
+            const before = await getGuestClaimAnalytics({ days: 7, now: NOW });
             const record = await recordMatchSettlement(snapshot);
             // Keep real-time settlement sweeps away from this far-future match.
             await prisma.matchSettlement.update({
@@ -381,7 +382,6 @@ async function run(): Promise<void> {
                 data: { status: "settled", settledAt: NOW },
             });
             const claimant = await createUser("claimant", { unverified: true });
-            const before = await getGuestClaimAnalytics({ days: 7, now: NOW });
             const result = await claimGuestMatches(
                 { userId: claimant, guestToken: createGuestIdentityToken(guestId, NOW.getTime() - 3 * HOUR) },
                 { now: NOW }
