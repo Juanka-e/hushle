@@ -85,7 +85,7 @@ socket event listeners with an explicit room ownership coordinator.
 *   **Rate Limiting & DDOS Protection:**
     *   **Room Joins:** Rate limited (`ROOM_JOIN_MAX_ATTEMPTS` per `ROOM_JOIN_WINDOW_MS`) to prevent connection flooding.
     *   **Word Actions:** A dual-layer cooldown (`WORD_ACTION_COOLDOWN_MS = 500`) prevents users from spamming card actions at both the socket and shared-room levels.
-    *   **Word Pool Priming:** A concurrency mutex (`primingLocks`) in `word-service.ts` prevents "cache stampede" scenarios.
+    *   **Word Pool Priming:** One priming task per room (`word-pool.ts`, used by `word-service.ts`) prevents "cache stampede" scenarios. It streams only the eligible word ids in id batches and samples the pool from all of them, so every word can appear; a game repeats no word until every eligible word was drawn.
 *   **IP Spoofing Protection:** The `getClientIp` function relies on the `x-forwarded-for` header securely toggled via the `TRUST_PROXY=true` environment variable.
 
 ## 5. Persistence Strategy & Authentication

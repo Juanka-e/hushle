@@ -103,6 +103,8 @@
     "test:telemetry-rollup-redis": "tsx scripts/test-telemetry-rollup-redis-integration.ts",
     "test:product-analytics": "tsx scripts/test-product-analytics.ts",
     "test:word-analytics": "tsx scripts/test-word-analytics-liveops.ts",
+    "test:word-pool": "tsx scripts/test-word-pool-sampling.ts",
+    "test:word-pool-integration": "tsx scripts/test-word-pool-integration.ts",
     "test:release-ops-docs": "tsx scripts/test-release-ops-docs.ts",
     "test:prisma-migrations": "tsx scripts/test-prisma-migration-contract.ts",
     "test:encoding-integrity": "tsx scripts/test-encoding-integrity.ts",

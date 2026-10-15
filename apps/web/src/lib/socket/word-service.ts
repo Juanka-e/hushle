@@ -1,8 +1,17 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@hushle/platform-db";
 import {
     DEFAULT_GAME_CONTENT_LOCALE,
     type GameContentLocale,
 } from "@hushle/domain-game";
+import {
+    createWordPoolManager,
+    normalizeWordPoolFilters,
+    parseWordPoolSize,
+    type WordIdBatchSource,
+    type WordPoolFilters,
+    type WordPoolManager,
+} from "./word-pool";
 
 // ─── Types ─────────────────────────────────────────────────────
 // Matches the CardData interface in @/types/game.ts
@@ -13,6 +22,7 @@ interface CardResult {
     difficulty: 1 | 2 | 3;
     taboo: string[];
     categoryColor: string | null;
+    locale: GameContentLocale;
 }
 
 export interface WordDrawResult {
@@ -26,15 +36,68 @@ export interface WordDrawResult {
 
 // ─── Word Pool per Room ────────────────────────────────────────
 
-const wordPools = new Map<string, number[]>();
-const POOL_SIZE = parseInt(process.env.WORD_POOL_SIZE || "120", 10);
-const primingLocks = new Map<string, Promise<void>>();
+const POOL_SIZE = parseWordPoolSize(process.env.WORD_POOL_SIZE);
+// A stale id (word deleted or edited by an admin mid-game) is skipped.
+const MAX_DRAW_ATTEMPTS = 3;
+
+export function buildEligibleWordWhere(
+    filters: WordPoolFilters,
+    afterId: number
+): Prisma.WordWhereInput {
+    const where: Prisma.WordWhereInput = {
+        locale: filters.locale,
+        id: { gt: afterId },
+    };
+
+    if (filters.categoryIds.length > 0) {
+        where.wordCategories = {
+            some: { categoryId: { in: [...filters.categoryIds] } },
+        };
+    }
+
+    if (filters.difficulties.length > 0) {
+        where.difficulty = { in: [...filters.difficulties] };
+    }
+
+    return where;
+}
+
+/**
+ * Reads eligible ids only, in id order, one batch at a time. The pool samples
+ * from the whole stream, so every eligible word is reachable.
+ */
+export const fetchEligibleWordIdBatch: WordIdBatchSource = async (
+    filters,
+    afterId,
+    limit
+) => {
+    const words = await prisma.word.findMany({
+        where: buildEligibleWordWhere(filters, afterId),
+        select: { id: true },
+        orderBy: { id: "asc" },
+        take: limit,
+    });
+    return words.map((w) => w.id);
+};
+
+const wordPool = createWordPoolManager({
+    source: fetchEligibleWordIdBatch,
+    poolSize: POOL_SIZE,
+});
+
+function toFilters(
+    categoryIds: number[],
+    difficulties: number[],
+    locale: GameContentLocale
+): WordPoolFilters {
+    return normalizeWordPoolFilters({ locale, categoryIds, difficulties });
+}
 
 // ─── Service Functions ─────────────────────────────────────────
 
 /**
- * Fetch word IDs by categories and difficulties, shuffled.
- * Mirrors the original wordService.js pool logic.
+ * Sample word IDs by locale, categories and difficulties, shuffled.
+ * Concurrent calls for the same room share one priming run.
  */
 export async function primeWordPool(
     roomCode: string,
@@ -42,48 +105,69 @@ export async function primeWordPool(
     difficulties: number[],
     locale: GameContentLocale = DEFAULT_GAME_CONTENT_LOCALE
 ): Promise<void> {
-    // If already priming, wait for it to finish
-    if (primingLocks.has(roomCode)) {
-        await primingLocks.get(roomCode);
-        return;
+    await wordPool.prime(roomCode, toFilters(categoryIds, difficulties, locale));
+}
+
+/**
+ * Draw the next word from a pool and hydrate it with taboo words.
+ * Exported for integration tests that need a custom pool size.
+ */
+export async function drawWordFromPool(
+    pool: WordPoolManager,
+    roomCode: string,
+    filters: WordPoolFilters
+): Promise<WordDrawResult | null> {
+    for (let attempt = 0; attempt < MAX_DRAW_ATTEMPTS; attempt++) {
+        const wordId = await pool.takeNextId(roomCode, filters);
+        if (wordId === null) {
+            return null;
+        }
+
+        // Hydrate the word
+        const word = await prisma.word.findUnique({
+            where: { id: wordId },
+            include: {
+                tabooWords: { select: { tabooWordText: true } },
+                wordCategories: {
+                    include: { category: { select: { color: true } } },
+                },
+            },
+        });
+
+        const stillEligible =
+            word !== null &&
+            word.locale === filters.locale &&
+            (filters.difficulties.length === 0 ||
+                filters.difficulties.includes(word.difficulty)) &&
+            (filters.categoryIds.length === 0 ||
+                word.wordCategories.some((entry) =>
+                    filters.categoryIds.includes(entry.categoryId)
+                ));
+        if (!word || !stillEligible) {
+            // The pool is stale; sample again from the current table.
+            pool.discardQueue(roomCode);
+            continue;
+        }
+
+        const difficulty = word.difficulty as 1 | 2 | 3;
+        return {
+            card: {
+                id: word.id,
+                word: word.wordText,
+                difficulty,
+                taboo: word.tabooWords.map((tw) => tw.tabooWordText),
+                categoryColor: word.wordCategories[0]?.category?.color || null,
+                locale: filters.locale,
+            },
+            analytics: {
+                wordId: word.id,
+                categoryIds: word.wordCategories.map((entry) => entry.categoryId),
+                difficulty,
+            },
+        };
     }
 
-    const primePromise = (async () => {
-        try {
-            const where: Record<string, unknown> = { locale };
-
-            if (categoryIds.length > 0) {
-                where.wordCategories = {
-                    some: { categoryId: { in: categoryIds } },
-                };
-            }
-
-            if (difficulties.length > 0) {
-                where.difficulty = { in: difficulties };
-            }
-
-            const words = await prisma.word.findMany({
-                where,
-                select: { id: true },
-                take: Math.max(POOL_SIZE * 2, 500),
-            });
-
-            // Shuffle (Fisher-Yates)
-            const ids = words.map((w) => w.id);
-            for (let i = ids.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [ids[i], ids[j]] = [ids[j], ids[i]];
-            }
-
-            // Store up to POOL_SIZE
-            wordPools.set(roomCode, ids.slice(0, POOL_SIZE));
-        } finally {
-            primingLocks.delete(roomCode);
-        }
-    })();
-
-    primingLocks.set(roomCode, primePromise);
-    await primePromise;
+    return null;
 }
 
 /**
@@ -97,60 +181,23 @@ export async function getNextWord(
     difficulties: number[],
     locale: GameContentLocale = DEFAULT_GAME_CONTENT_LOCALE
 ): Promise<WordDrawResult | null> {
-    // Rate limiter logic is better placed in the caller (socket), but we can protect cache stampede here
-    let pool = wordPools.get(roomCode);
-
-    if (!pool || pool.length === 0) {
-        await primeWordPool(roomCode, categoryIds, difficulties, locale);
-        pool = wordPools.get(roomCode);
-    }
-
-    if (!pool || pool.length === 0) {
-        return null;
-    }
-
-    const wordId = pool.shift()!;
-
-    // Hydrate the word
-    const word = await prisma.word.findUnique({
-        where: { id: wordId },
-        include: {
-            tabooWords: { select: { tabooWordText: true } },
-            wordCategories: {
-                include: { category: { select: { color: true } } },
-            },
-        },
-    });
-
-    if (!word) return null;
-
-    const difficulty = word.difficulty as 1 | 2 | 3;
-    return {
-        card: {
-            id: word.id,
-            word: word.wordText,
-            difficulty,
-            taboo: word.tabooWords.map((tw) => tw.tabooWordText),
-            categoryColor: word.wordCategories[0]?.category?.color || null,
-        },
-        analytics: {
-            wordId: word.id,
-            categoryIds: word.wordCategories.map((entry) => entry.categoryId),
-            difficulty,
-        },
-    };
+    return drawWordFromPool(
+        wordPool,
+        roomCode,
+        toFilters(categoryIds, difficulties, locale)
+    );
 }
 
 /**
  * Clear the word pool for a room (on game reset).
  */
 export function clearWordPool(roomCode: string): void {
-    wordPools.delete(roomCode);
+    wordPool.clear(roomCode);
 }
 
 /**
  * Get word pool stats for a room.
  */
 export function getPoolSize(roomCode: string): number {
-    return wordPools.get(roomCode)?.length ?? 0;
+    return wordPool.size(roomCode);
 }
