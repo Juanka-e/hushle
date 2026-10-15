@@ -24,6 +24,7 @@ import {
 import type { GuestClaimSummary } from "@/lib/match-settlement/guest-claim-rules";
 import { useBranding } from "@/components/providers/branding-provider";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
 import { LanguageSwitcher } from "@/components/i18n/language-switcher";
 import { Button } from "@/components/ui/button";
 import {
@@ -99,7 +100,7 @@ export default function RegisterPage() {
             if (guestClaim) clearPendingGuestClaim();
 
             if (!res.ok) {
-                setError(data.error || t("auth.registerFailed"));
+                setError(resolveApiErrorMessage(locale, data, t("auth.registerFailed")));
             } else {
                 if (data.verificationRequired) {
                     toast.success(

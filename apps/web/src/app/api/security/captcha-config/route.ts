@@ -3,6 +3,7 @@ import { z } from "zod";
 import { CAPTCHA_ACTIONS } from "@/types/captcha";
 import { getSystemSettings } from "@/lib/system-settings/service";
 import { getPublicCaptchaConfigForAction } from "@/lib/security/captcha";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 const querySchema = z.object({
     action: z.enum(CAPTCHA_ACTIONS),
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
     });
 
     if (!parsed.success) {
-        return NextResponse.json({ error: "Gecersiz captcha aksiyonu." }, { status: 422 });
+        return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 422 });
     }
 
     const settings = await getSystemSettings();

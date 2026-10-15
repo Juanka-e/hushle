@@ -73,7 +73,14 @@ const nonStackableBase = resolveCatalogPricing(780, { kind: "bundle", targetId: 
 const blockedCoupon = resolveCouponPricing(nonStackableBase, { kind: "bundle", targetId: 8 }, stackableCoupon, now);
 assert.equal(blockedCoupon.ok, false);
 if (!blockedCoupon.ok) {
-    assert.match(blockedCoupon.reason, /birlestirilemez/i);
+    assert.equal(blockedCoupon.code, "COUPON_NOT_COMBINABLE");
+    assert.equal(blockedCoupon.reason, "Bu teklif kupon ile birleştirilemez.");
+}
+const missingCoupon = resolveCouponPricing(basePricing, { kind: "shop_item", targetId: 42 }, null, now);
+assert.equal(missingCoupon.ok, false);
+if (!missingCoupon.ok) {
+    assert.equal(missingCoupon.code, "COUPON_NOT_FOUND");
+    assert.equal(missingCoupon.reason, "Kupon bulunamadı.");
 }
 
 const exhaustedDiscountPricing = resolveCatalogPricing(500, { kind: "shop_item", targetId: 42 }, [

@@ -36,6 +36,9 @@ interface CapacityBlock {
     level: string;
     retryAfterSeconds: number;
     message: string;
+    code?: string;
+    /** Code of the `hata` that followed the block. */
+    errorCode?: string;
 }
 
 interface CapacityHealth {
@@ -225,8 +228,8 @@ function connectGuest(options: {
             finish();
         });
         socket.on("connect_error", (error) => fail(error));
-        socket.on("hata", (message: string) =>
-            fail(new Error(String(message)))
+        socket.on("hata", (message: string, meta?: { code?: string }) =>
+            fail(Object.assign(new Error(String(message)), { code: meta?.code }))
         );
     });
 }
@@ -260,11 +263,11 @@ function expectCapacityBlock(options: {
         socket.on("kapasiteEngeli", (block: CapacityBlock) => {
             capacityBlock = block;
         });
-        socket.on("hata", () => {
+        socket.on("hata", (_message: string, meta?: { code?: string }) => {
             if (!capacityBlock) return;
             clearTimeout(timeout);
             socket.disconnect();
-            resolve(capacityBlock);
+            resolve({ ...capacityBlock, errorCode: meta?.code });
         });
         socket.on("lobiGuncelle", () => {
             clearTimeout(timeout);
@@ -300,15 +303,16 @@ function waitForActivePlayers(
 function waitForSocketError(
     socket: Socket,
     action: () => void,
+    expectedCode: string,
     expected: RegExp
 ): Promise<string> {
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
             socket.off("hata", handleError);
-            reject(new Error(`Expected socket error ${expected} timed out`));
+            reject(new Error(`Expected socket error ${expectedCode} timed out`));
         }, timeoutMs);
-        const handleError = (message: string) => {
-            if (!expected.test(String(message))) return;
+        const handleError = (message: string, meta?: { code?: string }) => {
+            if (meta?.code !== expectedCode || !expected.test(String(message))) return;
             clearTimeout(timeout);
             socket.off("hata", handleError);
             resolve(String(message));
@@ -458,6 +462,8 @@ async function run(): Promise<void> {
             name: "CriticalModeCreate",
         });
         assert.equal(criticalCreateBlock.level, "critical");
+        assert.equal(criticalCreateBlock.code, "SERVER_BUSY");
+        assert.equal(criticalCreateBlock.errorCode, "SERVER_BUSY");
 
         const criticalJoin = await connectGuest({
             name: "CriticalModeJoin",
@@ -493,7 +499,8 @@ async function run(): Promise<void> {
                 name: "LoweredRoomJoin",
                 roomCode: host.lobby.odaKodu,
             }),
-            /oda dolu/i
+            (error: Error & { code?: string }) =>
+                error.code === "ROOM_FULL" && /oda dolu/i.test(error.message)
         );
 
         const switchCandidate =
@@ -507,6 +514,7 @@ async function run(): Promise<void> {
         await waitForSocketError(
             switchSocket,
             () => switchSocket.emit("takim_degistir"),
+            "TEAM_FULL",
             /takımı dolu/i
         );
 
@@ -549,11 +557,14 @@ async function run(): Promise<void> {
             name: "ClosedModeCreate",
         });
         assert.equal(createBlock.level, "closed");
+        assert.equal(createBlock.code, "SERVER_BUSY");
+        assert.equal(createBlock.errorCode, "SERVER_BUSY");
         const joinBlock = await expectCapacityBlock({
             name: "ClosedModeJoin",
             roomCode: host.lobby.odaKodu,
         });
         assert.equal(joinBlock.level, "closed");
+        assert.equal(joinBlock.errorCode, "SERVER_BUSY");
 
         const offlinePromise = waitForActivePlayers(host.socket, 5);
         reconnectTarget.socket.disconnect();

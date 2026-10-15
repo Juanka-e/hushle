@@ -42,7 +42,7 @@ interface Player {
     socket: Socket;
     playerId: string;
     guestToken?: string;
-    errors: string[];
+    errors: Array<{ message: string; code?: string }>;
     lobby: Lobby | null;
     state: GameState | null;
     pause: PauseSummary | null;
@@ -110,7 +110,9 @@ function join(name: string, options: { roomCode?: string; cookie?: string; guest
             extraHeaders: { Origin: serverUrl, ...(options.cookie ? { Cookie: options.cookie } : {}) },
         });
         const player: Player = { name, socket, playerId: "", errors: [], lobby: null, state: null, pause: null };
-        socket.on("hata", (message: string) => player.errors.push(message));
+        socket.on("hata", (message: string, meta?: { code?: string }) =>
+            player.errors.push({ message, code: meta?.code })
+        );
         socket.on("lobiGuncelle", (lobby: Lobby) => { player.lobby = lobby; });
         socket.on("oyunDurumuGuncelle", (state: GameState) => {
             player.state = state;
@@ -169,10 +171,15 @@ function resolve(player: Player, action: "continue_without_missing" | "end_match
     player.socket.emit(CONNECTION_PAUSE_RESOLVE_EVENT, { action });
 }
 
-async function expectError(player: Player, pattern: RegExp, action: () => void): Promise<void> {
+/** Waits for a `hata` with this code; the Turkish text must still read as before for old clients. */
+async function expectError(player: Player, code: string, pattern: RegExp, action: () => void): Promise<void> {
     const before = player.errors.length;
     action();
-    await until(`error ${pattern}`, () => player.errors.slice(before).some((message) => pattern.test(message)), 5_000);
+    await until(
+        `error ${code}`,
+        () => player.errors.slice(before).some((error) => error.code === code && pattern.test(error.message)),
+        5_000
+    );
 }
 
 /** Returns the room to the lobby so no interrupted match is left on the server. */
@@ -254,9 +261,9 @@ async function run(): Promise<void> {
             assert.equal(host.pause!.canContinueWithoutMissing, true);
             assert.ok((host.pause!.resolutionAvailableInSeconds ?? 0) > 0);
 
-            await expectError(host, /süre tanıyın/, () => resolve(host, "continue_without_missing"));
+            await expectError(host, "CONNECTION_DECISION_TOO_EARLY", /süre tanıyın \(\d+ sn\)/, () => resolve(host, "continue_without_missing"));
             const bystander = players.find((p) => p !== host && p !== narrator)!;
-            await expectError(bystander, /yalnız yönetici/, () => resolve(bystander, "end_match"));
+            await expectError(bystander, "CONNECTION_DECISION_HOST_ONLY", /yalnız yönetici/, () => resolve(bystander, "end_match"));
 
             await waitForResolvable(host);
             const nextTransition = waitFor<Transition>(host.socket, "turGecisiBaslat");
@@ -332,7 +339,7 @@ async function run(): Promise<void> {
             inspector.socket.disconnect();
             await until("second episode", () => host.pause?.waitingForPlayers === true);
             assert.ok((host.pause!.resolutionAvailableInSeconds ?? 0) > 0, "a new disconnect starts a new grace period");
-            await expectError(host, /süre tanıyın/, () => resolve(host, "continue_without_missing"));
+            await expectError(host, "CONNECTION_DECISION_TOO_EARLY", /süre tanıyın \(\d+ sn\)/, () => resolve(host, "continue_without_missing"));
             await waitForResolvable(host);
             resolve(host, "continue_without_missing");
             await until("pause cleared", () => host.pause === null);
@@ -383,7 +390,7 @@ async function run(): Promise<void> {
             await until("pause after 2v2 departure", () => host.pause?.waitingForPlayers === true);
             assert.equal(host.pause!.canContinueWithoutMissing, false);
             await waitForResolvable(host);
-            await expectError(host, /en az 2 oyuncu/, () => resolve(host, "continue_without_missing"));
+            await expectError(host, "CONTINUE_WITHOUT_MISSING_BLOCKED", /en az 2 oyuncu/, () => resolve(host, "continue_without_missing"));
             const finished = waitFor<{ kazananTakim: string; endReason?: string }>(host.socket, "oyunBitti");
             resolve(host, "end_match");
             const ended = await finished;
@@ -419,7 +426,7 @@ async function run(): Promise<void> {
             const deputy = others[0];
             await until("pause after host leaves", () => deputy.pause?.waitingForPlayers === true);
             await waitForResolvable(deputy);
-            await expectError(spectator, /yalnız yönetici/, () => resolve(spectator, "end_match"));
+            await expectError(spectator, "CONNECTION_DECISION_HOST_ONLY", /yalnız yönetici/, () => resolve(spectator, "end_match"));
             const finished = waitFor<{ endReason?: string }>(deputy.socket, "oyunBitti");
             resolve(deputy, "end_match");
             assert.equal((await finished).endReason, "host_ended");

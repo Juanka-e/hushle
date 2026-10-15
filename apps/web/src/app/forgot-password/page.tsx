@@ -10,9 +10,10 @@ import {
     prewarmCaptchaForAction,
 } from "@/lib/security/captcha-client";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
 
 export default function ForgotPasswordPage() {
-    const { t } = useI18n();
+    const { locale, t } = useI18n();
     const [identifier, setIdentifier] = useState("");
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
@@ -39,7 +40,7 @@ export default function ForgotPasswordPage() {
                 message?: string;
             } | null;
             if (!response.ok) {
-                setError(payload?.error || t("auth.requestFailed"));
+                setError(resolveApiErrorMessage(locale, payload, t("auth.requestFailed")));
                 return;
             }
             setMessage(

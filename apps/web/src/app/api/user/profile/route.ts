@@ -9,6 +9,7 @@ import {
     consumeRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 function getUserAgent(request: Request): string | null {
     return request.headers.get("user-agent")?.slice(0, 255) ?? null;
@@ -18,12 +19,12 @@ function mapPlayerError(error: PlayerCoreError) {
     switch (error.code) {
         case "invalid_profile":
             return NextResponse.json(
-                { error: "Gecersiz profil bilgisi." },
+                playerError(PlayerErrorCode.PROFILE_INVALID),
                 { status: 422 }
             );
         case "user_not_found":
             return NextResponse.json(
-                { error: "Kullanici bulunamadi." },
+                playerError(PlayerErrorCode.USER_NOT_FOUND),
                 { status: 404 }
             );
     }
@@ -33,7 +34,7 @@ export async function PATCH(req: Request) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
         return NextResponse.json(
-            { error: "Giris gerekli." },
+            playerError(PlayerErrorCode.AUTH_REQUIRED),
             { status: 401 }
         );
     }
@@ -46,9 +47,7 @@ export async function PATCH(req: Request) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            {
-                error: "Cok fazla profil guncelleme istegi gonderdin. Biraz bekleyip tekrar dene.",
-            },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             {
                 status: 429,
                 headers: buildRateLimitHeaders(rateLimit),
@@ -76,12 +75,12 @@ export async function PATCH(req: Request) {
         }
         if (error instanceof SyntaxError) {
             return NextResponse.json(
-                { error: "Gecersiz veri." },
+                playerError(PlayerErrorCode.INVALID_REQUEST),
                 { status: 422 }
             );
         }
         return NextResponse.json(
-            { error: "Profil guncellenemedi." },
+            playerError(PlayerErrorCode.PROFILE_UPDATE_FAILED),
             { status: 500 }
         );
     }

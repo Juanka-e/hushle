@@ -17,6 +17,7 @@ import {
   getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 const finalizeSchema = z.object({
   roomCode: z.string().trim().min(4).max(10),
@@ -52,7 +53,7 @@ async function findOwnResult(snapshot: MatchSettlementSnapshot, userId: number) 
 export async function POST(req: Request) {
   const sessionUser = await getSessionUser();
   if (!sessionUser) {
-    return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+    return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
   }
   const capabilityError = enforceAccountCapability(sessionUser, "reward");
   if (capabilityError) return capabilityError;
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
     });
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: "Cok fazla odul denemesi yaptin. Biraz bekleyip tekrar dene." },
+        playerError(PlayerErrorCode.RATE_LIMITED),
         { status: 429, headers: buildRateLimitHeaders(rateLimit) }
       );
     }
@@ -82,13 +83,13 @@ export async function POST(req: Request) {
       const recorded = await recordMatchSettlement(snapshot);
       settlement = { id: recorded.id, snapshot };
     } else if (live?.oyunAktifMi) {
-      return NextResponse.json({ error: "Mac henuz tamamlanmadi." }, { status: 409 });
+      return NextResponse.json(playerError(PlayerErrorCode.MATCH_NOT_FINISHED), { status: 409 });
     } else {
       settlement = await findParticipantSettlement(roomCode, sessionUser.id);
     }
 
     if (!settlement) {
-      return NextResponse.json({ error: "Oda bulunamadi." }, { status: 404 });
+      return NextResponse.json(playerError(PlayerErrorCode.ROOM_NOT_FOUND), { status: 404 });
     }
 
     const participant = settlement.snapshot.participants.find(
@@ -113,11 +114,11 @@ export async function POST(req: Request) {
         request: req,
       });
       return NextResponse.json(
-        {
-          error: participant
-            ? "Izleyiciler mevcut mac icin coin odulu alamaz."
-            : "Oyuncu dogrulanamadi.",
-        },
+        playerError(
+          participant
+            ? PlayerErrorCode.SPECTATOR_REWARD_INELIGIBLE
+            : PlayerErrorCode.PLAYER_NOT_VERIFIED
+        ),
         { status: 403 }
       );
     }
@@ -158,10 +159,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ status: "pending" }, { status: 202 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues[0]?.message || "Gecersiz veri." }, { status: 422 });
+      return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 422 });
     }
 
     console.error("Match finalize lookup failed", error);
-    return NextResponse.json({ error: "Mac sonucu okunamadi." }, { status: 500 });
+    return NextResponse.json(playerError(PlayerErrorCode.MATCH_RESULT_UNAVAILABLE), { status: 500 });
   }
 }

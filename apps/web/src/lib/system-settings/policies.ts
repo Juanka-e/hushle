@@ -1,4 +1,6 @@
 import type { SystemSettings } from "@/types/system-settings";
+import { getPlayerErrorMessage } from "@/lib/errors/player-error";
+import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 
 export function isStoreAvailable(settings: SystemSettings): boolean {
     return settings.features.storeEnabled && !settings.platform.maintenanceEnabled;
@@ -8,12 +10,32 @@ export function isRegistrationAvailable(settings: SystemSettings): boolean {
     return settings.features.registrationsEnabled && !settings.platform.maintenanceEnabled;
 }
 
-export function getFeatureDisabledMessage(feature: "store" | "register"): string {
-    if (feature === "store") {
-        return "Magaza su anda kullanima kapali.";
-    }
+export function getFeatureDisabledErrorCode(
+    feature: "store" | "register"
+): typeof PlayerErrorCode.STORE_DISABLED | typeof PlayerErrorCode.REGISTRATION_DISABLED {
+    return feature === "store"
+        ? PlayerErrorCode.STORE_DISABLED
+        : PlayerErrorCode.REGISTRATION_DISABLED;
+}
 
-    return "Kayitlar su anda kapali.";
+export function getFeatureDisabledMessage(feature: "store" | "register"): string {
+    return getPlayerErrorMessage(getFeatureDisabledErrorCode(feature));
+}
+
+export interface RoomRequestPolicyDecision {
+    allowed: boolean;
+    code?: PlayerErrorCode;
+    /** Turkish text: the operator's maintenance notice when one is set, otherwise the dictionary text. */
+    message?: string;
+    /** The message is the operator's own maintenance notice. */
+    customMessage?: string;
+}
+
+function deny(code: PlayerErrorCode, customMessage?: string): RoomRequestPolicyDecision {
+    const custom = customMessage?.trim();
+    return custom
+        ? { allowed: false, code, message: custom, customMessage: custom }
+        : { allowed: false, code, message: getPlayerErrorMessage(code) };
 }
 
 export function evaluateRoomRequestPolicy(options: {
@@ -22,7 +44,7 @@ export function evaluateRoomRequestPolicy(options: {
     isAdmin: boolean;
     isCreateRequest: boolean;
     isReconnect: boolean;
-}): { allowed: boolean; message?: string } {
+}): RoomRequestPolicyDecision {
     const { settings, isAuthenticated, isAdmin, isCreateRequest, isReconnect } = options;
 
     if (isAdmin) {
@@ -30,31 +52,19 @@ export function evaluateRoomRequestPolicy(options: {
     }
 
     if (settings.platform.maintenanceEnabled && !isReconnect) {
-        return {
-            allowed: false,
-            message: settings.platform.maintenanceMessage || "Sunucu bakim modunda. Lutfen daha sonra tekrar deneyin.",
-        };
+        return deny(PlayerErrorCode.MAINTENANCE_MODE, settings.platform.maintenanceMessage);
     }
 
     if (!isAuthenticated && !settings.features.guestGameplayEnabled) {
-        return {
-            allowed: false,
-            message: "Misafir girisi su anda kapali.",
-        };
+        return deny(PlayerErrorCode.GUEST_PLAY_DISABLED);
     }
 
     if (isCreateRequest && !settings.features.roomCreateEnabled) {
-        return {
-            allowed: false,
-            message: "Yeni oda olusturma su anda gecici olarak kapali.",
-        };
+        return deny(PlayerErrorCode.ROOM_CREATE_DISABLED);
     }
 
     if (!isCreateRequest && !settings.features.roomJoinEnabled && !isReconnect) {
-        return {
-            allowed: false,
-            message: "Odalara katilim su anda gecici olarak kapali.",
-        };
+        return deny(PlayerErrorCode.ROOM_JOIN_DISABLED);
     }
 
     return { allowed: true };

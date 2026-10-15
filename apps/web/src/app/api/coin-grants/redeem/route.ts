@@ -9,13 +9,14 @@ import {
     consumeDistributedRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
     const capabilityError = enforceAccountCapability(sessionUser, "reward");
     if (capabilityError) return capabilityError;
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla coin kodu denemesi. Lutfen biraz bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
         if (!result.ok) {
             const status = result.code === "not_found" ? 404 : 409;
             return NextResponse.json(
-                { error: "Coin kodu gecersiz veya su anda kullanilamaz." },
+                playerError(PlayerErrorCode.COIN_CODE_INVALID),
                 { status }
             );
         }
@@ -70,11 +71,10 @@ export async function POST(request: NextRequest) {
         });
     } catch (error) {
         if (error instanceof Error && "issues" in error) {
-            const zodError = error as Error & { issues?: Array<{ message?: string }> };
-            return NextResponse.json({ error: zodError.issues?.[0]?.message || "Gecersiz coin kodu." }, { status: 422 });
+            return NextResponse.json(playerError(PlayerErrorCode.COIN_CODE_MALFORMED), { status: 422 });
         }
 
         console.error("Failed to redeem coin grant code:", error);
-        return NextResponse.json({ error: "Coin kodu kullanilamadi." }, { status: 500 });
+        return NextResponse.json(playerError(PlayerErrorCode.COIN_CODE_REDEEM_FAILED), { status: 500 });
     }
 }

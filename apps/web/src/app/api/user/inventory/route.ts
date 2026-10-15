@@ -7,11 +7,12 @@ import {
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { recordUserAccessSignal } from "@/lib/security/user-access-signal";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export async function GET(request: Request) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const rateLimit = consumeRequestRateLimit({
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla envanter istegi gonderildi. Lutfen biraz bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

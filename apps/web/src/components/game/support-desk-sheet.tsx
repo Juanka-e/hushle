@@ -19,6 +19,7 @@ import type {
     SupportTicketView,
 } from "@/types/support";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
 import { toIntlLocale } from "@/lib/i18n/config";
 
 const statusBadgeClass: Record<SupportTicketStatus, string> = {
@@ -173,7 +174,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                 | { error?: string };
 
             if (!response.ok || !("id" in payload)) {
-                toast.error(("error" in payload && payload.error) || t("support.createFailed"));
+                toast.error(resolveApiErrorMessage(locale, payload, t("support.createFailed")));
                 return;
             }
 
@@ -209,7 +210,7 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
                 | { error?: string };
 
             if (!response.ok || !("id" in payload)) {
-                toast.error(("error" in payload && payload.error) || t("support.sendFailed"));
+                toast.error(resolveApiErrorMessage(locale, payload, t("support.sendFailed")));
                 return;
             }
 

@@ -20,6 +20,7 @@ const checks: ReadinessCheck[] = [
     { area: "admin route guards", script: "test:admin-guards" },
     { area: "health endpoint guard", script: "test:health-guard" },
     { area: "player identity", script: "test:player-identity" },
+    { area: "localized player error codes", script: "test:player-error-codes" },
     { area: "cross-tab room presence", script: "test:active-room-presence" },
     { area: "server room membership", script: "test:room-membership" },
     { area: "room admin handoff", script: "test:room-admin-handoff" },
