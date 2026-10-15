@@ -474,6 +474,20 @@ test("concurrent draws share one priming scan and never collide", async () => {
     assert.equal(managerTwo.size("R7b"), 5);
 });
 
+test("many concurrent draws on a tiny pool all get distinct words", async () => {
+    const fake = createFakeSource(makeWords(10), { delayMs: 5 });
+    const manager = createWordPoolManager({
+        source: fake.source,
+        poolSize: 1,
+        random: mulberry32(17),
+    });
+    const draws = await Promise.all(
+        Array.from({ length: 6 }, () => manager.takeNextId("R7c", filters()))
+    );
+    assert.ok(draws.every((id) => id !== null), `null draw in ${draws.join(",")}`);
+    assertNoDuplicates(draws, "tiny pool");
+});
+
 test("clearing a room during priming drops the stale result", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {

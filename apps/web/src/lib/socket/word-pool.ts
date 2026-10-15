@@ -60,7 +60,8 @@ export interface WordIdSample {
 export const DEFAULT_WORD_POOL_SIZE = 120;
 export const MAX_WORD_POOL_SIZE = 1_000;
 export const DEFAULT_WORD_ID_BATCH_SIZE = 5_000;
-const MAX_TAKE_ATTEMPTS = 3;
+// Concurrent draws can find the fresh queue already taken; each retry primes again.
+const MAX_TAKE_ATTEMPTS = 8;
 
 // ─── Pure helpers ──────────────────────────────────────────────
 
