@@ -16,7 +16,7 @@ export interface PlayerErrorInput {
     custom?: unknown;
 }
 
-const UNRESOLVED_PLACEHOLDER = /\{[a-zA-Z0-9_]+\}/;
+const PLACEHOLDER = /\{([a-zA-Z0-9_]+)\}/g;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
     return value && typeof value === "object" && !Array.isArray(value)
@@ -59,12 +59,15 @@ export function resolvePlayerErrorMessage(
         if (input.custom === true && message && locale === DEFAULT_LOCALE) {
             return message;
         }
-        const text = translate(
-            locale,
-            `errors.${input.code}`,
-            sanitizePlayerErrorParams(input.params)
+        const key = `errors.${input.code}` as const;
+        const params = sanitizePlayerErrorParams(input.params);
+        // Check the template, not the output: a param value such as a player name may contain braces.
+        const required = [...translate(locale, key).matchAll(PLACEHOLDER)].map((match) => match[1]);
+        const hasEveryParam = required.every(
+            (name) => params !== undefined && Object.prototype.hasOwnProperty.call(params, name)
         );
-        if (text.trim() && !UNRESOLVED_PLACEHOLDER.test(text)) {
+        const text = hasEveryParam ? translate(locale, key, params) : "";
+        if (text.trim()) {
             return text;
         }
     }

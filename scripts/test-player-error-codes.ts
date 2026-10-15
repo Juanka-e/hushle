@@ -302,6 +302,16 @@ assert.equal(resolvePlayerErrorMessage("tr", { message: 42 as unknown as string,
 assert.equal(resolvePlayerErrorMessage("en", { message: trRoomFull, code: "ROOM_FULL" }), trRoomFull);
 assert.equal(resolvePlayerErrorMessage("en", { code: "ROOM_FULL" }, "Could not join."), "Could not join.");
 assert.equal(resolvePlayerErrorMessage("en", { code: "ROOM_FULL", params: { max: { evil: true } } }), "Something went wrong. Please try again.");
+// Param values are player text and may contain braces; they never trigger the fallback.
+assert.equal(
+    resolvePlayerErrorMessage("en", {
+        message: "Yönetici süresi doldu. Yeni yönetici: {max}",
+        code: "HOST_TIMEOUT_TRANSFERRED",
+        params: { name: "{max}" },
+    }),
+    "The host timed out. New host: {max}"
+);
+assert.equal(resolvePlayerErrorMessage("en", { code: "TEAM_FULL", params: { team: "$&{team}", max: 5 } }), "Team $&{team} is full. Each team can have at most 5 players.");
 // Operator-written notices: Turkish viewers see the notice, English viewers the dictionary text.
 const notice = { message: "Bakım 22.00'de bitecek.", code: "MAINTENANCE_MODE", custom: true };
 assert.equal(resolvePlayerErrorMessage("tr", notice), "Bakım 22.00'de bitecek.");
