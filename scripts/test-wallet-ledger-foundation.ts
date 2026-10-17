@@ -34,7 +34,7 @@ assert.match(schema, /@@index\(\[walletId, createdAt\]\)/);
 
 const mutationPaths = [
     "apps/web/src/app/api/auth/register/route.ts",
-    "apps/web/src/app/api/game/match/finalize/route.ts",
+    "apps/web/src/lib/match-settlement/participant-reward.ts",
     "apps/web/src/lib/economy.ts",
     "apps/web/src/lib/coin-grants/service.ts",
     "apps/web/src/lib/admin-user-operations/service.ts",
@@ -52,6 +52,11 @@ for (const path of mutationPaths) {
         `${path} must not mutate wallet balance directly`
     );
 }
+
+// The finalize endpoint is read-only now; coins move only through settlement.
+const finalizeRoute = read("apps/web/src/app/api/game/match/finalize/route.ts");
+assert.doesNotMatch(finalizeRoute, /applyWalletLedgerMutation|INSERT INTO match_results|matchResult\.create/);
+assert.match(finalizeRoute, /settleMatchSettlement/);
 
 const adminRoute = read(
     "apps/web/src/app/api/admin/users/[id]/wallet-ledger/route.ts"

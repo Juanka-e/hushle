@@ -12,9 +12,14 @@ guven zinciri, finalize wallet lock ve Redis rate-limit uygulandi. Lint/i18n
 regresyonlari duzeltildi. Detay ve operator komutlari:
 [`persistent-assets-and-data-backups.md`](../deploy/persistent-assets-and-data-backups.md).
 
-Henuz kapanmayan release gate'leri: dependency advisory/runtime ayrimi, durable
-match/reward outbox, atomik release/rollback, gercek R2/S3 acceptance ve
-backup cron/alarm kurulumu. Bunlar yedekleme altyapisi var diye tamamlandi sayilmaz.
+2026-10-12: mac sonucu ve odul artik istemciden bagimsiz, sunucu tarafinda
+`match_settlements` outbox'i ile yaziliyor (claim, geri cekilmeli tekrar, dead letter,
+30 gun temizlik). Misafir katilimcilar ileride hesap sahiplenmesi icin anlik
+goruntude tutuluyor. Tasarim: `docs/superpowers/specs/2026-10-12-durable-match-settlement-design.md`.
+
+Henuz kapanmayan release gate'leri: dependency advisory/runtime ayrimi, atomik
+release/rollback, gercek R2/S3 acceptance ve backup cron/alarm kurulumu. Bunlar
+yedekleme altyapisi var diye tamamlandi sayilmaz.
 
 2026-09-07 planlama notu: dahili sesli sohbet ertelendi. IP gizliligi,
 P2P/TURN/SFU maliyetleri ve yeniden degerlendirme kosullari; ilk takim flip'i,
