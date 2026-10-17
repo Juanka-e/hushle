@@ -160,6 +160,7 @@
     "test:announcement-structure": "tsx scripts/test-announcement-structure.ts",
     "test:i18n-content-locales": "tsx scripts/test-i18n-and-content-locales.ts",
     "test:i18n-content-locales-integration": "tsx scripts/test-content-locales-integration.ts",
+    "test:word-packs": "tsx scripts/test-word-packs.ts",
     "test:admin-guards": "tsx scripts/test-admin-route-guards.ts",
     "test:card-face": "tsx scripts/test-card-face-theme.ts",
     "test:card-back": "tsx scripts/test-card-back-theme.ts",
