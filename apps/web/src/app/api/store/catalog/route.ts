@@ -2,20 +2,18 @@ import { NextResponse } from "next/server";
 import { getStoreCatalog } from "@/lib/economy";
 import { getSessionUser } from "@/lib/session";
 import { getSystemSettings } from "@/lib/system-settings/service";
-import {
-    getFeatureDisabledMessage,
-    isStoreAvailable,
-} from "@/lib/system-settings/policies";
+import { isStoreAvailable } from "@/lib/system-settings/policies";
 import {
     buildRateLimitHeaders,
     consumeRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export async function GET(request: Request) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const rateLimit = consumeRequestRateLimit({
@@ -27,7 +25,7 @@ export async function GET(request: Request) {
 
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla katalog istegi gonderildi. Lutfen bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             {
                 status: 429,
                 headers: buildRateLimitHeaders(rateLimit),
@@ -38,7 +36,7 @@ export async function GET(request: Request) {
     const settings = await getSystemSettings();
     if (!isStoreAvailable(settings)) {
         return NextResponse.json(
-            { error: getFeatureDisabledMessage("store") },
+            playerError(PlayerErrorCode.STORE_DISABLED),
             { status: 409 }
         );
     }

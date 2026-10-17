@@ -11,6 +11,7 @@ import {
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 const cancelSchema = z.object({
     currentPassword: z.string().min(1).max(256),
@@ -18,11 +19,11 @@ const cancelSchema = z.object({
 
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
-        return NextResponse.json({ error: "Geçersiz istek." }, { status: 403 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
     }
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giriş gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
     const limit = await consumeDistributedRequestRateLimit({
         bucket: "email-change-cancel",
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
     });
     if (!limit.allowed) {
         return NextResponse.json(
-            { error: "Çok fazla iptal denemesi yapıldı." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(limit) }
         );
     }
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
             !(await bcryptjs.compare(input.currentPassword, user.password))
         ) {
             return NextResponse.json(
-                { error: "Mevcut parola doğrulanamadı." },
+                playerError(PlayerErrorCode.CURRENT_PASSWORD_INVALID),
                 { status: 403, headers: buildRateLimitHeaders(limit) }
             );
         }
@@ -75,12 +76,12 @@ export async function POST(request: Request) {
     } catch (error) {
         if (error instanceof z.ZodError || error instanceof SyntaxError) {
             return NextResponse.json(
-                { error: "Geçersiz iptal isteği." },
+                playerError(PlayerErrorCode.INVALID_REQUEST),
                 { status: 400 }
             );
         }
         return NextResponse.json(
-            { error: "İstek iptal edilemedi." },
+            playerError(PlayerErrorCode.EMAIL_CHANGE_CANCEL_FAILED),
             { status: 500 }
         );
     }

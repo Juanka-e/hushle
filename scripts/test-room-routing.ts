@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { RoomOwnershipCoordinator } from "../apps/web/src/lib/socket/room-ownership";
 import {
     ROOM_ROUTING_JOIN_ERROR,
+    ROOM_ROUTING_JOIN_ERROR_CODE,
     createRoomRouteResolver,
     shouldRejectRoomRoute,
     type RoomRouteDecisionKind,
@@ -127,6 +128,11 @@ async function run(): Promise<void> {
     assert.doesNotMatch(
         ROOM_ROUTING_JOIN_ERROR.toLocaleLowerCase("tr"),
         /instance|redis|owner|sunucu/
+    );
+    assert.equal(ROOM_ROUTING_JOIN_ERROR_CODE, "ROOM_UNAVAILABLE");
+    assert.equal(
+        ROOM_ROUTING_JOIN_ERROR,
+        "Odaya şu anda bağlanılamıyor. Lütfen kısa süre sonra tekrar deneyin."
     );
 
     console.log("room routing decision test passed");

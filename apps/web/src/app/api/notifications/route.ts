@@ -8,13 +8,14 @@ import {
     consumeRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const rateLimit = consumeRequestRateLimit({
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla bildirim istegi gonderildi. Lutfen biraz bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -41,12 +42,12 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: error.issues[0]?.message || "Gecersiz bildirim istegi." },
+                playerError(PlayerErrorCode.INVALID_REQUEST),
                 { status: 422 }
             );
         }
 
         console.error("Failed to load notifications:", error);
-        return NextResponse.json({ error: "Bildirimler yuklenemedi." }, { status: 500 });
+        return NextResponse.json(playerError(PlayerErrorCode.NOTIFICATIONS_LOAD_FAILED), { status: 500 });
     }
 }

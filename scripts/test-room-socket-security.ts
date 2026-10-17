@@ -45,8 +45,10 @@ assert.match(socketSource, /clearSocketActionBurstLimits\(socket\.id\)/);
 assert.match(serverRuntimeSource, /maxHttpBufferSize:\s*16 \* 1024/);
 assert.match(
     socketSource,
-    /if \(room\.oyunDurumu\.oyunAktifMi\) \{\s*socket\.emit\("hata", "Oyun zaten devam ediyor\."\)/
+    /if \(room\.oyunDurumu\.oyunAktifMi\) \{\s*emitPlayerError\(socket, PlayerErrorCode\.GAME_ALREADY_RUNNING\)/
 );
+// Every player-facing socket error goes through emitPlayerError so it carries a code.
+assert.doesNotMatch(socketSource, /\.emit\(\s*"hata"/);
 assert.match(
     socketSource,
     /runWithRoomActionLock\(\s*room\.odaKodu,\s*"word-action"/
@@ -74,7 +76,7 @@ assert.match(
 );
 assert.match(
     socketSource,
-    /if \(room\.oyunDurumu\.oyunAktifMi\) \{\s*socket\.emit\("hata", "Oyun sırasında oyuncu odadan atılamaz\."\);\s*return;/
+    /if \(room\.oyunDurumu\.oyunAktifMi\) \{\s*emitPlayerError\(socket, PlayerErrorCode\.KICK_DURING_GAME\);\s*return;/
 );
 // The long abandoned-room TTL applies only to interrupted matches, never to empty lobbies.
 assert.match(

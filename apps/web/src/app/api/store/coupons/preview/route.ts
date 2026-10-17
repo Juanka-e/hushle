@@ -8,10 +8,8 @@ import {
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { getSystemSettings } from "@/lib/system-settings/service";
-import {
-    getFeatureDisabledMessage,
-    isStoreAvailable,
-} from "@/lib/system-settings/policies";
+import { isStoreAvailable } from "@/lib/system-settings/policies";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 const previewSchema = z.object({
     targetKind: z.enum(["shop_item", "bundle"]),
@@ -22,13 +20,13 @@ const previewSchema = z.object({
 export async function POST(req: Request) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const settings = await getSystemSettings();
     if (!isStoreAvailable(settings)) {
         return NextResponse.json(
-            { error: getFeatureDisabledMessage("store") },
+            playerError(PlayerErrorCode.STORE_DISABLED),
             { status: 409 }
         );
     }
@@ -42,7 +40,7 @@ export async function POST(req: Request) {
         });
         if (!rateLimit.allowed) {
             return NextResponse.json(
-                { error: "Cok fazla kupon denemesi yaptin. Biraz bekleyip tekrar dene." },
+                playerError(PlayerErrorCode.RATE_LIMITED),
                 { status: 429, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -54,9 +52,9 @@ export async function POST(req: Request) {
         return NextResponse.json(result, { status: result.valid ? 200 : 409 });
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return NextResponse.json({ error: error.issues[0]?.message || "Gecersiz veri." }, { status: 422 });
+            return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 422 });
         }
 
-        return NextResponse.json({ error: "Kupon dogrulanamadi." }, { status: 500 });
+        return NextResponse.json(playerError(PlayerErrorCode.COUPON_VALIDATION_FAILED), { status: 500 });
     }
 }

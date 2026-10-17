@@ -1,7 +1,11 @@
+import { getPlayerErrorMessage } from "@/lib/errors/player-error";
+import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
+import { DEFAULT_LOCALE, type AppLocale } from "@/lib/i18n/config";
+
 export const CURRENT_SOCKET_PROTOCOL_VERSION = 1;
 export const MINIMUM_SOCKET_PROTOCOL_VERSION = 0;
 
-export const SOCKET_PROTOCOL_ERROR_CODE = "SOCKET_PROTOCOL_UNSUPPORTED";
+export const SOCKET_PROTOCOL_ERROR_CODE = PlayerErrorCode.SOCKET_PROTOCOL_UNSUPPORTED;
 
 export interface SocketProtocolDecision {
   accepted: boolean;
@@ -71,12 +75,16 @@ export function readSocketProtocolVersionFromAuth(auth: unknown): unknown {
   return (auth as Record<string, unknown>).clientProtocolVersion;
 }
 
-export function getSocketProtocolErrorMessage(error: unknown): string | null {
+/** Localized refresh prompt when the server rejected this client's protocol version, otherwise null. */
+export function getSocketProtocolErrorMessage(
+  error: unknown,
+  locale: AppLocale = DEFAULT_LOCALE,
+): string | null {
   if (!error || typeof error !== "object") return null;
   const data = (error as { data?: unknown }).data;
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
   if ((data as { code?: unknown }).code !== SOCKET_PROTOCOL_ERROR_CODE) {
     return null;
   }
-  return "Yeni bir oyun sürümü hazır. Devam etmek için sayfayı yenileyin.";
+  return getPlayerErrorMessage(SOCKET_PROTOCOL_ERROR_CODE, undefined, locale);
 }

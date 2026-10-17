@@ -178,7 +178,27 @@ export type CouponPricingResult =
           coupon: CouponPreviewView;
           couponDiscountCoin: number;
       }
-    | { ok: false; reason: string };
+    | { ok: false; code: CouponRejectionCode; reason: string };
+
+/** Stable rejection codes; the web app maps them to player-facing messages of the same name. */
+export type CouponRejectionCode =
+    | "COUPON_NOT_FOUND"
+    | "COUPON_INACTIVE"
+    | "COUPON_NOT_APPLICABLE"
+    | "COUPON_LIMIT_REACHED"
+    | "COUPON_NOT_COMBINABLE";
+
+const COUPON_REJECTION_REASONS: Record<CouponRejectionCode, string> = {
+    COUPON_NOT_FOUND: "Kupon bulunamadı.",
+    COUPON_INACTIVE: "Kupon aktif değil.",
+    COUPON_NOT_APPLICABLE: "Kupon bu ürün için kullanılamaz.",
+    COUPON_LIMIT_REACHED: "Kupon kullanım limiti doldu.",
+    COUPON_NOT_COMBINABLE: "Bu teklif kupon ile birleştirilemez.",
+};
+
+function rejectCoupon(code: CouponRejectionCode): CouponPricingResult {
+    return { ok: false, code, reason: COUPON_REJECTION_REASONS[code] };
+}
 
 const catalogQuerySchema = z
     .object({
@@ -302,27 +322,27 @@ export function resolveCouponPricing(
     coupon: CouponPricingRecord | null,
     now: Date
 ): CouponPricingResult {
-    if (!coupon) return { ok: false, reason: "Kupon bulunamadi." };
+    if (!coupon) return rejectCoupon("COUPON_NOT_FOUND");
     if (
         !coupon.isActive ||
         !isWithinWindow(coupon.startsAt, coupon.endsAt, now)
     ) {
-        return { ok: false, reason: "Kupon aktif degil." };
+        return rejectCoupon("COUPON_INACTIVE");
     }
     if (!matchesTarget(coupon, target)) {
-        return { ok: false, reason: "Kupon bu urun icin kullanilamaz." };
+        return rejectCoupon("COUPON_NOT_APPLICABLE");
     }
     if (
         coupon.usageLimit !== null &&
         coupon.usedCount >= coupon.usageLimit
     ) {
-        return { ok: false, reason: "Kupon kullanim limiti doldu." };
+        return rejectCoupon("COUPON_LIMIT_REACHED");
     }
     if (
         basePricing.appliedPromotion &&
         !basePricing.appliedPromotion.stackableWithCoupon
     ) {
-        return { ok: false, reason: "Bu teklif kupon ile birlestirilemez." };
+        return rejectCoupon("COUPON_NOT_COMBINABLE");
     }
     const couponDiscountCoin = calculateDiscountAmount(
         basePricing.finalPriceCoin,

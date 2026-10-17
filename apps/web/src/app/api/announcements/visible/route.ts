@@ -17,6 +17,7 @@ import {
     normalizeRequestedAnnouncementLocale,
 } from "@/lib/announcements/localization";
 import { LOCALE_COOKIE_NAME } from "@/lib/i18n/config";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla istek gonderildi. Lutfen bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             {
                 status: 429,
                 headers: buildRateLimitHeaders(rateLimit),

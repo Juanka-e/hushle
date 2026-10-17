@@ -13,6 +13,8 @@ import {
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import { disconnectUserSockets } from "@/lib/socket/user-session-control";
+import { PlayerErrorCode, playerError, playerErrorFromValidation } from "@/lib/errors/player-error";
+import { passwordPolicyError } from "@/lib/auth/password-policy-error";
 
 const confirmSchema = z.object({
     token: z.string().trim().min(40).max(160),
@@ -21,7 +23,7 @@ const confirmSchema = z.object({
 
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
-        return NextResponse.json({ error: "Geçersiz istek." }, { status: 403 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
     }
     const limit = await consumeDistributedRequestRateLimit({
         bucket: "password-reset-confirm",
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
     });
     if (!limit.allowed) {
         return NextResponse.json(
-            { error: "Çok fazla deneme yapıldı. Daha sonra tekrar dene." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(limit) }
         );
     }
@@ -44,17 +46,14 @@ export async function POST(request: Request) {
         });
         if (!policy.accepted) {
             return NextResponse.json(
-                { error: policy.issues[0] ?? "Daha güçlü bir parola seç." },
+                passwordPolicyError(input.password, policy),
                 { status: 400, headers: buildRateLimitHeaders(limit) }
             );
         }
         const breach = await checkPasswordBreach(input.password);
         if (breach.status === "breached") {
             return NextResponse.json(
-                {
-                    error:
-                        "Bu parola bilinen veri ihlallerinde kullanılmış. Farklı bir parola seç.",
-                },
+                playerError(PlayerErrorCode.PASSWORD_BREACHED),
                 { status: 400, headers: buildRateLimitHeaders(limit) }
             );
         }
@@ -67,10 +66,7 @@ export async function POST(request: Request) {
         });
         if (!result.ok) {
             return NextResponse.json(
-                {
-                    error:
-                        "Bağlantı geçersiz, süresi dolmuş veya daha önce kullanılmış.",
-                },
+                playerError(PlayerErrorCode.PASSWORD_RESET_LINK_INVALID),
                 { status: 400, headers: buildRateLimitHeaders(limit) }
             );
         }
@@ -92,13 +88,18 @@ export async function POST(request: Request) {
     } catch (error) {
         if (error instanceof z.ZodError || error instanceof SyntaxError) {
             return NextResponse.json(
-                { error: "Geçersiz parola sıfırlama isteği." },
+                error instanceof z.ZodError
+                    ? playerErrorFromValidation(error, {
+                          token: PlayerErrorCode.PASSWORD_RESET_LINK_INVALID,
+                          password: PlayerErrorCode.PASSWORD_TOO_LONG,
+                      })
+                    : playerError(PlayerErrorCode.INVALID_REQUEST),
                 { status: 400, headers: buildRateLimitHeaders(limit) }
             );
         }
         console.error("Password reset confirmation failed", error);
         return NextResponse.json(
-            { error: "Parola şu anda sıfırlanamadı." },
+            playerError(PlayerErrorCode.PASSWORD_RESET_FAILED),
             { status: 500, headers: buildRateLimitHeaders(limit) }
         );
     }

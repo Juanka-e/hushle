@@ -10,13 +10,14 @@ import { writeAuditLog } from "@/lib/security/audit-log";
 import { recordUserAccessSignal } from "@/lib/security/user-access-signal";
 import { supportTicketCreateSchema } from "@/lib/support/schema";
 import { createSupportTicketForUser, listSupportTicketsForUser } from "@/lib/support/service";
+import { PlayerErrorCode, playerError, playerErrorFromValidation } from "@/lib/errors/player-error";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const rateLimit = await consumeDistributedRequestRateLimit({
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla destek istegi gonderildi. Lutfen biraz bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const rateLimit = await consumeDistributedRequestRateLimit({
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla destek talebi olusturuldu. Lutfen biraz bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -79,13 +80,16 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: error.issues[0]?.message || "Gecersiz destek talebi." },
+                playerErrorFromValidation(error, {
+                    subject: PlayerErrorCode.SUPPORT_SUBJECT_INVALID,
+                    message: PlayerErrorCode.SUPPORT_MESSAGE_INVALID,
+                }),
                 { status: 422 }
             );
         }
 
         console.error("Failed to create support ticket:", error);
-        return NextResponse.json({ error: "Destek talebi olusturulamadi." }, { status: 500 });
+        return NextResponse.json(playerError(PlayerErrorCode.SUPPORT_TICKET_CREATE_FAILED), { status: 500 });
     }
 }
 
