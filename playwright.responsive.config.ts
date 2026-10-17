@@ -4,7 +4,7 @@ const baseURL = process.env.SMOKE_BASE_URL || "http://127.0.0.1:3201";
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "web-responsive.spec.ts",
+  testMatch: ["web-responsive.spec.ts", "prehydration-input.spec.ts"],
   timeout: 30_000,
   retries: 0,
   workers: 2,

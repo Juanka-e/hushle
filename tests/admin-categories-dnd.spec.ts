@@ -92,10 +92,16 @@ test.describe("admin category reorder", () => {
         await expect(page.getByTestId(`category-row-${firstId}`)).toBeVisible();
 
         const source = page.getByTestId(`category-drag-${firstId}`);
+        const sourceRow = page.getByTestId(`category-row-${firstId}`);
         const target = page.getByTestId(`category-row-${secondId}`);
+        // Keep the drag away from the viewport edges, where dnd-kit auto-scrolls the page and
+        // the drop overshoots when other categories push the rows down.
+        await sourceRow.evaluate((node) => node.scrollIntoView({ block: "center" }));
         const sourceBox = await source.boundingBox();
+        const sourceRowBox = await sourceRow.boundingBox();
         const targetBox = await target.boundingBox();
         expect(sourceBox).not.toBeNull();
+        expect(sourceRowBox).not.toBeNull();
         expect(targetBox).not.toBeNull();
 
         await page.mouse.move(
@@ -108,9 +114,13 @@ test.describe("admin category reorder", () => {
                 response.request().method() === "POST"
         );
         await page.mouse.down();
+        // closestCenter compares the dragged row's center, not the pointer: move the row's
+        // center just past the target row's center so it lands right after it.
+        const rowCenterShift =
+            targetBox!.y + targetBox!.height / 2 - (sourceRowBox!.y + sourceRowBox!.height / 2);
         await page.mouse.move(
-            targetBox!.x + targetBox!.width / 2,
-            targetBox!.y + targetBox!.height * 0.8,
+            sourceBox!.x + sourceBox!.width / 2,
+            sourceBox!.y + sourceBox!.height / 2 + rowCenterShift + 4,
             { steps: 12 }
         );
         await page.mouse.up();

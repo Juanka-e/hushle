@@ -15,7 +15,7 @@ export default defineConfig({
   projects: [
     {
       name: "webkit-iphone-public",
-      testMatch: "web-responsive.spec.ts",
+      testMatch: ["web-responsive.spec.ts", "prehydration-input.spec.ts"],
       use: {
         ...devices["iPhone 13"],
         browserName: "webkit",
@@ -23,7 +23,7 @@ export default defineConfig({
     },
     {
       name: "webkit-desktop-public",
-      testMatch: "web-responsive.spec.ts",
+      testMatch: ["web-responsive.spec.ts", "prehydration-input.spec.ts"],
       use: {
         ...devices["Desktop Safari"],
         browserName: "webkit",
