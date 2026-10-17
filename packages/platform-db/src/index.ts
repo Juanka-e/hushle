@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma as PrismaNamespace, PrismaClient } from "@prisma/client";
 export {
     CosmeticRenderMode,
     EmailMessageClass,
@@ -69,4 +69,29 @@ export const prisma =
 
 if (process.env.NODE_ENV !== "production") {
     globalForPrisma.prisma = prisma;
+}
+
+/**
+ * Creates the user's empty profile if it does not exist yet. Safe when several
+ * requests open the same profile at once: Prisma's upsert is a read followed by
+ * an INSERT, so two first opens could both insert and one failed on
+ * user_profiles_user_id_key. ON DUPLICATE KEY UPDATE takes an exclusive lock on
+ * the duplicate, so later openers wait for the first insert and reuse its row.
+ * Call it with the plain client before a transaction that may roll back.
+ */
+export async function ensureUserProfile(
+    client: PrismaNamespace.TransactionClient,
+    userId: number
+): Promise<void> {
+    const existing = await client.userProfile.findUnique({
+        where: { userId },
+        select: { id: true },
+    });
+    if (existing) return;
+    const now = new Date();
+    await client.$executeRaw`
+        INSERT INTO user_profiles (user_id, created_at, updated_at)
+        VALUES (${userId}, ${now}, ${now})
+        ON DUPLICATE KEY UPDATE user_id = user_id
+    `;
 }

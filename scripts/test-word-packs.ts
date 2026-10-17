@@ -438,7 +438,7 @@ function runSelfChecks() {
     assert.ok("rows" in splitBulkWordUploadLines("word,difficulty\nApple,1,Fruit,,Red", "en"));
     assert.deepEqual(
         splitBulkWordUploadLines(Array.from({ length: MAX_BULK_WORD_UPLOAD_ROWS + 1 }, () => "a,1,b").join("\n")),
-        { error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satiri icerebilir.` }
+        { error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satırı içerebilir.` }
     );
     const missingTaboo = parseBulkWordUploadRow({ rowNumber: 7, line: "Elma,1,Meyve,," }, "csv_categories");
     assert.ok(!("error" in missingTaboo));

@@ -1,4 +1,4 @@
-import { Prisma, prisma } from "@hushle/platform-db";
+import { ensureUserProfile, Prisma, prisma } from "@hushle/platform-db";
 import { z } from "zod";
 
 const profilePatchSchema = z
@@ -160,17 +160,11 @@ export async function updatePlayerProfile(input: {
         requestedDisplayName !== undefined &&
         requestedDisplayName !== previousDisplayName;
 
+    await ensureUserProfile(prisma, input.userId);
     const profile = await prisma.$transaction(async (tx) => {
-        const updated = await tx.userProfile.upsert({
+        const updated = await tx.userProfile.update({
             where: { userId: input.userId },
-            create: {
-                userId: input.userId,
-                ...(patch.displayName !== undefined
-                    ? { displayName: patch.displayName }
-                    : {}),
-                ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
-            },
-            update: {
+            data: {
                 ...(patch.displayName !== undefined
                     ? { displayName: patch.displayName }
                     : {}),
