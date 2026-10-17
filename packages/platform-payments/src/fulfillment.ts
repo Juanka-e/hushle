@@ -1,5 +1,5 @@
 import { Prisma, prisma, type PaymentOrder } from "@hushle/platform-db";
-import { grantPaymentCoinLot } from "@hushle/platform-wallet";
+import { ensureWallet, grantPaymentCoinLot } from "@hushle/platform-wallet";
 import { z } from "zod";
 import { assertPaymentOrderTransition } from "./order-state-machine";
 import {
@@ -325,6 +325,13 @@ export async function fulfillPaidPaymentOrder(input: {
     const orderId = parsedOrderId.data;
     const now = input.now ?? new Date();
     try {
+        // Open the wallet before the grant transaction, so a rolled-back grant
+        // never leaves other requests queued behind an uncommitted wallet row.
+        const owner = await prisma.paymentOrder.findUnique({
+            where: { id: orderId },
+            select: { userId: true },
+        });
+        if (owner) await ensureWallet(prisma, owner.userId);
         return await runFulfillmentTransaction(orderId, now);
     } catch (error) {
         const normalized = normalizeFulfillmentError(error);

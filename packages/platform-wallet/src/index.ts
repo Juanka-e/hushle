@@ -8,6 +8,7 @@ type LockedWallet = {
     id: number;
     userId: number;
     coinBalance: number;
+    updatedAt: Date;
 };
 
 export type WalletLedgerMutationResult = {
@@ -85,7 +86,8 @@ async function lockWallet(tx: TransactionClient, userId: number): Promise<Locked
         SELECT
             id,
             user_id AS userId,
-            coin_balance AS coinBalance
+            coin_balance AS coinBalance,
+            updated_at AS updatedAt
         FROM wallets
         WHERE user_id = ${userId}
         FOR UPDATE
@@ -133,38 +135,113 @@ async function ensureWalletLedgerBaseline(
         return existing;
     }
 
-    // The read above uses the transaction snapshot, which can predate an
-    // opening entry committed while this transaction waited for the wallet
-    // lock. The opening key is unique per wallet: skip it if it exists and
-    // read the committed row with a locking read, which ignores the snapshot.
+    // The read above uses the transaction snapshot. When that snapshot is
+    // older than the locked wallet row, an opening entry committed while this
+    // transaction waited for the lock is invisible to it, so look it up with a
+    // locking read. Inserting a duplicate instead would fail, and in
+    // repeatable read the rolled-back insert leaves a gap lock at the end of
+    // the ledger table that deadlocks concurrent ledger inserts.
     const idempotencyKey = `wallet:${wallet.id}:opening`;
-    await tx.walletLedgerEntry.createMany({
-        data: [{
-            walletId: wallet.id,
-            source,
-            deltaCoin: wallet.coinBalance,
-            balanceBefore: 0,
-            balanceAfter: wallet.coinBalance,
-            idempotencyKey,
-            referenceType: source === "account_opening" ? "user_registration" : "wallet_migration",
-            referenceId: String(wallet.userId),
-            metadata: {
-                strategy: source === "account_opening" ? "account_opening" : "lazy_legacy_snapshot",
+    if (!(await snapshotShowsLockedWallet(tx, wallet))) {
+        const committed = await findCommittedLedgerEntry(tx, idempotencyKey);
+        if (committed) return { id: committed.id };
+    }
+    try {
+        return await tx.walletLedgerEntry.create({
+            data: {
+                walletId: wallet.id,
+                source,
+                deltaCoin: wallet.coinBalance,
+                balanceBefore: 0,
+                balanceAfter: wallet.coinBalance,
+                idempotencyKey,
+                referenceType: source === "account_opening" ? "user_registration" : "wallet_migration",
+                referenceId: String(wallet.userId),
+                metadata: {
+                    strategy: source === "account_opening" ? "account_opening" : "lazy_legacy_snapshot",
+                },
             },
-        }],
-        skipDuplicates: true,
+            select: { id: true },
+        });
+    } catch (error) {
+        const committed = isIdempotencyKeyConflict(error)
+            ? await findCommittedLedgerEntry(tx, idempotencyKey)
+            : null;
+        if (!committed) throw error;
+        return { id: committed.id };
+    }
+}
+
+// True when this transaction's snapshot shows the locked wallet row as it is
+// now. Every ledger write changes the wallet row in its transaction, except
+// the opening entry written with a brand-new wallet, so a snapshot that shows
+// the current row cannot be missing a committed entry of this wallet.
+async function snapshotShowsLockedWallet(
+    tx: TransactionClient,
+    wallet: LockedWallet
+): Promise<boolean> {
+    const seen = await tx.wallet.findUnique({
+        where: { id: wallet.id },
+        select: { coinBalance: true, updatedAt: true },
     });
-    const rows = await tx.$queryRaw<Array<{ id: number }>>(Prisma.sql`
-        SELECT id
+    return seen !== null
+        && seen.coinBalance === wallet.coinBalance
+        && seen.updatedAt.getTime() === new Date(wallet.updatedAt).getTime();
+}
+
+type LedgerEntryIdentity = {
+    id: number;
+    walletId: number;
+    balanceBefore: number;
+    balanceAfter: number;
+};
+
+function duplicateMutationResult(
+    entry: LedgerEntryIdentity,
+    wallet: LockedWallet
+): WalletLedgerMutationResult {
+    if (entry.walletId !== wallet.id) {
+        throw new Error("Wallet ledger idempotency key belongs to a different wallet.");
+    }
+    return {
+        ledgerEntryId: entry.id,
+        walletId: entry.walletId,
+        balanceBefore: entry.balanceBefore,
+        balanceAfter: entry.balanceAfter,
+        duplicate: true,
+    };
+}
+
+// A locking read returns the latest committed row, not the snapshot version.
+async function findCommittedLedgerEntry(
+    tx: TransactionClient,
+    idempotencyKey: string
+): Promise<LedgerEntryIdentity | null> {
+    const rows = await tx.$queryRaw<LedgerEntryIdentity[]>(Prisma.sql`
+        SELECT
+            id,
+            wallet_id AS walletId,
+            balance_before AS balanceBefore,
+            balance_after AS balanceAfter
         FROM wallet_ledger_entries
         WHERE idempotency_key = ${idempotencyKey}
         FOR SHARE
     `);
-    const entry = rows[0];
-    if (!entry) {
-        throw new Error(`Wallet opening entry is missing for wallet ${wallet.id}.`);
-    }
-    return { id: Number(entry.id) };
+    const row = rows[0];
+    return row
+        ? {
+            id: Number(row.id),
+            walletId: Number(row.walletId),
+            balanceBefore: Number(row.balanceBefore),
+            balanceAfter: Number(row.balanceAfter),
+        }
+        : null;
+}
+
+function isIdempotencyKeyConflict(error: unknown): boolean {
+    return error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === "P2002"
+        && JSON.stringify(error.meta?.target ?? "").includes("idempotency");
 }
 
 async function allocatePaymentCoinLotsForDebit(
@@ -173,11 +250,26 @@ async function allocatePaymentCoinLotsForDebit(
     ledgerEntryId: number,
     debitCoin: number
 ): Promise<void> {
-    const totals = await tx.paymentCoinLot.aggregate({
-        where: { walletId: wallet.id, remainingCoin: { gt: 0 } },
-        _sum: { remainingCoin: true },
-    });
-    const trackedPaymentCoin = totals._sum.remainingCoin ?? 0;
+    // Every lot writer holds the wallet lock first, so after it these rows are
+    // final. A locking read sees them even when the transaction snapshot
+    // predates a top-up that committed while this debit waited for the wallet.
+    // The (wallet_id, created_at) index keeps the scan on this wallet's rows:
+    // with an equality-only range InnoDB stops at the next wallet's entry
+    // without locking its row. The (wallet_id, remaining_coin, created_at)
+    // index has a range on remaining_coin, so the scan also locked the next
+    // wallet's lot row, while that wallet's own debit locks its row first and
+    // then rewrites the same index entry: two debits on neighbouring wallets
+    // deadlocked. Spent lots are filtered after the scan.
+    const lots = (await tx.$queryRaw<Array<{ id: string; remainingCoin: number }>>(Prisma.sql`
+        SELECT id, remaining_coin AS remainingCoin
+        FROM payment_coin_lots FORCE INDEX (payment_coin_lots_wallet_id_created_at_idx)
+        WHERE wallet_id = ${wallet.id}
+        ORDER BY created_at ASC, id ASC
+        FOR UPDATE
+    `))
+        .map((lot) => ({ id: lot.id, remainingCoin: Number(lot.remainingCoin) }))
+        .filter((lot) => lot.remainingCoin > 0);
+    const trackedPaymentCoin = lots.reduce((sum, lot) => sum + lot.remainingCoin, 0);
     if (!Number.isSafeInteger(trackedPaymentCoin) || trackedPaymentCoin > wallet.coinBalance) {
         throw new WalletCoinProvenanceInvariantError();
     }
@@ -188,11 +280,6 @@ async function allocatePaymentCoinLotsForDebit(
         debitCoin - (wallet.coinBalance - trackedPaymentCoin)
     );
     if (paymentCoinToConsume === 0) return;
-    const lots = await tx.paymentCoinLot.findMany({
-        where: { walletId: wallet.id, remainingCoin: { gt: 0 } },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: { id: true, remainingCoin: true },
-    });
     for (const lot of lots) {
         if (paymentCoinToConsume === 0) break;
         const amountCoin = Math.min(paymentCoinToConsume, lot.remainingCoin);
@@ -263,39 +350,53 @@ export async function applyWalletLedgerMutation(
             balanceAfter: true,
         },
     });
-    if (existing) {
-        if (existing.walletId !== wallet.id) {
-            throw new Error("Wallet ledger idempotency key belongs to a different wallet.");
-        }
-        return {
-            ledgerEntryId: existing.id,
-            walletId: existing.walletId,
-            balanceBefore: existing.balanceBefore,
-            balanceAfter: existing.balanceAfter,
-            duplicate: true,
-        };
-    }
+    if (existing) return duplicateMutationResult(existing, wallet);
 
-    const balanceAfter = resolveWalletBalanceAfterDelta(wallet.coinBalance, input.deltaCoin);
+    // The read above uses the transaction snapshot and can miss an entry with
+    // the same key that a concurrent request committed while this one waited
+    // for the wallet lock. That entry decides the outcome, so a balance error
+    // or a key conflict below turns into a duplicate result when it exists.
+    let balanceAfter: number;
+    try {
+        balanceAfter = resolveWalletBalanceAfterDelta(wallet.coinBalance, input.deltaCoin);
+    } catch (error) {
+        // A current snapshot already answered the duplicate question above.
+        const committed = (await snapshotShowsLockedWallet(tx, wallet))
+            ? null
+            : await findCommittedLedgerEntry(tx, idempotencyKey);
+        if (committed) return duplicateMutationResult(committed, wallet);
+        throw error;
+    }
+    // Write the entry before the balance: a key conflict then leaves nothing
+    // of this mutation behind.
+    let ledgerEntry: { id: number };
+    try {
+        ledgerEntry = await tx.walletLedgerEntry.create({
+            data: {
+                walletId: wallet.id,
+                source: input.source,
+                deltaCoin: input.deltaCoin,
+                balanceBefore: wallet.coinBalance,
+                balanceAfter,
+                idempotencyKey,
+                referenceType: input.referenceType ?? null,
+                referenceId:
+                    input.referenceId === undefined || input.referenceId === null
+                        ? null
+                        : String(input.referenceId),
+                actorUserId: input.actorUserId ?? null,
+                metadata: input.metadata,
+            },
+            select: { id: true },
+        });
+    } catch (error) {
+        const committed = isIdempotencyKeyConflict(error)
+            ? await findCommittedLedgerEntry(tx, idempotencyKey)
+            : null;
+        if (!committed) throw error;
+        return duplicateMutationResult(committed, wallet);
+    }
     await writeLockedWalletBalance(tx, wallet.id, balanceAfter);
-    const ledgerEntry = await tx.walletLedgerEntry.create({
-        data: {
-            walletId: wallet.id,
-            source: input.source,
-            deltaCoin: input.deltaCoin,
-            balanceBefore: wallet.coinBalance,
-            balanceAfter,
-            idempotencyKey,
-            referenceType: input.referenceType ?? null,
-            referenceId:
-                input.referenceId === undefined || input.referenceId === null
-                    ? null
-                    : String(input.referenceId),
-            actorUserId: input.actorUserId ?? null,
-            metadata: input.metadata,
-        },
-        select: { id: true },
-    });
     if (input.deltaCoin < 0) {
         await allocatePaymentCoinLotsForDebit(
             tx,
@@ -312,6 +413,38 @@ export async function applyWalletLedgerMutation(
         balanceAfter,
         duplicate: false,
     };
+}
+
+// A duplicate top-up entry may have been committed after this transaction's
+// snapshot; its lot is read the same way, past the snapshot.
+async function findCommittedCoinLotForOrder(
+    tx: TransactionClient,
+    orderId: string
+): Promise<{ id: string; walletId: number; grantLedgerEntryId: number; grantedCoin: number } | null> {
+    const rows = await tx.$queryRaw<Array<{
+        id: string;
+        walletId: number;
+        grantLedgerEntryId: number;
+        grantedCoin: number;
+    }>>(Prisma.sql`
+        SELECT
+            id,
+            wallet_id AS walletId,
+            grant_ledger_entry_id AS grantLedgerEntryId,
+            granted_coin AS grantedCoin
+        FROM payment_coin_lots
+        WHERE order_id = ${orderId}
+        FOR SHARE
+    `);
+    const row = rows[0];
+    return row
+        ? {
+            id: row.id,
+            walletId: Number(row.walletId),
+            grantLedgerEntryId: Number(row.grantLedgerEntryId),
+            grantedCoin: Number(row.grantedCoin),
+        }
+        : null;
 }
 
 export async function grantPaymentCoinLot(
@@ -336,7 +469,10 @@ export async function grantPaymentCoinLot(
         referenceId: input.orderId,
         metadata: input.metadata,
     });
-    const existing = await tx.paymentCoinLot.findUnique({ where: { orderId: input.orderId } });
+    const existing = await tx.paymentCoinLot.findUnique({
+        where: { orderId: input.orderId },
+        select: { id: true, walletId: true, grantLedgerEntryId: true, grantedCoin: true },
+    }) ?? (mutation.duplicate ? await findCommittedCoinLotForOrder(tx, input.orderId) : null);
     if (existing) {
         if (
             existing.walletId !== mutation.walletId
@@ -383,10 +519,34 @@ export async function reversePaymentCoinLot(
 ): Promise<PaymentCoinLotReversalResult> {
     const wallet = await lockWallet(tx, input.userId);
     await ensureWalletLedgerBaseline(tx, wallet);
-    const lot = await tx.paymentCoinLot.findFirst({
-        where: { id: input.coinLotId, orderId: input.orderId, walletId: wallet.id },
-    });
-    if (!lot) throw new WalletCoinProvenanceInvariantError("Payment coin lot was not found.");
+    // Lock order matches debits and grants: wallet row first, then the lot.
+    const lotRows = await tx.$queryRaw<Array<{
+        id: string;
+        orderId: string;
+        walletId: number;
+        grantedCoin: number;
+        remainingCoin: number;
+        spentCoin: number;
+        reversedCoin: number;
+        reversalLedgerEntryId: number | null;
+    }>>(Prisma.sql`
+        SELECT
+            id,
+            order_id AS orderId,
+            wallet_id AS walletId,
+            granted_coin AS grantedCoin,
+            remaining_coin AS remainingCoin,
+            spent_coin AS spentCoin,
+            reversed_coin AS reversedCoin,
+            reversal_ledger_entry_id AS reversalLedgerEntryId
+        FROM payment_coin_lots
+        WHERE id = ${input.coinLotId}
+        FOR UPDATE
+    `);
+    const lot = lotRows[0];
+    if (!lot || lot.orderId !== input.orderId || Number(lot.walletId) !== wallet.id) {
+        throw new WalletCoinProvenanceInvariantError("Payment coin lot was not found.");
+    }
     if (lot.grantedCoin !== lot.remainingCoin + lot.spentCoin + lot.reversedCoin) {
         throw new WalletCoinProvenanceInvariantError();
     }
