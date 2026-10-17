@@ -21,16 +21,16 @@ import type { SystemSettingsResponse } from "@/types/system-settings";
 const inputClassName = "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-blue-500";
 const helperClassName = "text-xs text-muted-foreground";
 const brandingGuide = [
-    "Open Graph gorseli, link paylasildiginda gorulen buyuk kart gorselidir.",
-    "Tavsiye edilen olcu: 1200x630 px.",
+    "Open Graph görseli, link paylaşıldığında görülen büyük kart görselidir.",
+    "Tavsiye edilen ölçü: 1200x630 px.",
     "Desteklenecek hedef formatlar: PNG, JPG/JPEG, WEBP.",
-    "Mutlaka okunur tipografi ve guclu kontrast kullan.",
+    "Mutlaka okunur tipografi ve güçlü kontrast kullan.",
 ];
 const sections = [
     {
         key: "platform",
         label: "Platform",
-        description: "Bakim, feature gate ve operasyon davranislari.",
+        description: "Bakım, feature gate ve operasyon davranışları.",
         icon: SlidersHorizontal,
     },
     {
@@ -42,7 +42,7 @@ const sections = [
     {
         key: "economy",
         label: "Ekonomi",
-        description: "Coin, odul ve magaza carpani davranislari.",
+        description: "Coin, ödül ve mağaza çarpanı davranışları.",
         icon: Coins,
     },
     {
@@ -53,8 +53,8 @@ const sections = [
     },
     {
         key: "security",
-        label: "Guvenlik",
-        description: "Captcha policy ve provider hazirligi.",
+        label: "Güvenlik",
+        description: "Captcha policy ve provider hazırlığı.",
         icon: ShieldCheck,
     },
 ] as const;
@@ -148,7 +148,7 @@ function BrandingAssetField({
             <div className="flex flex-wrap items-center gap-3">
                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/70 bg-background px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-foreground transition hover:border-blue-500/40 hover:text-blue-600">
                     <ImagePlus className="h-3.5 w-3.5" />
-                    {uploading ? "Yukleniyor" : "Dosya yukle"}
+                    {uploading ? "Yükleniyor" : "Dosya yükle"}
                     <input
                         type="file"
                         accept="image/png,image/jpeg,image/webp"
@@ -169,10 +169,10 @@ function BrandingAssetField({
                     className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground transition hover:border-amber-500/40 hover:text-amber-600"
                 >
                     <RefreshCcw className="h-3.5 w-3.5" />
-                    Varsayilana don
+                    Varsayılana dön
                 </button>
                 <div className="text-xs text-muted-foreground">
-                    PNG, JPEG veya WebP kullan. {sizeHint} Yatay wordmark icin `Logo` kullan. Root-relative path otomatik preview edilir.
+                    PNG, JPEG veya WebP kullan. {sizeHint} Yatay wordmark için `Logo` kullan. Root-relative path otomatik preview edilir.
                 </div>
             </div>
 
@@ -194,7 +194,7 @@ function BrandingAssetField({
                         />
                     ) : (
                         <div className="text-xs text-muted-foreground">
-                            Dis URL kaydedildi. Guvenlik nedeniyle otomatik preview kapali.
+                            Dış URL kaydedildi. Güvenlik nedeniyle otomatik preview kapalı.
                         </div>
                     )}
                 </div>
@@ -222,13 +222,13 @@ export default function SystemSettingsPage() {
         try {
             const response = await fetch("/api/admin/system-settings", { cache: "no-store" });
             if (!response.ok) {
-                throw new Error("Sistem ayarlari yuklenemedi.");
+                throw new Error("Sistem ayarları yüklenemedi.");
             }
 
             const nextPayload = (await response.json()) as SystemSettingsResponse;
             setPayload(nextPayload);
         } catch (loadError) {
-            setError(loadError instanceof Error ? loadError.message : "Sistem ayarlari yuklenemedi.");
+            setError(loadError instanceof Error ? loadError.message : "Sistem ayarları yüklenemedi.");
         } finally {
             setLoading(false);
         }
@@ -324,14 +324,14 @@ export default function SystemSettingsPage() {
 
             const nextPayload = (await response.json()) as SystemSettingsResponse | { error?: string };
             if (!response.ok || !("settings" in nextPayload)) {
-                throw new Error("error" in nextPayload && nextPayload.error ? nextPayload.error : "Sistem ayarlari kaydedilemedi.");
+                throw new Error("error" in nextPayload && nextPayload.error ? nextPayload.error : "Sistem ayarları kaydedilemedi.");
             }
 
             setPayload(nextPayload);
             dispatchBrandingUpdated(nextPayload.settings.branding);
-            setSuccess("Sistem ayarlari kaydedildi.");
+            setSuccess("Sistem ayarları kaydedildi.");
         } catch (saveError) {
-            setError(saveError instanceof Error ? saveError.message : "Sistem ayarlari kaydedilemedi.");
+            setError(saveError instanceof Error ? saveError.message : "Sistem ayarları kaydedilemedi.");
         } finally {
             setSaving(false);
         }
@@ -357,7 +357,7 @@ export default function SystemSettingsPage() {
 
             const payload = (await response.json()) as { url?: string; error?: string };
             if (!response.ok || !payload.url) {
-                throw new Error(payload.error || "Branding asset yuklenemedi.");
+                throw new Error(payload.error || "Branding asset yüklenemedi.");
             }
 
             if (assetType === "logo") {
@@ -368,16 +368,16 @@ export default function SystemSettingsPage() {
                 updatePayload("branding", "ogImageUrl", payload.url);
             }
 
-            setSuccess("Branding asset yuklendi. Kaydet ile kalici hale getirebilirsin.");
+            setSuccess("Branding asset yüklendi. Kaydet ile kalıcı hale getirebilirsin.");
         } catch (uploadError) {
-            setError(uploadError instanceof Error ? uploadError.message : "Branding asset yuklenemedi.");
+            setError(uploadError instanceof Error ? uploadError.message : "Branding asset yüklenemedi.");
         } finally {
             setUploadingAsset(null);
         }
     };
 
     if (loading || !payload) {
-        return <div className="p-6 text-sm text-muted-foreground">Sistem ayarlari yukleniyor...</div>;
+        return <div className="p-6 text-sm text-muted-foreground">Sistem ayarları yükleniyor...</div>;
     }
 
     const ogImageUrl = payload.settings.branding.ogImageUrl.trim();
@@ -386,32 +386,32 @@ export default function SystemSettingsPage() {
         {
             key: "base" as const,
             label: "Temel Ekonomi",
-            description: "Mac odulleri, weekend boost ve store carpanlari.",
+            description: "Maç ödülleri, weekend boost ve store çarpanları.",
         },
         {
             key: "guard" as const,
-            label: "Odul Koruma Tavani",
-            description: "Rolling window, soft cap ve hard ceiling ayarlari.",
+            label: "Ödül Koruma Tavanı",
+            description: "Rolling window, soft cap ve hard ceiling ayarları.",
         },
         {
             key: "group" as const,
             label: "Tekrar Eden Grup",
-            description: "Ayni lineup tekrarlarinda yumusak odul dususu.",
+            description: "Aynı lineup tekrarlarında yumuşak ödül düşüşü.",
         },
     ];
 
     const dampingProfileExample = {
-        gentle: "Ornek: soft cap'e yaklasan oyuncu once %100 -> %90 -> %75 bandinda kalir.",
-        standard: "Ornek: soft cap sonrasi %100 -> %85 -> %65 gibi daha belirgin ama hala yumusak bir dusus uygular.",
-        strict: "Ornek: asiri tekrar veya hizli birikimde %100 -> %70 -> %45 gibi daha sert dusus uygular.",
+        gentle: "Örnek: soft cap'e yaklaşan oyuncu önce %100 -> %90 -> %75 bandında kalır.",
+        standard: "Örnek: soft cap sonrası %100 -> %85 -> %65 gibi daha belirgin ama hâlâ yumuşak bir düşüş uygular.",
+        strict: "Örnek: aşırı tekrar veya hızlı birikimde %100 -> %70 -> %45 gibi daha sert düşüş uygular.",
     } satisfies Record<SystemSettingsResponse["settings"]["economy"]["matchRewardDampingProfile"], string>;
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-3xl font-black tracking-tight text-foreground">Sistem Ayarlari</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">Canli platform davranisini runtime&apos;da yonet. Secret degerler burada degil, deploy env tarafinda kalir.</p>
+                    <h1 className="text-3xl font-black tracking-tight text-foreground">Sistem Ayarları</h1>
+                    <p className="mt-1 text-sm text-muted-foreground">Canlı platform davranışını runtime&apos;da yönet. Secret değerler burada değil, deploy env tarafında kalır.</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" onClick={() => void loadSettings()} disabled={loading || saving}>
@@ -463,19 +463,19 @@ export default function SystemSettingsPage() {
                     <div className="grid gap-3 md:grid-cols-2">
                         <ToggleField
                             checked={payload.settings.platform.maintenanceEnabled}
-                            label="Bakim Modu"
-                            description="Aktifse yeni create/join, kayit ve magazaya erisim kapatilir. Admin erisimi devam eder."
+                            label="Bakım Modu"
+                            description="Aktifse yeni create/join, kayıt ve mağazaya erişim kapatılır. Admin erişimi devam eder."
                             onChange={(checked) => updatePayload("platform", "maintenanceEnabled", checked)}
                         />
                         <ToggleField
                             checked={payload.settings.platform.motdEnabled}
                             label="MOTD Banner"
-                            description="Tum oyunculara ust bantta operasyonel mesaj gosterir."
+                            description="Tüm oyunculara üst bantta operasyonel mesaj gösterir."
                             onChange={(checked) => updatePayload("platform", "motdEnabled", checked)}
                         />
                     </div>
                     <div className="space-y-2">
-                        <FieldLabel label="Bakim Mesaji" helper="Bakim modu aktif oldugunda kullaniciya donulecek ana mesaj." />
+                        <FieldLabel label="Bakım Mesajı" helper="Bakım modu aktif olduğunda kullanıcıya dönülecek ana mesaj." />
                         <textarea
                             className={`${inputClassName} min-h-24 resize-y`}
                             value={payload.settings.platform.maintenanceMessage}
@@ -483,7 +483,7 @@ export default function SystemSettingsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <FieldLabel label="MOTD" helper="Dashboard ve giris yuzeyinde gosterilecek kisa canli mesaj." />
+                        <FieldLabel label="MOTD" helper="Dashboard ve giriş yüzeyinde gösterilecek kısa canlı mesaj." />
                         <textarea
                             className={`${inputClassName} min-h-20 resize-y`}
                             value={payload.settings.platform.motdText}
@@ -502,7 +502,7 @@ export default function SystemSettingsPage() {
                 <CardContent className="space-y-5">
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <div className="space-y-2">
-                            <FieldLabel label="Site Adi" helper="Open Graph, title template ve genel marka adi." />
+                            <FieldLabel label="Site Adı" helper="Open Graph, title template ve genel marka adı." />
                             <input
                                 className={inputClassName}
                                 value={payload.settings.branding.siteName}
@@ -510,7 +510,7 @@ export default function SystemSettingsPage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <FieldLabel label="Kisa Ad" helper="Uygulama adi ve kisaltilmis marka etiketi." />
+                            <FieldLabel label="Kısa Ad" helper="Uygulama adı ve kısaltılmış marka etiketi." />
                             <input
                                 className={inputClassName}
                                 value={payload.settings.branding.siteShortName}
@@ -518,7 +518,7 @@ export default function SystemSettingsPage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <FieldLabel label="Logo Yolu" helper="Public yuzeylerde kullanilacak ana marka gorseli." />
+                            <FieldLabel label="Logo Yolu" helper="Public yüzeylerde kullanılacak ana marka görseli." />
                             <input
                                 className={inputClassName}
                                 placeholder="/branding/logo/..."
@@ -527,7 +527,7 @@ export default function SystemSettingsPage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <FieldLabel label="Theme Color" helper="Tarayici ve platform meta theme color degeri." />
+                            <FieldLabel label="Theme Color" helper="Tarayıcı ve platform meta theme color değeri." />
                             <input
                                 className={inputClassName}
                                 value={payload.settings.branding.themeColor}
@@ -546,7 +546,7 @@ export default function SystemSettingsPage() {
 
                     <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <FieldLabel label="Varsayilan Title" helper="Ana sayfa ve share kartlari icin ana baslik." />
+                            <FieldLabel label="Varsayılan Title" helper="Ana sayfa ve share kartları için ana başlık." />
                             <input
                                 className={inputClassName}
                                 value={payload.settings.branding.defaultTitle}
@@ -554,7 +554,7 @@ export default function SystemSettingsPage() {
                             />
                         </div>
                         <div className="space-y-2">
-                            <FieldLabel label="Title Template" helper="Sayfa bazli title varsa `%s` yerine gelir." />
+                            <FieldLabel label="Title Template" helper="Sayfa bazlı title varsa `%s` yerine gelir." />
                             <input
                                 className={inputClassName}
                                 value={payload.settings.branding.titleTemplate}
@@ -564,7 +564,7 @@ export default function SystemSettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                        <FieldLabel label="Varsayilan Description" helper="SEO description, Open Graph ve Twitter kartlarinda kullanilir." />
+                        <FieldLabel label="Varsayılan Description" helper="SEO description, Open Graph ve Twitter kartlarında kullanılır." />
                         <textarea
                             className={`${inputClassName} min-h-24 resize-y`}
                             value={payload.settings.branding.defaultDescription}
@@ -575,7 +575,7 @@ export default function SystemSettingsPage() {
                     <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
                         <BrandingAssetField
                             label="Logo Asset"
-                            helper="Genis wordmark veya yatay logo. Ana sayfa, login/register ve desktop header gibi yatay yuzeylerde kullanilir."
+                            helper="Geniş wordmark veya yatay logo. Ana sayfa, login/register ve desktop header gibi yatay yüzeylerde kullanılır."
                             placeholder="/branding/logo/..."
                             value={payload.settings.branding.logoUrl}
                             previewAlt="Logo preview"
@@ -587,7 +587,7 @@ export default function SystemSettingsPage() {
                         />
                         <BrandingAssetField
                             label="Favicon Asset"
-                            helper="Varsayilan fallback `/favicon.ico` olarak kalir."
+                            helper="Varsayılan fallback `/favicon.ico` olarak kalır."
                             placeholder="/favicon.ico"
                             value={payload.settings.branding.faviconUrl}
                             previewAlt="Favicon preview"
@@ -599,7 +599,7 @@ export default function SystemSettingsPage() {
                         />
                         <BrandingAssetField
                             label="Open Graph Asset"
-                            helper="Bos birakirsan varsayilan text-only share metadata calisir."
+                            helper="Boş bırakırsan varsayılan text-only share metadata çalışır."
                             placeholder="https://... veya /branding/og/..."
                             value={payload.settings.branding.ogImageUrl}
                             previewAlt="Open Graph preview"
@@ -633,7 +633,7 @@ export default function SystemSettingsPage() {
 
                             <div className="rounded-2xl border border-border/70 bg-background p-4">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                                    Tarayici sekmesi / title
+                                    Tarayıcı sekmesi / title
                                 </div>
                                 <div className="mt-3 truncate text-base font-semibold text-foreground">
                                     {payload.settings.branding.defaultTitle}
@@ -660,10 +660,10 @@ export default function SystemSettingsPage() {
                                     ) : ogImageUrl ? (
                                         <div className="space-y-3 rounded-2xl border border-dashed border-border/70 bg-muted/40 p-4 text-left text-xs text-muted-foreground">
                                             <div className="font-semibold uppercase tracking-[0.16em] text-foreground">
-                                                Otomatik preview kapali
+                                                Otomatik preview kapalı
                                             </div>
                                             <div>
-                                                Dis URL gorselleri admin tarayicisindan otomatik yuklenmez. Burada sadece root-relative app asset&apos;leri otomatik preview edilir.
+                                                Dış URL görselleri admin tarayıcısından otomatik yüklenmez. Burada sadece root-relative app asset&apos;leri otomatik preview edilir.
                                             </div>
                                             <a
                                                 href={ogImageUrl}
@@ -671,12 +671,12 @@ export default function SystemSettingsPage() {
                                                 rel="noreferrer"
                                                 className="inline-flex rounded-full border border-border/70 bg-background px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground transition hover:border-blue-500/40 hover:text-blue-600"
                                             >
-                                                Gorseli yeni sekmede ac
+                                                Görseli yeni sekmede aç
                                             </a>
                                         </div>
                                     ) : (
                                         <div className="flex aspect-[1200/630] w-full items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/40 text-center text-xs text-muted-foreground">
-                                            OG gorseli girildiginde burada onizleme gorunur.
+                                            OG görseli girildiğinde burada önizleme görünür.
                                         </div>
                                     )}
                                     <div className="mt-3 rounded-2xl bg-background/90 p-3 backdrop-blur">
@@ -695,7 +695,7 @@ export default function SystemSettingsPage() {
                         </div>
 
                         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 px-4 py-4">
-                            <div className="text-sm font-semibold text-foreground">Kisa Ogretici</div>
+                            <div className="text-sm font-semibold text-foreground">Kısa Öğretici</div>
                             <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                                 {brandingGuide.map((item) => (
                                     <div key={item} className="flex gap-2">
@@ -704,7 +704,7 @@ export default function SystemSettingsPage() {
                                     </div>
                                 ))}
                                 <div className="rounded-xl border border-border/70 bg-background px-3 py-3 text-xs text-muted-foreground">
-                                    Root-relative yol (`/og-cover.png`) otomatik preview edilir. Tam URL kaydedilebilir ama guvenlik nedeniyle admin panelde otomatik yuklenmez.
+                                    Root-relative yol (`/og-cover.png`) otomatik preview edilir. Tam URL kaydedilebilir ama güvenlik nedeniyle admin panelde otomatik yüklenmez.
                                 </div>
                             </div>
                         </div>
@@ -720,11 +720,11 @@ export default function SystemSettingsPage() {
                     <CardTitle className="flex items-center gap-2 text-xl"><SlidersHorizontal className="h-5 w-5" />Feature Gate&apos;ler</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    <ToggleField checked={payload.settings.features.registrationsEnabled} label="Kayitlar Acik" description="Register endpoint&apos;ini acik veya kapali tutar." onChange={(checked) => updatePayload("features", "registrationsEnabled", checked)} />
-                    <ToggleField checked={payload.settings.features.guestGameplayEnabled} label="Misafir Girisi" description="Guest create/join akisini kontrol eder." onChange={(checked) => updatePayload("features", "guestGameplayEnabled", checked)} />
-                    <ToggleField checked={payload.settings.features.roomCreateEnabled} label="Oda Olusturma" description="Yeni lobi acma iznini kontrol eder." onChange={(checked) => updatePayload("features", "roomCreateEnabled", checked)} />
-                    <ToggleField checked={payload.settings.features.roomJoinEnabled} label="Odaya Katilim" description="Mevcut odalara yeni oyuncu katilimini kontrol eder." onChange={(checked) => updatePayload("features", "roomJoinEnabled", checked)} />
-                    <ToggleField checked={payload.settings.features.storeEnabled} label="Magaza Acik" description="Store catalog, purchase, bundle ve equip akisini kontrol eder." onChange={(checked) => updatePayload("features", "storeEnabled", checked)} />
+                    <ToggleField checked={payload.settings.features.registrationsEnabled} label="Kayıtlar Açık" description="Register endpoint&apos;ini açık veya kapalı tutar." onChange={(checked) => updatePayload("features", "registrationsEnabled", checked)} />
+                    <ToggleField checked={payload.settings.features.guestGameplayEnabled} label="Misafir Girişi" description="Guest create/join akışını kontrol eder." onChange={(checked) => updatePayload("features", "guestGameplayEnabled", checked)} />
+                    <ToggleField checked={payload.settings.features.roomCreateEnabled} label="Oda Oluşturma" description="Yeni lobi açma iznini kontrol eder." onChange={(checked) => updatePayload("features", "roomCreateEnabled", checked)} />
+                    <ToggleField checked={payload.settings.features.roomJoinEnabled} label="Odaya Katılım" description="Mevcut odalara yeni oyuncu katılımını kontrol eder." onChange={(checked) => updatePayload("features", "roomJoinEnabled", checked)} />
+                    <ToggleField checked={payload.settings.features.storeEnabled} label="Mağaza Açık" description="Store catalog, purchase, bundle ve equip akışını kontrol eder." onChange={(checked) => updatePayload("features", "storeEnabled", checked)} />
                 </CardContent>
             </Card>
             ) : null}
@@ -762,43 +762,43 @@ export default function SystemSettingsPage() {
                         <div className="space-y-5">
                             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="space-y-2">
-                                    <FieldLabel label="Baslangic Coin" helper="Yeni kayit olan kullanicinin wallet bakiyesi." />
+                                    <FieldLabel label="Başlangıç Coin" helper="Yeni kayıt olan kullanıcının wallet bakiyesi." />
                                     <input className={inputClassName} type="number" min="0" value={payload.settings.economy.startingCoinBalance} onChange={(event) => updatePayload("economy", "startingCoinBalance", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Galibiyet Odulu" helper="Mac kazanana verilecek baz coin. Ornek: 120 coin." />
+                                    <FieldLabel label="Galibiyet Ödülü" helper="Maç kazanana verilecek baz coin. Örnek: 120 coin." />
                                     <input className={inputClassName} type="number" min="0" value={payload.settings.economy.winRewardCoin} onChange={(event) => updatePayload("economy", "winRewardCoin", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Maglubiyet Odulu" helper="Kaybeden oyuncuya verilecek baz coin. Ornek: 40 coin." />
+                                    <FieldLabel label="Mağlubiyet Ödülü" helper="Kaybeden oyuncuya verilecek baz coin. Örnek: 40 coin." />
                                     <input className={inputClassName} type="number" min="0" value={payload.settings.economy.lossRewardCoin} onChange={(event) => updatePayload("economy", "lossRewardCoin", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Beraberlik Odulu" helper="Mac berabere biterse verilecek baz coin. Ornek: 40 coin." />
+                                    <FieldLabel label="Beraberlik Ödülü" helper="Maç berabere biterse verilecek baz coin. Örnek: 40 coin." />
                                     <input className={inputClassName} type="number" min="0" value={payload.settings.economy.drawRewardCoin} onChange={(event) => updatePayload("economy", "drawRewardCoin", Number(event.target.value))} />
                                 </div>
                             </div>
 
                             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                 <div className="space-y-2">
-                                    <FieldLabel label="Mac Coin Carpani" helper="Tum mac odullerine uygulanan global multiplier. Ornek: 1.25 ise 120 coin galibiyet odulu 150 olur." />
+                                    <FieldLabel label="Maç Coin Çarpanı" helper="Tüm maç ödüllerine uygulanan global multiplier. Örnek: 1.25 ise 120 coin galibiyet ödülü 150 olur." />
                                     <input className={inputClassName} type="number" min="0" max="10" step="0.1" value={payload.settings.economy.matchCoinMultiplier} onChange={(event) => updatePayload("economy", "matchCoinMultiplier", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Weekend Carpani" helper="Hafta sonu aktifse global carpana eklenir. Ornek: 1.5." />
+                                    <FieldLabel label="Weekend Çarpanı" helper="Hafta sonu aktifse global çarpana eklenir. Örnek: 1.5." />
                                     <input className={inputClassName} type="number" min="1" max="10" step="0.1" value={payload.settings.economy.weekendCoinMultiplier} onChange={(event) => updatePayload("economy", "weekendCoinMultiplier", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Magaza Fiyat Carpani" helper="Tum item ve bundle liste fiyatlarina runtime uygulanir. Ornek: 1.2 ise 500 coin item 600 gorunur." />
+                                    <FieldLabel label="Mağaza Fiyat Çarpanı" helper="Tüm item ve bundle liste fiyatlarına runtime uygulanır. Örnek: 1.2 ise 500 coin item 600 görünür." />
                                     <input className={inputClassName} type="number" min="0.1" max="10" step="0.1" value={payload.settings.economy.storePriceMultiplier} onChange={(event) => updatePayload("economy", "storePriceMultiplier", Number(event.target.value))} />
                                 </div>
                             </div>
 
                             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                <ToggleField checked={payload.settings.economy.weekendCoinMultiplierEnabled} label="Weekend Boost" description="Cumartesi/Pazar odullerine ek multiplier uygular." onChange={(checked) => updatePayload("economy", "weekendCoinMultiplierEnabled", checked)} />
-                                <ToggleField checked={payload.settings.economy.bundlesEnabled} label="Bundle Satislari" description="Bundle katalogu ve satin alma akislarini acar/kapatir." onChange={(checked) => updatePayload("economy", "bundlesEnabled", checked)} />
-                                <ToggleField checked={payload.settings.economy.discountCampaignsEnabled} label="Kampanya Indirimleri" description="Discount campaign fiyat dusumlerini runtime kapatir/acar." onChange={(checked) => updatePayload("economy", "discountCampaignsEnabled", checked)} />
-                                <ToggleField checked={payload.settings.economy.couponsEnabled} label="Kuponlar" description="Coupon preview ve coupon checkout davranisini acar/kapatir." onChange={(checked) => updatePayload("economy", "couponsEnabled", checked)} />
+                                <ToggleField checked={payload.settings.economy.weekendCoinMultiplierEnabled} label="Weekend Boost" description="Cumartesi/Pazar ödüllerine ek multiplier uygular." onChange={(checked) => updatePayload("economy", "weekendCoinMultiplierEnabled", checked)} />
+                                <ToggleField checked={payload.settings.economy.bundlesEnabled} label="Bundle Satışları" description="Bundle kataloğu ve satın alma akışlarını açar/kapatır." onChange={(checked) => updatePayload("economy", "bundlesEnabled", checked)} />
+                                <ToggleField checked={payload.settings.economy.discountCampaignsEnabled} label="Kampanya İndirimleri" description="Discount campaign fiyat düşümlerini runtime kapatır/açar." onChange={(checked) => updatePayload("economy", "discountCampaignsEnabled", checked)} />
+                                <ToggleField checked={payload.settings.economy.couponsEnabled} label="Kuponlar" description="Coupon preview ve coupon checkout davranışını açar/kapatır." onChange={(checked) => updatePayload("economy", "couponsEnabled", checked)} />
                             </div>
                         </div>
                     ) : null}
@@ -806,9 +806,9 @@ export default function SystemSettingsPage() {
                     {activeEconomyPanel === "guard" ? (
                         <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-4">
                             <div className="space-y-1">
-                                <div className="text-sm font-semibold text-foreground">Odul Koruma Tavani</div>
+                                <div className="text-sm font-semibold text-foreground">Ödül Koruma Tavanı</div>
                                 <div className={helperClassName}>
-                                    Bu katman captcha veya login guvenligiyle cakisma yaratmaz. Guvenlikte istek dogrulugu korunur; burada ise yalniz match reward pacing&apos;i kontrol edilir.
+                                    Bu katman captcha veya login güvenliğiyle çakışma yaratmaz. Güvenlikte istek doğruluğu korunur; burada ise yalnız match reward pacing&apos;i kontrol edilir.
                                 </div>
                             </div>
 
@@ -816,30 +816,30 @@ export default function SystemSettingsPage() {
                                 <ToggleField
                                     checked={payload.settings.economy.matchRewardGuardEnabled}
                                     label="Guard Aktif"
-                                    description="Match reward icin rolling window bazli koruma katmanini acar."
+                                    description="Match reward için rolling window bazlı koruma katmanını açar."
                                     onChange={(checked) => updatePayload("economy", "matchRewardGuardEnabled", checked)}
                                 />
                                 <div className="space-y-2">
-                                    <FieldLabel label="Window Saat" helper="Son kac saat icindeki match reward toplami izlenecek. Ornek: 24." />
+                                    <FieldLabel label="Window Saat" helper="Son kaç saat içindeki match reward toplamı izlenecek. Örnek: 24." />
                                     <input className={inputClassName} type="number" min="1" max="168" value={payload.settings.economy.matchRewardWindowHours} onChange={(event) => updatePayload("economy", "matchRewardWindowHours", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Soft Cap Coin" helper="Bu esikten sonra odul tam blok yerine kademeli dusmeye baslar. Ornek: 3000." />
+                                    <FieldLabel label="Soft Cap Coin" helper="Bu eşikten sonra ödül tam blok yerine kademeli düşmeye başlar. Örnek: 3000." />
                                     <input className={inputClassName} type="number" min="0" max="100000" value={payload.settings.economy.matchRewardSoftCapCoin} onChange={(event) => updatePayload("economy", "matchRewardSoftCapCoin", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Hard Ceiling Coin" helper="Cok uc farm davranisinda kullanilan ust emniyet tavani. Ornek: 5000." />
+                                    <FieldLabel label="Hard Ceiling Coin" helper="Çok uç farm davranışında kullanılan üst emniyet tavanı. Örnek: 5000." />
                                     <input className={inputClassName} type="number" min="0" max="100000" value={payload.settings.economy.matchRewardHardCapCoin} onChange={(event) => updatePayload("economy", "matchRewardHardCapCoin", Number(event.target.value))} />
                                 </div>
                             </div>
 
                             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                 <div className="space-y-2">
-                                    <FieldLabel label="Min Reward Multiplier" helper="Odul soft cap sonrasinda bu oranin altina dusmez. Ornek: 0.25 ise 120 coin odul en az 30 coin kalir." />
+                                    <FieldLabel label="Min Reward Multiplier" helper="Ödül soft cap sonrasında bu oranın altına düşmez. Örnek: 0.25 ise 120 coin ödül en az 30 coin kalır." />
                                     <input className={inputClassName} type="number" min="0" max="1" step="0.05" value={payload.settings.economy.matchRewardMinMultiplier} onChange={(event) => updatePayload("economy", "matchRewardMinMultiplier", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Damping Profile" helper="Yuzdesel dususun hizini belirler." />
+                                    <FieldLabel label="Damping Profile" helper="Yüzdesel düşüşün hızını belirler." />
                                     <select className={inputClassName} value={payload.settings.economy.matchRewardDampingProfile} onChange={(event) => updatePayload("economy", "matchRewardDampingProfile", event.target.value as SystemSettingsResponse["settings"]["economy"]["matchRewardDampingProfile"])}>
                                         <option value="gentle">gentle</option>
                                         <option value="standard">standard</option>
@@ -848,7 +848,7 @@ export default function SystemSettingsPage() {
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-background px-4 py-3 text-sm text-muted-foreground">
                                     <div>
-                                        <span className="font-semibold text-foreground">Rolling window:</span> gece yarisi reseti yerine son {payload.settings.economy.matchRewardWindowHours} saat izlenir.
+                                        <span className="font-semibold text-foreground">Rolling window:</span> gece yarısı reseti yerine son {payload.settings.economy.matchRewardWindowHours} saat izlenir.
                                     </div>
                                     <div className="mt-2">
                                         <span className="font-semibold text-foreground">Profil etkisi:</span> {dampingProfileExample[payload.settings.economy.matchRewardDampingProfile]}
@@ -861,9 +861,9 @@ export default function SystemSettingsPage() {
                     {activeEconomyPanel === "group" ? (
                         <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/20 p-4">
                             <div className="space-y-1">
-                                <div className="text-sm font-semibold text-foreground">Tekrar Eden Grup Korumasi</div>
+                                <div className="text-sm font-semibold text-foreground">Tekrar Eden Grup Koruması</div>
                                 <div className={helperClassName}>
-                                    Ayni kucuk grubun kisa araliklarla surekli odullu mac oynamasi halinde verimi yumusak sekilde dusurmek icin kullanilir. Bu katman tek basina IP, subnet veya ayni ev bilgisini karar verici yapmaz.
+                                    Aynı küçük grubun kısa aralıklarla sürekli ödüllü maç oynaması halinde verimi yumuşak şekilde düşürmek için kullanılır. Bu katman tek başına IP, subnet veya aynı ev bilgisini karar verici yapmaz.
                                 </div>
                             </div>
 
@@ -871,33 +871,33 @@ export default function SystemSettingsPage() {
                                 <ToggleField
                                     checked={payload.settings.economy.repeatedGroupEnabled}
                                     label="Koruma Aktif"
-                                    description="Ayni lineup tekrarlarinda reward damping uygular."
+                                    description="Aynı lineup tekrarlarında reward damping uygular."
                                     onChange={(checked) => updatePayload("economy", "repeatedGroupEnabled", checked)}
                                 />
                                 <div className="space-y-2">
-                                    <FieldLabel label="Window Saat" helper="Ayni grup tekrarini hangi pencere icinde izleyecegiz. Ornek: 12." />
+                                    <FieldLabel label="Window Saat" helper="Aynı grup tekrarını hangi pencere içinde izleyeceğiz. Örnek: 12." />
                                     <input className={inputClassName} type="number" min="1" max="168" value={payload.settings.economy.repeatedGroupWindowHours} onChange={(event) => updatePayload("economy", "repeatedGroupWindowHours", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Tekrar Esigi" helper="Kac tekrar sonrasi damping baslayacagini belirler. Ornek: 6." />
+                                    <FieldLabel label="Tekrar Eşiği" helper="Kaç tekrar sonrası damping başlayacağını belirler. Örnek: 6." />
                                     <input className={inputClassName} type="number" min="2" max="100" value={payload.settings.economy.repeatedGroupThreshold} onChange={(event) => updatePayload("economy", "repeatedGroupThreshold", Number(event.target.value))} />
                                 </div>
                                 <div className="space-y-2">
-                                    <FieldLabel label="Min Group Multiplier" helper="Repeated-group damping odulu bu oranin altina dusurmez. Ornek: 0.40 ise 120 coin odul en az 48 coin kalir." />
+                                    <FieldLabel label="Min Group Multiplier" helper="Repeated-group damping ödülü bu oranın altına düşürmez. Örnek: 0.40 ise 120 coin ödül en az 48 coin kalır." />
                                     <input className={inputClassName} type="number" min="0" max="1" step="0.05" value={payload.settings.economy.repeatedGroupMinMultiplier} onChange={(event) => updatePayload("economy", "repeatedGroupMinMultiplier", Number(event.target.value))} />
                                 </div>
                             </div>
 
                             <div className="rounded-xl border border-border/70 bg-background px-4 py-3 text-sm text-muted-foreground">
-                                Ornek: dort kisilik ayni lineup ayni pencere icinde ust uste odullu mac yapiyorsa ilk maclar tam odul alir, esik asildikca odul yumusak sekilde azalir. Bu mekanik oyunu oynanmaz yapmak icin degil, organize farm davranisini anlamsizlastirmak icindir.
+                                Örnek: dört kişilik aynı lineup aynı pencere içinde üst üste ödüllü maç yapıyorsa ilk maçlar tam ödül alır, eşik aşıldıkça ödül yumuşak şekilde azalır. Bu mekanik oyunu oynanmaz yapmak için değil, organize farm davranışını anlamsızlaştırmak içindir.
                             </div>
                         </div>
                     ) : null}
 
                     <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
-                        Canli sonuc ozeti:
+                        Canlı sonuç özeti:
                         <span className="ml-2 font-semibold text-foreground">
-                            Mac multiplier x{payload.settings.economy.matchCoinMultiplier.toFixed(2)}
+                            Maç multiplier x{payload.settings.economy.matchCoinMultiplier.toFixed(2)}
                         </span>
                         <span className="ml-4 font-semibold text-foreground">
                             Store multiplier x{payload.settings.economy.storePriceMultiplier.toFixed(2)}

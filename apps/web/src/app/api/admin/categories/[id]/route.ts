@@ -45,7 +45,7 @@ export async function PUT(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kategori guncelleme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kategori güncelleme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -88,7 +88,7 @@ export async function PUT(
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: "Gecersiz veri." },
+                { error: "Geçersiz veri." },
                 { status: 400 }
             );
         }
@@ -100,7 +100,7 @@ export async function PUT(
         }
         console.error("Failed to update category:", error);
         return NextResponse.json(
-            { error: "Kategori guncellenemedi." },
+            { error: "Kategori güncellenemedi." },
             { status: 500 }
         );
     }
@@ -123,7 +123,7 @@ export async function DELETE(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kategori silme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kategori silme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

@@ -34,7 +34,7 @@ export async function POST(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kategori tasima ve silme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kategori taşıma ve silme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -47,7 +47,7 @@ export async function POST(
 
         if (sourceCategoryId === targetCategoryId) {
             return NextResponse.json(
-                { error: "Kaynak ve hedef kategori ayni olamaz." },
+                { error: "Kaynak ve hedef kategori aynı olamaz." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -76,7 +76,7 @@ export async function POST(
 
         if (!sourceCategory || !targetCategory) {
             return NextResponse.json(
-                { error: "Kategori bulunamadi." },
+                { error: "Kategori bulunamadı." },
                 { status: 404, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -90,7 +90,7 @@ export async function POST(
 
         if (sourceCategory.parentId === null && targetCategory.parentId !== null) {
             return NextResponse.json(
-                { error: "Ana kategori ancak baska bir ana kategoriye tasinarak silinebilir." },
+                { error: "Ana kategori ancak başka bir ana kategoriye taşınarak silinebilir." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -137,7 +137,7 @@ export async function POST(
             if (conflictingWords.length > 0) {
                 return NextResponse.json(
                     {
-                        error: `Tasimadan sonra bazi kelimeler ana kategori / alt kategori cakismasina giriyor: ${conflictingWords.slice(0, 5).join(", ")}.`,
+                        error: `Taşımadan sonra bazı kelimeler ana kategori / alt kategori çakışmasına giriyor: ${conflictingWords.slice(0, 5).join(", ")}.`,
                     },
                     { status: 409, headers: buildRateLimitHeaders(rateLimit) }
                 );
@@ -218,14 +218,14 @@ export async function POST(
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: "Gecersiz tasima verisi.", details: error.issues },
+                { error: "Geçersiz taşıma verisi.", details: error.issues },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 
         console.error("Failed to move and delete category:", error);
         return NextResponse.json(
-            { error: "Kategori tasinip silinemedi." },
+            { error: "Kategori taşınıp silinemedi." },
             { status: 500, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

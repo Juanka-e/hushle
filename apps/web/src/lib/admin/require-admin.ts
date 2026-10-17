@@ -10,7 +10,7 @@ export interface AdminSession {
 export async function requireAdminSession(): Promise<AdminSession | NextResponse> {
     const sessionUser = await getSessionUser();
     if (!sessionUser || sessionUser.role !== "admin") {
-        return NextResponse.json({ error: "Yetkisiz erisim." }, { status: 401 });
+        return NextResponse.json({ error: "Yetkisiz erişim." }, { status: 401 });
     }
 
     return sessionUser;

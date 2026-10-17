@@ -23,7 +23,7 @@ const updateSchema = z.object({
     reason: z.string().trim().min(3).max(300),
     confirmation: z.string().trim().max(40).optional(),
 }).strict().refine((value) => value.paused || value.rolloutPercent > 0, {
-    message: "Checkout acikken rollout yuzdesi en az 1 olmalidir.",
+    message: "Checkout açıkken rollout yüzdesi en az 1 olmalıdır.",
     path: ["rolloutPercent"],
 });
 
@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla odeme kontrolu degisikligi. Lutfen bekleyin." },
+            { error: "Çok fazla ödeme kontrolü değişikliği. Lütfen bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -46,7 +46,7 @@ export async function PATCH(request: NextRequest) {
     const parsed = updateSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
         return NextResponse.json(
-            { error: parsed.error.issues[0]?.message ?? "Gecersiz odeme kontrolu." },
+            { error: parsed.error.issues[0]?.message ?? "Geçersiz ödeme kontrolü." },
             { status: 422, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -56,13 +56,13 @@ export async function PATCH(request: NextRequest) {
         current = await getPaymentCheckoutControl({ fresh: true });
     } catch {
         return NextResponse.json(
-            { error: "Odeme kontrolu okunamadi. Checkout fail-closed durumda kalacak." },
+            { error: "Ödeme kontrolü okunamadı. Checkout fail-closed durumda kalacak." },
             { status: 503, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
     if (!current.available) {
         return NextResponse.json(
-            { error: "Odeme kontrol kaydi gecersiz. Checkout guvenli olarak kapali kalacak." },
+            { error: "Ödeme kontrol kaydı geçersiz. Checkout güvenli olarak kapalı kalacak." },
             { status: 409, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest) {
         && parsed.data.confirmation !== EXPANSION_CONFIRMATION
     ) {
         return NextResponse.json(
-            { error: `Checkout erisimini genisletmek icin ${EXPANSION_CONFIRMATION} yazin.` },
+            { error: `Checkout erişimini genişletmek için ${EXPANSION_CONFIRMATION} yazın.` },
             { status: 422, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -86,7 +86,7 @@ export async function PATCH(request: NextRequest) {
         )
     ) {
         return NextResponse.json(
-            { error: "Runtime, hukuki kanit, provider yuzeyi ve rollout seed hazir olmadan checkout acilamaz." },
+            { error: "Runtime, hukuki kanıt, provider yüzeyi ve rollout seed hazır olmadan checkout açılamaz." },
             { status: 409, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -125,12 +125,12 @@ export async function PATCH(request: NextRequest) {
     } catch (error) {
         if (error instanceof PaymentCheckoutControlConflictError) {
             return NextResponse.json(
-                { error: "Odeme kontrolu baska bir yonetici tarafindan degistirildi. Yenileyip tekrar deneyin." },
+                { error: "Ödeme kontrolü başka bir yönetici tarafından değiştirildi. Yenileyip tekrar deneyin." },
                 { status: 409, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
         return NextResponse.json(
-            { error: "Odeme kontrolu guncellenemedi. Checkout mevcut guvenli durumda kaldi." },
+            { error: "Ödeme kontrolü güncellenemedi. Checkout mevcut güvenli durumda kaldı." },
             { status: 500, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

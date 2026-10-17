@@ -33,7 +33,7 @@ export async function GET(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla paket detay istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla paket detay isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -41,7 +41,7 @@ export async function GET(
     const { id } = await params;
     const bundleId = Number(id);
     if (!Number.isInteger(bundleId) || bundleId <= 0) {
-        return NextResponse.json({ error: "Gecersiz bundle id." }, { status: 400 });
+        return NextResponse.json({ error: "Geçersiz bundle id." }, { status: 400 });
     }
 
     const bundle = await prisma.shopBundle.findUnique({
@@ -64,7 +64,7 @@ export async function GET(
     });
 
     if (!bundle) {
-        return NextResponse.json({ error: "Bundle bulunamadi." }, { status: 404 });
+        return NextResponse.json({ error: "Bundle bulunamadı." }, { status: 404 });
     }
 
     return NextResponse.json(bundle, { headers: buildRateLimitHeaders(rateLimit) });
@@ -87,7 +87,7 @@ export async function PUT(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla paket guncelleme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla paket güncelleme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -96,7 +96,7 @@ export async function PUT(
         const { id } = await params;
         const bundleId = Number(id);
         if (!Number.isInteger(bundleId) || bundleId <= 0) {
-            return NextResponse.json({ error: "Gecersiz bundle id." }, { status: 400 });
+            return NextResponse.json({ error: "Geçersiz bundle id." }, { status: 400 });
         }
 
         const body = await request.json();
@@ -158,14 +158,14 @@ export async function PUT(
         return NextResponse.json(bundle, { headers: buildRateLimitHeaders(rateLimit) });
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return NextResponse.json({ error: "Gecersiz veri.", details: error.issues }, { status: 400 });
+            return NextResponse.json({ error: "Geçersiz veri.", details: error.issues }, { status: 400 });
         }
         if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2002") {
             return NextResponse.json({ error: "Bu paket kodu zaten kullanılıyor. Farklı bir kod gir." }, { status: 409 });
         }
 
         console.error("Failed to update shop bundle:", error);
-        return NextResponse.json({ error: "Bundle guncellenemedi." }, { status: 500 });
+        return NextResponse.json({ error: "Bundle güncellenemedi." }, { status: 500 });
     }
 }
 
@@ -186,7 +186,7 @@ export async function DELETE(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla paket pasife alma veya silme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla paket pasife alma veya silme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -195,7 +195,7 @@ export async function DELETE(
         const { id } = await params;
         const bundleId = Number(id);
         if (!Number.isInteger(bundleId) || bundleId <= 0) {
-            return NextResponse.json({ error: "Gecersiz bundle id." }, { status: 400 });
+            return NextResponse.json({ error: "Geçersiz bundle id." }, { status: 400 });
         }
 
         const bundle = await prisma.shopBundle.findUnique({

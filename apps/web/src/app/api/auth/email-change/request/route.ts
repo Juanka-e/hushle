@@ -23,6 +23,7 @@ import {
     sanitizeEmail,
 } from "@/lib/users/email";
 import { PlayerErrorCode, playerError, playerErrorFromValidation } from "@/lib/errors/player-error";
+import { PlayerNoticeCode, playerNotice } from "@/lib/errors/player-notice";
 
 const requestSchema = z.object({
     newEmail: z.email("Geçerli bir e-posta adresi gir.").max(191),
@@ -128,8 +129,7 @@ export async function POST(request: Request) {
             {
                 status: "pending",
                 pendingEmail: newEmail,
-                message:
-                    "Yeni adrese doğrulama bağlantısı gönderim kuyruğuna alındı.",
+                ...playerNotice(PlayerNoticeCode.EMAIL_CHANGE_VERIFICATION_QUEUED),
             },
             { status: 202, headers: buildRateLimitHeaders(limit) }
         );

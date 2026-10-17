@@ -14,7 +14,7 @@ const trimmedLongText = z.string().trim().max(400);
 
 const platformSettingsSchema = z.object({
     maintenanceEnabled: z.boolean().default(false),
-    maintenanceMessage: trimmedLongText.default("Bakim calismasi var. Lutfen daha sonra tekrar deneyin."),
+    maintenanceMessage: trimmedLongText.default("Bakım çalışması var. Lütfen daha sonra tekrar deneyin."),
     motdEnabled: z.boolean().default(false),
     motdText: trimmedShortText.default(""),
 });
@@ -22,7 +22,7 @@ const platformSettingsSchema = z.object({
 const hexColorSchema = z
     .string()
     .trim()
-    .regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/, "Gecerli bir hex renk gir.")
+    .regex(/^#(?:[0-9a-fA-F]{3}){1,2}$/, "Geçerli bir hex renk gir.")
     .default("#101828");
 
 const brandingSettingsSchema = z.object({
@@ -34,14 +34,14 @@ const brandingSettingsSchema = z.object({
         .trim()
         .min(5)
         .max(120)
-        .default("Tabu Oyunu | Online Sozcuk Tahmin Oyunu"),
+        .default("Tabu Oyunu | Online Sözcük Tahmin Oyunu"),
     titleTemplate: z.string().trim().min(3).max(80).default("%s | Tabu Oyunu"),
     defaultDescription: z
         .string()
         .trim()
         .min(12)
         .max(240)
-        .default("Arkadaslarinla online Tabu oyna. Modern arayuz, hizli odalar ve yeni nesil kelime tahmin deneyimi."),
+        .default("Arkadaşlarınla online Tabu oyna. Modern arayüz, hızlı odalar ve yeni nesil kelime tahmin deneyimi."),
     ogImageUrl: z.string().trim().max(255).default(""),
     faviconUrl: z.string().trim().max(255).default("/favicon.ico"),
     themeColor: hexColorSchema,
@@ -90,13 +90,13 @@ const capacitySettingsSchema = z
         criticalThresholdPercent: z.number().int().min(20).max(100).default(90),
         admissionMode: z.enum(CAPACITY_ADMISSION_MODES).default("automatic"),
         capacityMessage: trimmedLongText.default(
-            "Sunucu su anda yogun. Devam eden oyunlari korumak icin yeni oda islemleri gecici olarak sinirlandirildi. Lutfen kisa sure sonra tekrar deneyin."
+            "Sunucu şu anda yoğun. Devam eden oyunları korumak için yeni oda işlemleri geçici olarak sınırlandırıldı. Lütfen kısa süre sonra tekrar deneyin."
         ),
     })
     .refine(
         (settings) => settings.teamMaxPlayers * 2 >= settings.roomMaxPlayers,
         {
-            message: "Takim kapasitesi toplam oda kapasitesini karsilamali.",
+            message: "Takım kapasitesi toplam oda kapasitesini karşılamalı.",
             path: ["teamMaxPlayers"],
         }
     )
@@ -104,7 +104,7 @@ const capacitySettingsSchema = z
         (settings) =>
             settings.warningThresholdPercent < settings.criticalThresholdPercent,
         {
-            message: "Uyari esigi kritik esikten dusuk olmali.",
+            message: "Uyarı eşiği kritik eşikten düşük olmalı.",
             path: ["warningThresholdPercent"],
         }
     );
