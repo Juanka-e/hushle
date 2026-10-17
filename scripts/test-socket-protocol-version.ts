@@ -35,11 +35,16 @@ assert.equal(
   1,
 );
 assert.equal(readSocketProtocolVersionFromAuth(null), undefined);
+assert.equal(SOCKET_PROTOCOL_ERROR_CODE, "SOCKET_PROTOCOL_UNSUPPORTED");
 assert.equal(
   getSocketProtocolErrorMessage({
     data: { code: SOCKET_PROTOCOL_ERROR_CODE },
   }),
   "Yeni bir oyun sürümü hazır. Devam etmek için sayfayı yenileyin.",
+);
+assert.equal(
+  getSocketProtocolErrorMessage({ data: { code: SOCKET_PROTOCOL_ERROR_CODE } }, "en"),
+  "A new version of the game is ready. Refresh the page to continue.",
 );
 assert.equal(getSocketProtocolErrorMessage(new Error("network")), null);
 

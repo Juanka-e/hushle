@@ -45,13 +45,46 @@ assert.match(socketSource, /clearSocketActionBurstLimits\(socket\.id\)/);
 assert.match(serverRuntimeSource, /maxHttpBufferSize:\s*16 \* 1024/);
 assert.match(
     socketSource,
-    /if \(room\.oyunDurumu\.oyunAktifMi\) \{\s*socket\.emit\("hata", "Oyun zaten devam ediyor\."\)/
+    /if \(room\.oyunDurumu\.oyunAktifMi\) \{\s*emitPlayerError\(socket, PlayerErrorCode\.GAME_ALREADY_RUNNING\)/
 );
+// Every player-facing socket error goes through emitPlayerError so it carries a code.
+assert.doesNotMatch(socketSource, /\.emit\(\s*"hata"/);
 assert.match(
     socketSource,
     /runWithRoomActionLock\(\s*room\.odaKodu,\s*"word-action"/
 );
 assert.match(socketSource, /collectVisibleCategoryIds/);
+assert.match(socketSource, /beginRoomGameStart\(room\)/);
+assert.match(socketSource, /finishRoomGameStart\(room\)/);
+assert.match(socketSource, /const currentStartDecision = resolveRoomStartDecision/);
+assert.match(socketSource, /socketToRoom\.get\(socket\.id\) !== room\.odaKodu/);
+assert.match(socketSource, /resolveConnectionContinuity/);
+assert.match(socketSource, /synchronizeConnectionPause\(room\)/);
+assert.match(
+    socketSource,
+    /if \(connectionPauseChanged\) \{\s*emitGamePauseState\(room\);\s*\}/
+);
+assert.match(
+    socketSource,
+    /const currentPlayer = room\.oyuncular\.find\(\(entry\) => entry\.id === socket\.id\);/
+);
+assert.match(socketSource, /if \(!currentIsHost && !currentIsNarrator\) return;/);
+assert.match(socketSource, /room\.pausedDurationMs/);
+assert.match(
+    socketSource,
+    /const player = room\.oyuncular\.find\(\(p\) => p\.id === socket\.id\);\s*if \(!player\) return;\s*player\.online = false;/
+);
+assert.match(
+    socketSource,
+    /if \(room\.oyunDurumu\.oyunAktifMi\) \{\s*emitPlayerError\(socket, PlayerErrorCode\.KICK_DURING_GAME\);\s*return;/
+);
+// The long abandoned-room TTL applies only to interrupted matches, never to empty lobbies.
+assert.match(
+    socketSource,
+    /const abandonedRoomTtlMs = resolveAbandonedRoomTtlMs\(\{\s*matchActive: room\.oyunDurumu\.oyunAktifMi,\s*abandonedMatchTtlMs: ABANDONED_ROOM_TTL_MS,\s*\}\);/
+);
+assert.match(socketSource, /\}, abandonedRoomTtlMs\);/);
+assert.doesNotMatch(socketSource, /\}, ABANDONED_ROOM_TTL_MS\);/);
 assert.match(
     socketSource,
     /runWithRoomActionLock\(\s*room\.odaKodu,\s*"switch-team"/

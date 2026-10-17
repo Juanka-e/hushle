@@ -40,15 +40,15 @@ const statusBadgeClass: Record<StatusFilter | "computed_active" | "computed_susp
 };
 
 const actionLabels: Record<ActionMode, string> = {
-    suspend: "Askiya Al",
-    reactivate: "Yeniden Etkinlestir",
-    note: "Ic Not Ekle",
+    suspend: "Askıya Al",
+    reactivate: "Yeniden Etkinleştir",
+    note: "İç Not Ekle",
 };
 
 const actionDescriptions: Record<ActionMode, string> = {
-    suspend: "Kullanici oyuna ve korumali yuzeylere giris yapamaz.",
-    reactivate: "Aktif suspend durumunu kaldirir ve hesabi tekrar kullanima acar.",
-    note: "Yalnizca admin ekibi tarafindan gorulen operasyon notu ekler.",
+    suspend: "Kullanıcı oyuna ve korumalı yüzeylere giriş yapamaz.",
+    reactivate: "Aktif suspend durumunu kaldırır ve hesabı tekrar kullanıma açar.",
+    note: "Yalnızca admin ekibi tarafından görülen operasyon notu ekler.",
 };
 
 function formatDateTime(value: string | null): string {
@@ -78,27 +78,27 @@ function formatTrustedIp(ip: string | null): string {
 
 function summarizeUserAgent(userAgent: string | null): string {
     if (!userAgent) {
-        return "Tarayici sinyali yok";
+        return "Tarayıcı sinyali yok";
     }
 
     return userAgent.length > 72 ? `${userAgent.slice(0, 72)}...` : userAgent;
 }
 
 function getSupportStatusLabel(status: string | null): string {
-    if (!status) return "Kayit yok";
-    if (status === "open") return "Acik";
-    if (status === "in_progress") return "Islemde";
-    if (status === "resolved") return "Cozuldu";
-    if (status === "closed") return "Kapali";
+    if (!status) return "Kayıt yok";
+    if (status === "open") return "Açık";
+    if (status === "in_progress") return "İşlemde";
+    if (status === "resolved") return "Çözüldü";
+    if (status === "closed") return "Kapalı";
     return status;
 }
 
 function getWalletAdjustmentLabel(type: "credit" | "debit" | null): string {
     if (!type) {
-        return "Kayit yok";
+        return "Kayıt yok";
     }
 
-    return type === "credit" ? "Coin ekleme" : "Coin dusme";
+    return type === "credit" ? "Coin ekleme" : "Coin düşme";
 }
 
 function buildSupportHref(user: AdminUserModerationView): string {
@@ -205,7 +205,7 @@ export default function AdminUsersPage() {
                 cache: "no-store",
             });
             if (!response.ok) {
-                toast.error("Kullanici listesi yuklenemedi.");
+                toast.error("Kullanıcı listesi yüklenemedi.");
                 return;
             }
 
@@ -216,7 +216,7 @@ export default function AdminUsersPage() {
             setTotal(payload.total);
             setTrustProxyEnabled(payload.trustProxyEnabled);
         } catch {
-            toast.error("Kullanici listesi yuklenemedi.");
+            toast.error("Kullanıcı listesi yüklenemedi.");
         } finally {
             setLoading(false);
         }
@@ -293,17 +293,17 @@ export default function AdminUsersPage() {
 
             if (!response.ok) {
                 const errorPayload = (await response.json().catch(() => ({
-                    error: "Moderasyon islemi tamamlanamadi.",
+                    error: "Moderasyon işlemi tamamlanamadı.",
                 }))) as { error?: string };
-                toast.error(errorPayload.error ?? "Moderasyon islemi tamamlanamadi.");
+                toast.error(errorPayload.error ?? "Moderasyon işlemi tamamlanamadı.");
                 return;
             }
 
-            toast.success(`${selectedUser.username} icin ${actionLabels[actionMode].toLowerCase()} islemi tamamlandi.`);
+            toast.success(`${selectedUser.username} için ${actionLabels[actionMode].toLowerCase()} işlemi tamamlandı.`);
             closeActionModal();
             await loadUsers();
         } catch {
-            toast.error("Moderasyon islemi tamamlanamadi.");
+            toast.error("Moderasyon işlemi tamamlanamadı.");
         } finally {
             setSaving(false);
         }
@@ -318,16 +318,16 @@ export default function AdminUsersPage() {
 
             if (!response.ok) {
                 const errorPayload = (await response.json().catch(() => ({
-                    error: "Ic not silinemedi.",
+                    error: "İç not silinemedi.",
                 }))) as { error?: string };
-                toast.error(errorPayload.error ?? "Ic not silinemedi.");
+                toast.error(errorPayload.error ?? "İç not silinemedi.");
                 return;
             }
 
-            toast.success("Ic not silindi.");
+            toast.success("İç not silindi.");
             await loadUsers();
         } catch {
-            toast.error("Ic not silinemedi.");
+            toast.error("İç not silinemedi.");
         } finally {
             setDeletingEventId(null);
         }
@@ -352,21 +352,21 @@ export default function AdminUsersPage() {
 
             if (!response.ok) {
                 const errorPayload = (await response.json().catch(() => ({
-                    error: "Coin operasyonu tamamlanamadi.",
+                    error: "Coin operasyonu tamamlanamadı.",
                 }))) as { error?: string };
-                toast.error(errorPayload.error ?? "Coin operasyonu tamamlanamadi.");
+                toast.error(errorPayload.error ?? "Coin operasyonu tamamlanamadı.");
                 return;
             }
 
             toast.success(
-                `${selectedWalletUser.username} icin ${
-                    walletAdjustmentType === "credit" ? "coin ekleme" : "coin dusme"
-                } islemi tamamlandi.`
+                `${selectedWalletUser.username} için ${
+                    walletAdjustmentType === "credit" ? "coin ekleme" : "coin düşme"
+                } işlemi tamamlandı.`
             );
             closeWalletModal();
             await loadUsers();
         } catch {
-            toast.error("Coin operasyonu tamamlanamadi.");
+            toast.error("Coin operasyonu tamamlanamadı.");
         } finally {
             setWalletSaving(false);
         }
@@ -375,9 +375,9 @@ export default function AdminUsersPage() {
     return (
         <div className="space-y-6">
             <AdminPageHeader
-                title="Kullanici Operasyonlari"
-                description="Moderasyon, destek, envanter ve temel gozlem sinyallerini tek operasyon yuzeyinden yonetin."
-                meta={`${total} kayit`}
+                title="Kullanıcı Operasyonları"
+                description="Moderasyon, destek, envanter ve temel gözlem sinyallerini tek operasyon yüzeyinden yönetin."
+                meta={`${total} kayıt`}
                 icon={<Users className="h-5 w-5 text-amber-500" />}
             />
 
@@ -388,7 +388,7 @@ export default function AdminUsersPage() {
                         <Input
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Kullanici adi, e-posta veya gorunen isim ara..."
+                            placeholder="Kullanıcı adı, e-posta veya görünen isim ara..."
                             className="pl-9"
                         />
                     </div>
@@ -397,15 +397,15 @@ export default function AdminUsersPage() {
                         onChange={(event) => setStatus(event.target.value as StatusFilter)}
                         className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none"
                     >
-                        <option value="all">Tum durumlar</option>
+                        <option value="all">Tüm durumlar</option>
                         <option value="active">Aktif</option>
-                        <option value="suspended">Askida</option>
+                        <option value="suspended">Askıda</option>
                     </select>
                 </div>
                 <AdminToolbarStats
                     stats={[
-                        { label: "gorunen", value: String(counts.visible) },
-                        { label: "askida", value: String(counts.suspended) },
+                        { label: "görünen", value: String(counts.visible) },
+                        { label: "askıda", value: String(counts.suspended) },
                         { label: "ip sinyali", value: String(counts.ipSignals) },
                         { label: "sayfa", value: `${page} / ${pages}` },
                     ]}
@@ -419,15 +419,15 @@ export default function AdminUsersPage() {
             ) : null}
 
             <AdminTableShell
-                title="Kullanici Operasyon Listesi"
+                title="Kullanıcı Operasyon Listesi"
                 description="Moderasyon, destek, envanter ve trusted access sinyalleri birlikte listelenir."
                 loading={loading}
                 isEmpty={!loading && users.length === 0}
                 emptyState={
                     <AdminEmptyState
                         icon={<Users className="h-6 w-6" />}
-                        title="Kullanici bulunamadi"
-                        description="Mevcut filtrelerle eslesen kullanici kaydi yok."
+                        title="Kullanıcı bulunamadı"
+                        description="Mevcut filtrelerle eşleşen kullanıcı kaydı yok."
                     />
                 }
                 footer={
@@ -437,13 +437,13 @@ export default function AdminUsersPage() {
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-muted/20">
-                            <TableHead>Kullanici</TableHead>
+                            <TableHead>Kullanıcı</TableHead>
                             <TableHead>Durum</TableHead>
                             <TableHead>Coin</TableHead>
-                            <TableHead>Gozlem</TableHead>
-                            <TableHead>Operasyon Ozeti</TableHead>
+                            <TableHead>Gözlem</TableHead>
+                            <TableHead>Operasyon Özeti</TableHead>
                             <TableHead>Son Olaylar</TableHead>
-                            <TableHead className="text-right">Islemler</TableHead>
+                            <TableHead className="text-right">İşlemler</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -458,15 +458,15 @@ export default function AdminUsersPage() {
                                             @{user.username} | {user.role}
                                         </div>
                                         <div className="text-xs text-muted-foreground">
-                                            {user.email ?? "E-posta eklenmemis"}
+                                            {user.email ?? "E-posta eklenmemiş"}
                                             {user.emailVerifiedAt
-                                                ? " | dogrulandi"
+                                                ? " | doğrulandı"
                                                 : user.email
-                                                  ? " | dogrulanmadi"
+                                                  ? " | doğrulanmadı"
                                                   : ""}
                                         </div>
                                         <div className="text-xs text-muted-foreground">
-                                            Kayit: {formatDateTime(user.createdAt)}
+                                            Kayıt: {formatDateTime(user.createdAt)}
                                         </div>
                                     </div>
                                 </TableCell>
@@ -479,12 +479,12 @@ export default function AdminUsersPage() {
                                                     : statusBadgeClass.computed_active
                                             }`}
                                         >
-                                            {user.isSuspended ? "Askida" : "Aktif"}
+                                            {user.isSuspended ? "Askıda" : "Aktif"}
                                         </span>
                                         {user.isSuspended ? (
                                             <div className="max-w-xs text-xs text-muted-foreground">
                                                 <div>{user.suspensionReason || "Sebep yok"}</div>
-                                                <div>Bitis: {formatDateTime(user.suspendedUntil)}</div>
+                                                <div>Bitiş: {formatDateTime(user.suspendedUntil)}</div>
                                             </div>
                                         ) : null}
                                     </div>
@@ -503,7 +503,7 @@ export default function AdminUsersPage() {
                                             {formatTrustedIp(user.lastTrustedIp)}
                                         </div>
                                         <div>
-                                            <span className="font-semibold text-foreground">Kayit IP:</span>{" "}
+                                            <span className="font-semibold text-foreground">Kayıt IP:</span>{" "}
                                             {formatTrustedIp(user.registeredTrustedIp)}
                                         </div>
                                         <div className="max-w-xs truncate" title={user.lastUserAgent ?? undefined}>
@@ -526,8 +526,8 @@ export default function AdminUsersPage() {
                                                 <span className="font-semibold text-foreground">Support:</span>
                                             )}{" "}
                                             {user.supportTicketSummary.total > 0
-                                                ? `${user.supportTicketSummary.total} kayit, ${user.supportTicketSummary.openCount} acik`
-                                                : "Kayit yok"}
+                                                ? `${user.supportTicketSummary.total} kayıt, ${user.supportTicketSummary.openCount} açık`
+                                                : "Kayıt yok"}
                                         </div>
                                         <div>
                                             <span className="font-semibold text-foreground">Son ticket:</span>{" "}
@@ -541,7 +541,7 @@ export default function AdminUsersPage() {
                                             {user.supportTicketSummary.latestSubject ?? "Ticket yok"}
                                         </div>
                                         <div>
-                                            <span className="font-semibold text-foreground">Son coin islemi:</span>{" "}
+                                            <span className="font-semibold text-foreground">Son coin işlemi:</span>{" "}
                                             {getWalletAdjustmentLabel(user.walletAdjustmentSummary.latestType)}
                                             {user.walletAdjustmentSummary.latestAmount !== null
                                                 ? ` • ${user.walletAdjustmentSummary.latestAmount.toLocaleString("tr-TR")}`
@@ -557,7 +557,7 @@ export default function AdminUsersPage() {
                                                     href={buildSupportHref(user)}
                                                     className="font-semibold text-foreground underline decoration-dotted underline-offset-4"
                                                 >
-                                                    Support kaydina git
+                                                    Support kaydına git
                                                 </Link>
                                             </div>
                                         ) : null}
@@ -567,7 +567,7 @@ export default function AdminUsersPage() {
                                                     href={buildWalletAuditHref(user)}
                                                     className="font-semibold text-foreground underline decoration-dotted underline-offset-4"
                                                 >
-                                                    Coin kaydina git
+                                                    Coin kaydına git
                                                 </Link>
                                             </div>
                                         ) : null}
@@ -577,7 +577,7 @@ export default function AdminUsersPage() {
                                     <div className="space-y-2">
                                         {user.recentModerationEvents.length === 0 ? (
                                             <div className="text-xs text-muted-foreground">
-                                                Moderasyon kaydi yok.
+                                                Moderasyon kaydı yok.
                                             </div>
                                         ) : (
                                             <>
@@ -642,7 +642,7 @@ export default function AdminUsersPage() {
                                                             }`}
                                                         />
                                                         {expandedUserId === user.id
-                                                            ? "Daha az goster"
+                                                            ? "Daha az göster"
                                                             : `${user.recentModerationEvents.length - 2} olay daha`}
                                                     </Button>
                                                 ) : null}
@@ -670,7 +670,7 @@ export default function AdminUsersPage() {
                                         </Button>
                                         {user.role === "admin" ? (
                                             <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                                                Admin hesabi
+                                                Admin hesabı
                                             </span>
                                         ) : (
                                             <>
@@ -681,7 +681,7 @@ export default function AdminUsersPage() {
                                                         size="sm"
                                                         onClick={() => openActionModal(user, "reactivate")}
                                                     >
-                                                        Etkinlestir
+                                                        Etkinleştir
                                                     </Button>
                                                 ) : (
                                                     <Button
@@ -690,7 +690,7 @@ export default function AdminUsersPage() {
                                                         size="sm"
                                                         onClick={() => openActionModal(user, "suspend")}
                                                     >
-                                                        Askiya Al
+                                                        Askıya Al
                                                     </Button>
                                                 )}
                                                 <Button
@@ -707,7 +707,7 @@ export default function AdminUsersPage() {
                                                     size="sm"
                                                     onClick={() => openActionModal(user, "note")}
                                                 >
-                                                    Ic Not
+                                                    İç Not
                                                 </Button>
                                                 <Button asChild type="button" variant="ghost" size="sm">
                                                     <Link href={buildSupportHref(user)}>Destek</Link>
@@ -748,7 +748,7 @@ export default function AdminUsersPage() {
                                     {actionLabels[actionMode]}
                                 </h2>
                                 <p className="text-sm text-muted-foreground">
-                                    @{selectedUser.username} icin islem uygulaniyor.
+                                    @{selectedUser.username} için işlem uygulanıyor.
                                 </p>
                             </div>
                             <Button type="button" variant="ghost" size="icon" onClick={closeActionModal}>
@@ -777,7 +777,7 @@ export default function AdminUsersPage() {
 
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                    {actionMode === "note" ? "Not" : "Gerekce"}
+                                    {actionMode === "note" ? "Not" : "Gerekçe"}
                                 </label>
                                 <textarea
                                     value={reason}
@@ -786,8 +786,8 @@ export default function AdminUsersPage() {
                                     className="min-h-[120px] w-full rounded-2xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary resize-y"
                                     placeholder={
                                         actionMode === "note"
-                                            ? "Admin ekibi icin gorunur operasyon notunu yazin..."
-                                            : "Moderasyon gerekcesini yazin..."
+                                            ? "Admin ekibi için görünür operasyon notunu yazın..."
+                                            : "Moderasyon gerekçesini yazın..."
                                     }
                                 />
                             </div>
@@ -808,7 +808,7 @@ export default function AdminUsersPage() {
 
                         <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
                             <Button type="button" variant="outline" onClick={closeActionModal}>
-                                Iptal
+                                İptal
                             </Button>
                             <Button
                                 type="button"
@@ -831,7 +831,7 @@ export default function AdminUsersPage() {
                             <div>
                                 <h2 className="text-lg font-semibold text-foreground">Coin Operasyonu</h2>
                                 <p className="text-sm text-muted-foreground">
-                                    @{selectedWalletUser.username} icin kontrollu bakiye islemi uygulanacak.
+                                    @{selectedWalletUser.username} için kontrollü bakiye işlemi uygulanacak.
                                 </p>
                             </div>
                             <Button type="button" variant="ghost" size="icon" onClick={closeWalletModal}>
@@ -848,7 +848,7 @@ export default function AdminUsersPage() {
                                             Mevcut bakiye: {selectedWalletUser.coinBalance.toLocaleString("tr-TR")} coin
                                         </div>
                                         <div className="text-sm text-muted-foreground">
-                                            Her coin islemi audit log ve wallet adjustment kaydi ile saklanir.
+                                            Her coin işlemi audit log ve wallet adjustment kaydı ile saklanır.
                                         </div>
                                     </div>
                                 </div>
@@ -857,7 +857,7 @@ export default function AdminUsersPage() {
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                        Islem Turu
+                                        İşlem Türü
                                     </label>
                                     <select
                                         value={walletAdjustmentType}
@@ -867,7 +867,7 @@ export default function AdminUsersPage() {
                                         className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none"
                                     >
                                         <option value="credit">Coin Ekle</option>
-                                        <option value="debit">Coin Dus</option>
+                                        <option value="debit">Coin Düş</option>
                                     </select>
                                 </div>
 
@@ -887,21 +887,21 @@ export default function AdminUsersPage() {
 
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                    Gerekce
+                                    Gerekçe
                                 </label>
                                 <textarea
                                     value={walletReason}
                                     onChange={(event) => setWalletReason(event.target.value)}
                                     rows={4}
                                     className="min-h-[110px] w-full rounded-2xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary resize-y"
-                                    placeholder="Coin operasyon gerekcesini yazin..."
+                                    placeholder="Coin operasyon gerekçesini yazın..."
                                 />
                             </div>
                         </div>
 
                         <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
                             <Button type="button" variant="outline" onClick={closeWalletModal}>
-                                Iptal
+                                İptal
                             </Button>
                             <Button
                                 type="button"

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla toplu kelime yukleme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla toplu kelime yükleme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         ).trim();
         if (!isGameContentLocale(localeValue)) {
             return NextResponse.json(
-                { error: "Gecersiz kelime paketi dili." },
+                { error: "Geçersiz kelime paketi dili." },
                 { status: 422, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -57,21 +57,21 @@ export async function POST(request: NextRequest) {
 
         if (!(file instanceof File)) {
             return NextResponse.json(
-                { error: "Dosya bulunamadi." },
+                { error: "Dosya bulunamadı." },
                 { status: 400, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 
         if (file.size > MAX_BULK_WORD_UPLOAD_FILE_BYTES) {
             return NextResponse.json(
-                { error: "CSV dosyasi en fazla 2 MB olabilir." },
+                { error: "CSV dosyası en fazla 2 MB olabilir." },
                 { status: 413, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 
         if (mode !== "fixed_categories" && mode !== "csv_categories") {
             return NextResponse.json(
-                { error: "Gecersiz import modu." },
+                { error: "Geçersiz import modu." },
                 { status: 422, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         if ("error" in processed) {
             return NextResponse.json(
                 { error: processed.error },
-                { status: processed.error === "CSV dosyasi bos." ? 400 : 422, headers: buildRateLimitHeaders(rateLimit) }
+                { status: processed.error === "CSV dosyası boş." ? 400 : 422, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
         const { results, fixedCategoryIds } = processed;
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error("Bulk upload failed:", error);
         return NextResponse.json(
-            { error: "Toplu yukleme basarisiz." },
+            { error: "Toplu yükleme başarısız." },
             { status: 500, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

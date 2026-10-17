@@ -14,7 +14,7 @@ Backup mantigi:
 - `mysqldump --single-transaction --quick --routines --triggers`
 - gzip sikistirma
 - her dump icin tasinabilir SHA-256 checksum
-- varsayilan 7 gun local retention
+- varsayilan local retention kapali (`RETENTION_DAYS=0`); silme yalniz acik operator tercihiyle
 - opsiyonel S3-compatible offsite upload ve remote size dogrulamasi
 
 Elle backup:
@@ -170,7 +170,7 @@ Guvenlik ve retention:
 - bucket public access tamamen kapali
 - credentials yalniz belirlenen backup prefix'i icin minimum yetkili
 - transit sifreleme TLS; provider-side at-rest encryption zorunlu
-- local kopya varsayilan 7 gun
+- local kopya varsayilan otomatik silinmez (`RETENTION_DAYS=0`)
 - remote gunluk kopya ilk asamada 30 gun
 - remote silme scriptle degil provider lifecycle policy ile yonetilir
 - `BACKUP_REMOTE_RETENTION_DAYS` lifecycle icin operasyonel kontrattir

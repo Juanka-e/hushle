@@ -33,9 +33,9 @@ test.describe("admin payment integration readiness", () => {
 
     test("shows fail-closed checkout gate and provider readiness", async ({ page }) => {
         await page.goto("/admin/login");
-        await page.getByLabel("Kullanici Adi").fill(username);
-        await page.getByLabel("Sifre").fill(password);
-        await page.getByRole("button", { name: "Giris Yap" }).click();
+        await page.getByLabel("Kullanıcı Adı").fill(username);
+        await page.getByLabel("Şifre").fill(password);
+        await page.getByRole("button", { name: "Giriş Yap" }).click();
         await page.waitForURL(/\/admin(?:\/)?$/);
 
         await page.goto("/admin/integrations");

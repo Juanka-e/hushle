@@ -19,12 +19,12 @@ export function AdminSelectionBar({
     return (
         <div className="flex flex-col gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 p-3 md:flex-row md:items-center md:justify-between">
             <div className="text-sm font-medium text-foreground">
-                {selectedCount} kayit secildi
+                {selectedCount} kayıt seçildi
             </div>
             <div className="flex flex-wrap items-center gap-2">
                 {children}
                 <Button type="button" variant="outline" size="sm" onClick={onClear}>
-                    Secimi temizle
+                    Seçimi temizle
                 </Button>
             </div>
         </div>

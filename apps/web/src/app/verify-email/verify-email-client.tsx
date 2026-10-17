@@ -11,11 +11,13 @@ import {
     MailCheck,
 } from "lucide-react";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
+import { resolveApiNoticeMessage } from "@/lib/errors/resolve-player-notice";
 
 type ViewState = "inbox" | "verifying" | "success" | "error";
 
 export function VerifyEmailClient() {
-    const { t } = useI18n();
+    const { locale, t } = useI18n();
     const { status: sessionStatus } = useSession();
     const searchParams = useSearchParams();
     const token = searchParams.get("token");
@@ -52,8 +54,7 @@ export function VerifyEmailClient() {
                 if (!response.ok) {
                     setState("error");
                     setMessage(
-                        payload?.error ||
-                            t("auth.verifyLinkFailed")
+                        resolveApiErrorMessage(locale, payload, t("auth.verifyLinkFailed"))
                     );
                     return;
                 }
@@ -68,7 +69,7 @@ export function VerifyEmailClient() {
         };
 
         void confirm();
-    }, [t, token]);
+    }, [locale, t, token]);
 
     const resend = async () => {
         setResending(true);
@@ -77,17 +78,16 @@ export function VerifyEmailClient() {
                 "/api/auth/email-verification/request",
                 { method: "POST" }
             );
-            const payload = (await response.json().catch(() => null)) as {
-                error?: string;
-                message?: string;
-            } | null;
+            const payload: unknown = await response.json().catch(() => null);
             setState(response.ok ? "inbox" : "error");
             setMessage(
                 response.ok
-                    ? payload?.message ||
-                          t("auth.verificationQueued")
-                    : payload?.error ||
+                    ? resolveApiNoticeMessage(locale, payload, t("auth.verificationQueued"))
+                    : resolveApiErrorMessage(
+                          locale,
+                          payload,
                           t("auth.verificationResendFailed")
+                      )
             );
         } catch {
             setState("error");

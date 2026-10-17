@@ -36,14 +36,15 @@ const routeSource = readFileSync(
     "apps/web/src/app/api/admin/users/[id]/matches/route.ts",
     "utf8"
 );
-const finalizeSource = readFileSync(
-    "apps/web/src/app/api/game/match/finalize/route.ts",
+// Match results are written by the server-side settlement, not the finalize endpoint.
+const settlementSource = readFileSync(
+    "apps/web/src/lib/match-settlement/participant-reward.ts",
     "utf8"
 );
 assert.match(routeSource, /requireAdminSession/);
 assert.match(routeSource, /consumeRequestRateLimit/);
-assert.match(finalizeSource, /match_duration_seconds/);
-assert.match(finalizeSource, /\$\{room\.matchFormat\}/);
+assert.match(settlementSource, /match_duration_seconds/);
+assert.match(settlementSource, /\$\{snapshot\.matchFormat\}/);
 
 async function main(): Promise<void> {
     if (process.env.ADMIN_MATCH_HISTORY_INTEGRATION_TEST !== "true") {

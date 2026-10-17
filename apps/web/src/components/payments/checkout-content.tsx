@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage, resolvePlayerErrorMessage } from "@/lib/errors/resolve-player-error";
 import { toIntlLocale, type AppLocale } from "@/lib/i18n/config";
 import { translate } from "@/lib/i18n/dictionaries";
 
@@ -37,6 +38,8 @@ interface OffersResponse {
         provider: "shopier_v2" | "iyzico" | "paytr" | "stripe" | "lemonsqueezy" | null;
         available: boolean;
         unavailableReason: string | null;
+        /** Player error code for `unavailableReason`; older servers omit it. */
+        unavailableReasonCode?: string | null;
         buyerDataPolicyVersion: string | null;
         legalDocuments: {
             checkoutTerms: LegalDocumentReference;
@@ -145,7 +148,9 @@ export function CheckoutContent() {
         void fetch("/api/payments/offers", { cache: "no-store" })
             .then(async (response) => {
                 const payload = (await response.json()) as OffersResponse & { error?: string };
-                if (!response.ok) throw new Error(payload.error || t("checkout.offersLoadFailed"));
+                if (!response.ok) {
+                    throw new Error(resolveApiErrorMessage(locale, payload, t("checkout.offersLoadFailed")));
+                }
                 if (!active) return;
                 setData(payload);
                 setSelectedCode(payload.offers[0]?.code ?? null);
@@ -159,7 +164,7 @@ export function CheckoutContent() {
         return () => {
             active = false;
         };
-    }, [t]);
+    }, [locale, t]);
 
     const loadOrder = useCallback(async () => {
         if (!activeOrderId) return null;
@@ -293,7 +298,7 @@ export function CheckoutContent() {
                 ? Boolean(payload.redirectUrl && isAllowedPaymentRedirect(provider, payload.redirectUrl))
                 : Boolean(payload.iframeUrl);
             if (!response.ok || !payload.orderId || !validSession) {
-                toast.error(payload.error || t("checkout.startFailed"));
+                toast.error(resolveApiErrorMessage(locale, payload, t("checkout.startFailed")));
                 return;
             }
             setCreatedOrderId(payload.orderId);
@@ -518,8 +523,13 @@ export function CheckoutContent() {
                             </div>
                         ) : null}
 
-                        {!data?.checkout.available && data?.checkout.unavailableReason ? (
-                            <p className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-200">{data.checkout.unavailableReason}</p>
+                        {!data?.checkout.available && (data?.checkout.unavailableReason || data?.checkout.unavailableReasonCode) ? (
+                            <p className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-200">
+                                {resolvePlayerErrorMessage(locale, {
+                                    message: data.checkout.unavailableReason,
+                                    code: data.checkout.unavailableReasonCode,
+                                })}
+                            </p>
                         ) : null}
 
                         <button type="button" onClick={() => void startCheckout()} disabled={!selectedOffer || !accepted || !buyerDataReady || !data?.checkout.available || submitting} className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-sky-400 px-4 py-3.5 text-sm font-black text-slate-950 transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400">

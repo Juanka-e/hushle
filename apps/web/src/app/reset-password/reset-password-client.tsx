@@ -11,9 +11,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
 
 export function ResetPasswordClient() {
-    const { t } = useI18n();
+    const { locale, t } = useI18n();
     const token = useSearchParams().get("token") ?? "";
     const [password, setPassword] = useState("");
     const [confirmation, setConfirmation] = useState("");
@@ -42,7 +43,7 @@ export function ResetPasswordClient() {
                 error?: string;
             } | null;
             if (!response.ok) {
-                setError(payload?.error || t("auth.resetFailed"));
+                setError(resolveApiErrorMessage(locale, payload, t("auth.resetFailed")));
                 return;
             }
             setCompleted(true);

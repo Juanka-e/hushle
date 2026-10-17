@@ -95,7 +95,7 @@ export default function AdminAnnouncementsPage() {
             const data = (await response.json()) as AnnouncementRecord[];
             setAnnouncements(data);
         } catch {
-            toast.error("Duyurular yuklenemedi.");
+            toast.error("Duyurular yüklenemedi.");
         } finally {
             setLoading(false);
         }
@@ -218,12 +218,12 @@ export default function AdminAnnouncementsPage() {
                 return;
             }
 
-            toast.success(editing ? "Duyuru guncellendi." : "Duyuru olusturuldu.");
+            toast.success(editing ? "Duyuru güncellendi." : "Duyuru oluşturuldu.");
             setFormOpen(false);
             setFormState(defaultFormState);
             await fetchAnnouncements();
         } catch {
-            setFormError("Ag hatasi olustu.");
+            setFormError("Ağ hatası oluştu.");
         } finally {
             setFormSaving(false);
         }
@@ -260,7 +260,7 @@ export default function AdminAnnouncementsPage() {
         });
 
         if (!response.ok) {
-            toast.error("Gorunurluk guncellenemedi.");
+            toast.error("Görünürlük güncellenemedi.");
             return;
         }
 
@@ -277,7 +277,7 @@ export default function AdminAnnouncementsPage() {
             });
 
             if (!response.ok) {
-                toast.error("Sabit durumu guncellenemedi.");
+                toast.error("Sabit durumu güncellenemedi.");
                 return;
             }
 
@@ -309,7 +309,7 @@ export default function AdminAnnouncementsPage() {
                 <div>
                     <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
                         <Megaphone className="h-6 w-6 text-blue-500" />
-                        Duyuru Yonetimi
+                        Duyuru Yönetimi
                     </h1>
                     <p className="mt-1 text-sm text-muted-foreground">
                         Toplam {announcements.length} duyuru.
@@ -332,7 +332,7 @@ export default function AdminAnnouncementsPage() {
                 ) : sortedAnnouncements.length === 0 ? (
                     <div className="py-16 text-center text-gray-400 dark:text-slate-500">
                         <Megaphone size={32} className="mx-auto mb-3 opacity-40" />
-                        Henuz duyuru yok.
+                        Henüz duyuru yok.
                     </div>
                 ) : (
                     <div className="divide-y divide-gray-100 dark:divide-slate-700">
@@ -361,13 +361,13 @@ export default function AdminAnnouncementsPage() {
                                             {announcement.isPinned && (
                                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                                                     <Pin size={11} fill="currentColor" />
-                                                    SABIT
+                                                    SABİT
                                                 </span>
                                             )}
                                             {isNew && (
                                                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-[10px] font-black text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                                                     <Star size={11} fill="currentColor" />
-                                                    YENI
+                                                    YENİ
                                                 </span>
                                             )}
                                             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -398,7 +398,7 @@ export default function AdminAnnouncementsPage() {
                                                 })}
                                             </span>
                                             {announcement.mediaUrl && (
-                                                <span>{announcement.mediaType === "youtube" ? "Video" : "Gorsel"}</span>
+                                                <span>{announcement.mediaType === "youtube" ? "Video" : "Görsel"}</span>
                                             )}
                                         </div>
                                     </div>
@@ -412,7 +412,7 @@ export default function AdminAnnouncementsPage() {
                                                     ? "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300"
                                                     : "text-gray-500 hover:bg-gray-100 hover:text-amber-600 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-amber-300"
                                             }`}
-                                            title={announcement.isPinned ? "Sabiti kaldir" : "Sabitle"}
+                                            title={announcement.isPinned ? "Sabiti kaldır" : "Sabitle"}
                                         >
                                             {togglingPin === announcement.id ? (
                                                 <Loader2 size={15} className="animate-spin" />
@@ -425,14 +425,14 @@ export default function AdminAnnouncementsPage() {
                                         <button
                                             onClick={() => toggleVisibility(announcement)}
                                             className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-purple-600 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-purple-300"
-                                            title={announcement.isVisible ? "Gizle" : "Gorunur yap"}
+                                            title={announcement.isVisible ? "Gizle" : "Görünür yap"}
                                         >
                                             {announcement.isVisible ? <Eye size={15} /> : <EyeOff size={15} />}
                                         </button>
                                         <button
                                             onClick={() => openEdit(announcement)}
                                             className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-blue-300"
-                                            title="Duzenle"
+                                            title="Düzenle"
                                         >
                                             <Pencil size={15} />
                                         </button>
@@ -462,10 +462,10 @@ export default function AdminAnnouncementsPage() {
                         <div className="flex items-center justify-between border-b border-gray-100 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
                             <div>
                                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                                    {editing ? "Duyuruyu Duzenle" : "Yeni Duyuru"}
+                                    {editing ? "Duyuruyu Düzenle" : "Yeni Duyuru"}
                                 </h2>
                                 <p className="text-sm text-muted-foreground">
-                                    Kisa ve okunur bir icerik akisiyla kaydedilir.
+                                    Kısa ve okunur bir içerik akışıyla kaydedilir.
                                 </p>
                             </div>
                             <button
@@ -550,7 +550,7 @@ export default function AdminAnnouncementsPage() {
                                             }
                                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950"
                                         >
-                                            <option value="guncelleme">Guncelleme</option>
+                                            <option value="guncelleme">Güncelleme</option>
                                             <option value="duyuru">Duyuru</option>
                                             <option value="sss">S.S.S.</option>
                                         </select>
@@ -583,7 +583,7 @@ export default function AdminAnnouncementsPage() {
                                     </div>
                                     <div>
                                         <label className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                            Medya Turu
+                                            Medya Türü
                                         </label>
                                         <select
                                             value={formState.mediaType ?? ""}
@@ -597,7 +597,7 @@ export default function AdminAnnouncementsPage() {
                                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950"
                                         >
                                             <option value="">Yok</option>
-                                            <option value="image">Gorsel</option>
+                                            <option value="image">Görsel</option>
                                             <option value="youtube">YouTube</option>
                                         </select>
                                     </div>
@@ -627,7 +627,7 @@ export default function AdminAnnouncementsPage() {
                                             }
                                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                         />
-                                        Oyunculara gorunur
+                                        Oyunculara görünür
                                     </label>
                                     <label className="inline-flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
                                         <input
@@ -693,7 +693,7 @@ export default function AdminAnnouncementsPage() {
                                 onClick={() => setFormOpen(false)}
                                 className="rounded-xl px-4 py-2.5 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-700"
                             >
-                                Iptal
+                                İptal
                             </button>
                             <button
                                 onClick={handleSave}
@@ -701,7 +701,7 @@ export default function AdminAnnouncementsPage() {
                                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
                             >
                                 {formSaving && <Loader2 size={16} className="animate-spin" />}
-                                {editing ? "Guncelle" : "Kaydet"}
+                                {editing ? "Güncelle" : "Kaydet"}
                             </button>
                         </div>
                     </div>

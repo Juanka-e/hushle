@@ -3,17 +3,22 @@
 import { Clock3, Pause, Play } from "lucide-react";
 import type { TransitionData } from "@/types/game";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { ConnectionPausePanel } from "./connection-pause-panel";
 
 interface TransitionScreenProps {
     transition: TransitionData;
     isHost?: boolean;
     onPauseResume?: () => void;
+    canResolveConnectionPause?: boolean;
+    onEmit?: (event: string, data?: unknown) => void;
 }
 
 export function TransitionScreen({
     transition,
     isHost = false,
     onPauseResume,
+    canResolveConnectionPause = false,
+    onEmit,
 }: TransitionScreenProps) {
     const { t } = useI18n();
     const getTeamLabel = (team: string) => team === "A" ? t("transition.teamA") : t("transition.teamB");
@@ -77,8 +82,20 @@ export function TransitionScreen({
                         <div className="mt-5 rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-300">
                             {transition.oyunDurduruldu ? (
                                 <div className="space-y-1">
-                                    <div className="font-bold text-slate-900 dark:text-white">{t("transition.paused")}</div>
-                                    <div>{t("transition.pausedHelp")}</div>
+                                    <div className="font-bold text-slate-900 dark:text-white">
+                                        {transition.connectionPause
+                                            ? transition.connectionPause.waitingForPlayers
+                                                ? t("game.connectionPaused")
+                                                : t("game.connectionRecovered")
+                                            : t("transition.paused")}
+                                    </div>
+                                    <div>
+                                        {transition.connectionPause
+                                            ? transition.connectionPause.waitingForPlayers
+                                                ? t("game.connectionPausedHelp")
+                                                : t("game.connectionRecoveredHelp")
+                                            : t("transition.pausedHelp")}
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="space-y-1">
@@ -124,11 +141,23 @@ export function TransitionScreen({
                     </section>
                 </div>
 
+                {transition.oyunDurduruldu && transition.connectionPause?.waitingForPlayers ? (
+                    <ConnectionPausePanel
+                        className="mt-5"
+                        connectionPause={transition.connectionPause}
+                        canResolve={canResolveConnectionPause}
+                        onEmit={onEmit}
+                    />
+                ) : null}
+
                 {isHost && onPauseResume ? (
                     <div className="mt-5 flex justify-end">
                         <button
                             type="button"
                             onClick={onPauseResume}
+                            disabled={Boolean(
+                                transition.connectionPause?.waitingForPlayers
+                            )}
                             className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white/70 px-4 py-2 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-white hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-gray-200 dark:hover:bg-slate-800 dark:hover:text-blue-300"
                         >
                             {transition.oyunDurduruldu ? <Play size={16} /> : <Pause size={16} />}

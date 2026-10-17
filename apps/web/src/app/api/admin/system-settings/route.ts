@@ -49,7 +49,7 @@ export async function PUT(req: NextRequest) {
 
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla sistem ayari guncellemesi gonderildi. Lutfen bekleyin." },
+            { error: "Çok fazla sistem ayarı güncellemesi gönderildi. Lütfen bekleyin." },
             {
                 status: 429,
                 headers: buildRateLimitHeaders(rateLimit),
@@ -133,7 +133,7 @@ export async function PUT(req: NextRequest) {
         }, { headers: buildRateLimitHeaders(rateLimit) });
     } catch (error) {
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : "Sistem ayarlari guncellenemedi." },
+            { error: error instanceof Error ? error.message : "Sistem ayarları güncellenemedi." },
             {
                 status: 422,
                 headers: buildRateLimitHeaders(rateLimit),

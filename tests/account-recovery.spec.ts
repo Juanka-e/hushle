@@ -42,6 +42,44 @@ test.describe("account recovery UI", () => {
         ).toBeVisible();
     });
 
+    test("shows the reset notice in the player's language", async ({ page, baseURL }) => {
+        await page.context().addCookies([{ name: "hushle_locale", value: "en", url: baseURL! }]);
+        await page.route("**/api/security/captcha-config?*", (route) =>
+            route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    enabled: false,
+                    required: false,
+                    provider: "none",
+                    siteKey: null,
+                    failMode: "soft_fail",
+                    turnstileMode: "managed",
+                    turnstileInteractiveFallback: true,
+                }),
+            })
+        );
+        let body: Record<string, unknown> = {
+            message: "Bilgiler bir hesapla eşleşiyorsa parola sıfırlama bağlantısı gönderilecek.",
+            messageCode: "PASSWORD_RESET_REQUESTED",
+        };
+        await page.route("**/api/auth/password-reset/request", (route) =>
+            route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(body) })
+        );
+        await page.goto("/forgot-password");
+        await page.getByPlaceholder("Username or email").fill("unknown@example.test");
+        await page.getByRole("button", { name: "Request link" }).click();
+        // A known code is shown in English even though the server text is Turkish.
+        await expect(
+            page.getByText("If the details match an account, a password reset link will be sent.")
+        ).toBeVisible();
+
+        // An empty body (no text, no code) falls back to the page's own English text.
+        body = {};
+        await page.getByRole("button", { name: "Request link" }).click();
+        await expect(page.getByText("If the information matches, a link will be sent.")).toBeVisible();
+    });
+
     test("enforces password strength and confirms reset", async ({ page }) => {
         await page.route("**/api/auth/password-reset/confirm", async (route) => {
             expect(route.request().postDataJSON()).toMatchObject({

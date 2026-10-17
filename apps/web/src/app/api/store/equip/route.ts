@@ -11,15 +11,13 @@ import {
   getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { getSystemSettings } from "@/lib/system-settings/service";
-import {
-  getFeatureDisabledMessage,
-  isStoreAvailable,
-} from "@/lib/system-settings/policies";
+import { isStoreAvailable } from "@/lib/system-settings/policies";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export async function POST(req: Request) {
   const sessionUser = await getSessionUser();
   if (!sessionUser) {
-    return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+    return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
   }
   const capabilityError = enforceAccountCapability(
     sessionUser,
@@ -29,7 +27,7 @@ export async function POST(req: Request) {
 
   const settings = await getSystemSettings();
   if (!isStoreAvailable(settings)) {
-    return NextResponse.json({ error: getFeatureDisabledMessage("store") }, { status: 409 });
+    return NextResponse.json(playerError(PlayerErrorCode.STORE_DISABLED), { status: 409 });
   }
 
   try {
@@ -41,7 +39,7 @@ export async function POST(req: Request) {
     });
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: "Cok fazla kusanma istegi gonderdin. Biraz bekleyip tekrar dene." },
+        playerError(PlayerErrorCode.RATE_LIMITED),
         { status: 429, headers: buildRateLimitHeaders(rateLimit) }
       );
     }
@@ -59,18 +57,18 @@ export async function POST(req: Request) {
   } catch (error) {
     if (error instanceof InventoryError) {
       if (error.code === "invalid_request") {
-        return NextResponse.json({ error: error.message }, { status: 422 });
+        return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 422 });
       }
       if (error.code === "item_not_found") {
-        return NextResponse.json({ error: "Urun bulunamadi." }, { status: 404 });
+        return NextResponse.json(playerError(PlayerErrorCode.ITEM_NOT_FOUND), { status: 404 });
       }
       if (error.code === "type_mismatch") {
-        return NextResponse.json({ error: "Kozmetik slotu gecersiz." }, { status: 409 });
+        return NextResponse.json(playerError(PlayerErrorCode.EQUIP_SLOT_INVALID), { status: 409 });
       }
       if (error.code === "not_owned") {
-        return NextResponse.json({ error: "Urun envanterde degil." }, { status: 409 });
+        return NextResponse.json(playerError(PlayerErrorCode.ITEM_NOT_OWNED), { status: 409 });
       }
     }
-    return NextResponse.json({ error: "Kusanma islemi basarisiz." }, { status: 500 });
+    return NextResponse.json(playerError(PlayerErrorCode.EQUIP_FAILED), { status: 500 });
   }
 }

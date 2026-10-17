@@ -10,9 +10,11 @@ import {
     prewarmCaptchaForAction,
 } from "@/lib/security/captcha-client";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
+import { resolveApiNoticeMessage } from "@/lib/errors/resolve-player-notice";
 
 export default function ForgotPasswordPage() {
-    const { t } = useI18n();
+    const { locale, t } = useI18n();
     const [identifier, setIdentifier] = useState("");
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
@@ -34,18 +36,12 @@ export default function ForgotPasswordPage() {
                     captchaToken: token,
                 }),
             });
-            const payload = (await response.json().catch(() => null)) as {
-                error?: string;
-                message?: string;
-            } | null;
+            const payload: unknown = await response.json().catch(() => null);
             if (!response.ok) {
-                setError(payload?.error || t("auth.requestFailed"));
+                setError(resolveApiErrorMessage(locale, payload, t("auth.requestFailed")));
                 return;
             }
-            setMessage(
-                payload?.message ||
-                    t("auth.resetRequestSent")
-            );
+            setMessage(resolveApiNoticeMessage(locale, payload, t("auth.resetRequestSent")));
         } catch {
             setError(t("auth.resetUnavailable"));
         } finally {

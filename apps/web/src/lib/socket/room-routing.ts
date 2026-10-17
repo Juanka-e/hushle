@@ -1,7 +1,10 @@
 import type { RoomOwnershipCoordinator } from "./room-ownership";
+import { getPlayerErrorMessage } from "@/lib/errors/player-error";
+import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 
-export const ROOM_ROUTING_JOIN_ERROR =
-    "Odaya şu anda bağlanılamıyor. Lütfen kısa süre sonra tekrar deneyin.";
+/** Players only learn that the room is unreachable, never which node owns it. */
+export const ROOM_ROUTING_JOIN_ERROR_CODE = PlayerErrorCode.ROOM_UNAVAILABLE;
+export const ROOM_ROUTING_JOIN_ERROR = getPlayerErrorMessage(ROOM_ROUTING_JOIN_ERROR_CODE);
 
 export type RoomRouteDecisionKind =
     | "local"

@@ -28,7 +28,7 @@ export async function POST(
     const params = await context.params;
     const parsedParams = routeParamsSchema.safeParse(params);
     if (!parsedParams.success) {
-        return NextResponse.json({ error: "Gecersiz kullanici." }, { status: 422 });
+        return NextResponse.json({ error: "Geçersiz kullanıcı." }, { status: 422 });
     }
 
     try {
@@ -40,7 +40,7 @@ export async function POST(
         });
         if (!rateLimit.allowed) {
             return NextResponse.json(
-                { error: "Cok fazla coin operasyonu denemesi. Lutfen biraz bekleyin." },
+                { error: "Çok fazla coin operasyonu denemesi. Lütfen biraz bekleyin." },
                 { status: 429, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
@@ -56,17 +56,17 @@ export async function POST(
 
         if (!result.ok) {
             if (result.code === "not_found") {
-                return NextResponse.json({ error: "Kullanici bulunamadi." }, { status: 404 });
+                return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 404 });
             }
             if (result.code === "target_is_admin") {
                 return NextResponse.json(
-                    { error: "Admin hesaplarinin bakiyesi bu panelden degistirilemez." },
+                    { error: "Admin hesaplarının bakiyesi bu panelden değiştirilemez." },
                     { status: 403 }
                 );
             }
 
             return NextResponse.json(
-                { error: "Kullanici bakiyesi bu islem icin yetersiz." },
+                { error: "Kullanıcı bakiyesi bu işlem için yetersiz." },
                 { status: 409 }
             );
         }
@@ -97,14 +97,14 @@ export async function POST(
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: error.issues[0]?.message || "Gecersiz coin operasyon verisi." },
+                { error: error.issues[0]?.message || "Geçersiz coin operasyon verisi." },
                 { status: 422 }
             );
         }
 
         console.error("Failed to apply wallet adjustment:", error);
         return NextResponse.json(
-            { error: "Coin operasyonu uygulanamadi." },
+            { error: "Coin operasyonu uygulanamadı." },
             { status: 500 }
         );
     }

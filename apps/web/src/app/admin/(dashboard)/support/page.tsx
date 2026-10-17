@@ -28,16 +28,16 @@ import type {
 } from "@/types/support";
 
 const statusLabels: Record<SupportTicketStatus, string> = {
-    open: "Acik",
-    in_progress: "Islemde",
-    resolved: "Cozuldu",
-    closed: "Kapali",
+    open: "Açık",
+    in_progress: "İşlemde",
+    resolved: "Çözüldü",
+    closed: "Kapalı",
 };
 
 const priorityLabels: Record<SupportTicketPriority, string> = {
-    low: "Dusuk",
+    low: "Düşük",
     normal: "Normal",
-    high: "Yuksek",
+    high: "Yüksek",
 };
 
 const statusBadgeClass: Record<SupportTicketStatus, string> = {
@@ -183,7 +183,7 @@ export default function AdminSupportPage() {
                     | null;
 
                 if (!response.ok || !payload || !("tickets" in payload)) {
-                    toast.error((payload && "error" in payload && payload.error) || "Destek kuyrugu yuklenemedi.");
+                    toast.error((payload && "error" in payload && payload.error) || "Destek kuyruğu yüklenemedi.");
                     return;
                 }
 
@@ -212,7 +212,7 @@ export default function AdminSupportPage() {
                 if (abort.signal.aborted) {
                     return;
                 }
-                toast.error("Destek kuyrugu yuklenemedi.");
+                toast.error("Destek kuyruğu yüklenemedi.");
             } finally {
                 if (!abort.signal.aborted) {
                     setLoading(false);
@@ -255,7 +255,7 @@ export default function AdminSupportPage() {
             });
             const payload = (await response.json()) as SupportAdminListResponse | { error?: string };
             if (!response.ok || !("tickets" in payload)) {
-                toast.error(("error" in payload && payload.error) || "Destek kuyrugu yenilenemedi.");
+                toast.error(("error" in payload && payload.error) || "Destek kuyruğu yenilenemedi.");
                 return;
             }
 
@@ -281,7 +281,7 @@ export default function AdminSupportPage() {
                 pendingTicketIdRef.current = null;
             }
         } catch {
-            toast.error("Destek kuyrugu yenilenemedi.");
+            toast.error("Destek kuyruğu yenilenemedi.");
         } finally {
             setLoading(false);
         }
@@ -306,16 +306,16 @@ export default function AdminSupportPage() {
 
             const payload = (await response.json()) as SupportTicketView | { error?: string };
             if (!response.ok || !("id" in payload)) {
-                toast.error(("error" in payload && payload.error) || "Talep guncellenemedi.");
+                toast.error(("error" in payload && payload.error) || "Talep güncellenemedi.");
                 return;
             }
 
             setTickets((current) =>
                 current.map((ticket) => (ticket.id === payload.id ? payload : ticket))
             );
-            toast.success("Destek talebi guncellendi.");
+            toast.success("Destek talebi güncellendi.");
         } catch {
-            toast.error("Destek talebi guncellenemedi.");
+            toast.error("Destek talebi güncellenemedi.");
         } finally {
             setSavingTicket(false);
         }
@@ -339,7 +339,7 @@ export default function AdminSupportPage() {
 
             const payload = (await response.json()) as SupportTicketView | { error?: string };
             if (!response.ok || !("id" in payload)) {
-                toast.error(("error" in payload && payload.error) || "Mesaj gonderilemedi.");
+                toast.error(("error" in payload && payload.error) || "Mesaj gönderilemedi.");
                 return;
             }
 
@@ -347,9 +347,9 @@ export default function AdminSupportPage() {
                 current.map((ticket) => (ticket.id === payload.id ? payload : ticket))
             );
             setMessageBody("");
-            toast.success(messageMode === "internal" ? "Ic not eklendi." : "Kullaniciya cevap gonderildi.");
+            toast.success(messageMode === "internal" ? "İç not eklendi." : "Kullanıcıya cevap gönderildi.");
         } catch {
-            toast.error("Mesaj gonderilemedi.");
+            toast.error("Mesaj gönderilemedi.");
         } finally {
             setSendingMessage(false);
         }
@@ -362,11 +362,11 @@ export default function AdminSupportPage() {
             value: String(tickets.length),
         },
         {
-            label: "Acik",
+            label: "Açık",
             value: String(tickets.filter((ticket) => ticket.status === "open").length),
         },
         {
-            label: "Islemde",
+            label: "İşlemde",
             value: String(tickets.filter((ticket) => ticket.status === "in_progress").length),
         },
     ];
@@ -375,7 +375,7 @@ export default function AdminSupportPage() {
         <div className="space-y-6">
             <AdminPageHeader
                 title="Support Desk"
-                description="Oyuncu taleplerini topla, admin atamasi yap, ic not veya gorunur cevapla talepleri yonet."
+                description="Oyuncu taleplerini topla, admin ataması yap, iç not veya görünür cevapla talepleri yönet."
                 meta="Support Desk Foundation"
                 icon={<Headset className="h-5 w-5 text-foreground" />}
                 action={
@@ -400,7 +400,7 @@ export default function AdminSupportPage() {
                                 }
                             }}
                             className="pl-9"
-                            placeholder="Baslik veya kullanici adina gore ara"
+                            placeholder="Başlık veya kullanıcı adına göre ara"
                         />
                     </div>
                     <select
@@ -411,7 +411,7 @@ export default function AdminSupportPage() {
                         }}
                         className="h-9 rounded-md border border-input bg-background px-3 text-sm"
                     >
-                        <option value="all">Tum durumlar</option>
+                        <option value="all">Tüm durumlar</option>
                         {Object.entries(statusLabels).map(([value, label]) => (
                             <option key={value} value={value}>
                                 {label}
@@ -434,14 +434,14 @@ export default function AdminSupportPage() {
             <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
                 <AdminTableShell
                     title="Ticket Queue"
-                    description="En son hareket alan destek talepleri once gelir."
+                    description="En son hareket alan destek talepleri önce gelir."
                     loading={loading}
                     isEmpty={!loading && tickets.length === 0}
                     emptyState={
                         <AdminEmptyState
                             icon={<LifeBuoy className="h-5 w-5" />}
                             title="Destek talebi yok"
-                            description="Secili filtrelerde gosterilecek bir support ticket bulunmuyor."
+                            description="Seçili filtrelerde gösterilecek bir support ticket bulunmuyor."
                         />
                     }
                     footer={
@@ -497,14 +497,14 @@ export default function AdminSupportPage() {
 
                 <AdminTableShell
                     title="Ticket Detail"
-                    description="Durum, oncelik, atama ve mesaj akislarini tek panelden yonet."
+                    description="Durum, öncelik, atama ve mesaj akışlarını tek panelden yönet."
                     loading={loading}
                     isEmpty={!loading && !selectedTicket}
                     emptyState={
                         <AdminEmptyState
                             icon={<MessageSquareText className="h-5 w-5" />}
-                            title="Ticket secilmedi"
-                            description="Soldaki kuyruktan bir ticket secerek detay panelini ac."
+                            title="Ticket seçilmedi"
+                            description="Soldaki kuyruktan bir ticket seçerek detay panelini aç."
                         />
                     }
                 >
@@ -527,7 +527,7 @@ export default function AdminSupportPage() {
                                     {selectedTicket.subject}
                                 </h2>
                                 <p className="mt-2 text-sm text-muted-foreground">
-                                    Kullanici: @{selectedTicket.user.username} - Acilis: {formatDateTime(selectedTicket.createdAt)}
+                                    Kullanıcı: @{selectedTicket.user.username} - Açılış: {formatDateTime(selectedTicket.createdAt)}
                                     {selectedTicket.assignedAdmin
                                         ? ` - Atanan yetkili: @${selectedTicket.assignedAdmin.username}`
                                         : ""}
@@ -536,17 +536,17 @@ export default function AdminSupportPage() {
                                     <div className="rounded-2xl border border-border/70 bg-muted/15 px-4 py-3">
                                         <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">Mesaj</div>
                                         <div className="mt-1 text-sm font-semibold text-foreground">
-                                            {selectedTicket.messages.length} kayit
+                                            {selectedTicket.messages.length} kayıt
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-border/70 bg-muted/15 px-4 py-3">
-                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">Ic not</div>
+                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">İç not</div>
                                         <div className="mt-1 text-sm font-semibold text-foreground">
                                             {selectedTicket.messages.filter((entry) => entry.isInternal).length} not
                                         </div>
                                     </div>
                                     <div className="rounded-2xl border border-border/70 bg-muted/15 px-4 py-3">
-                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">Gorunur cevap</div>
+                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">Görünür cevap</div>
                                         <div className="mt-1 text-sm font-semibold text-foreground">
                                             {
                                                 selectedTicket.messages.filter(
@@ -570,12 +570,12 @@ export default function AdminSupportPage() {
                                     </Button>
                                     <Button asChild variant="outline" size="sm">
                                         <Link href={buildUsersHref(selectedTicket.user.username)}>
-                                            Kullanicida Ac
+                                            Kullanıcıda Aç
                                         </Link>
                                     </Button>
                                     <Button asChild variant="outline" size="sm">
                                         <Link href={buildAuditHref(selectedTicket.user.username)}>
-                                            Audit Kaydina Git
+                                            Audit Kaydına Git
                                         </Link>
                                     </Button>
                                 </div>
@@ -600,7 +600,7 @@ export default function AdminSupportPage() {
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
-                                        Oncelik
+                                        Öncelik
                                     </label>
                                     <select
                                         value={ticketPriority}
@@ -637,7 +637,7 @@ export default function AdminSupportPage() {
                                         onClick={() => void saveTicketChanges()}
                                         disabled={savingTicket}
                                     >
-                                        {savingTicket ? "Kaydediliyor..." : "Ticketi Guncelle"}
+                                        {savingTicket ? "Kaydediliyor..." : "Ticketi Güncelle"}
                                     </Button>
                                 </div>
                             </div>
@@ -658,7 +658,7 @@ export default function AdminSupportPage() {
                                             <div className="flex items-center gap-2">
                                                 <span className="font-black uppercase tracking-[0.18em]">
                                                     {entry.isInternal
-                                                        ? "Ic Not"
+                                                        ? "İç Not"
                                                         : entry.author?.role === "admin"
                                                           ? "Destek Ekibi"
                                                           : "Oyuncu"}
@@ -682,7 +682,7 @@ export default function AdminSupportPage() {
                                         size="sm"
                                         onClick={() => setMessageMode("public")}
                                     >
-                                        Kullaniciya Cevap
+                                        Kullanıcıya Cevap
                                     </Button>
                                     <Button
                                         type="button"
@@ -691,12 +691,12 @@ export default function AdminSupportPage() {
                                         onClick={() => setMessageMode("internal")}
                                     >
                                         <ShieldAlert className="h-4 w-4" />
-                                        Ic Not
+                                        İç Not
                                     </Button>
                                 </div>
                                 {selectedTicket.status === "closed" && messageMode === "public" ? (
                                     <div className="mb-3 rounded-2xl border border-amber-200/70 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
-                                        Kapali ticket icin oyuncuya yeni public cevap gondermeden once durumu tekrar acik ya da islemde yap.
+                                        Kapalı ticket için oyuncuya yeni public cevap göndermeden önce durumu tekrar açık ya da işlemde yap.
                                     </div>
                                 ) : null}
                                 <textarea
@@ -707,8 +707,8 @@ export default function AdminSupportPage() {
                                     className="min-h-[130px] w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary resize-y"
                                     placeholder={
                                         messageMode === "internal"
-                                            ? "Bu not sadece adminler tarafindan gorunur."
-                                            : "Oyuncuya gonderilecek cevabi yaz."
+                                            ? "Bu not sadece adminler tarafından görünür."
+                                            : "Oyuncuya gönderilecek cevabı yaz."
                                     }
                                 />
                                 <div className="mt-3 flex justify-end">
@@ -724,10 +724,10 @@ export default function AdminSupportPage() {
                                     >
                                         <Send className="h-4 w-4" />
                                         {sendingMessage
-                                            ? "Gonderiliyor..."
+                                            ? "Gönderiliyor..."
                                             : messageMode === "internal"
-                                              ? "Ic Not Ekle"
-                                              : "Cevap Gonder"}
+                                              ? "İç Not Ekle"
+                                              : "Cevap Gönder"}
                                     </Button>
                                 </div>
                             </div>

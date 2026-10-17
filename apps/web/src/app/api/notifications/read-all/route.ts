@@ -6,13 +6,14 @@ import {
     consumeRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const rateLimit = consumeRequestRateLimit({
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla istek gonderildi. Lutfen biraz bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

@@ -33,7 +33,7 @@ export async function DELETE(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla moderasyon notu silme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla moderasyon notu silme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -41,7 +41,7 @@ export async function DELETE(
     const params = await context.params;
     const parsedParams = routeParamsSchema.safeParse(params);
     if (!parsedParams.success) {
-        return NextResponse.json({ error: "Gecersiz moderasyon kaydi." }, { status: 422 });
+        return NextResponse.json({ error: "Geçersiz moderasyon kaydı." }, { status: 422 });
     }
 
     const { id: targetUserId, eventId } = parsedParams.data;
@@ -59,12 +59,12 @@ export async function DELETE(
     });
 
     if (!targetEvent) {
-        return NextResponse.json({ error: "Moderasyon kaydi bulunamadi." }, { status: 404 });
+        return NextResponse.json({ error: "Moderasyon kaydı bulunamadı." }, { status: 404 });
     }
 
     if (targetEvent.actionType !== "note") {
         return NextResponse.json(
-            { error: "Sadece ic not kayitlari silinebilir." },
+            { error: "Sadece iç not kayıtları silinebilir." },
             { status: 403 }
         );
     }
