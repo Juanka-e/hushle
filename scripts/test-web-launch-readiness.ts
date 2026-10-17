@@ -37,6 +37,7 @@ const checks: ReadinessCheck[] = [
     { area: "realtime topology", script: "test:realtime-topology" },
     { area: "room display contract", script: "test:room-display" },
     { area: "word category selection", script: "test:word-category-selection-ui" },
+    { area: "curated word packs", script: "test:word-packs" },
     { area: "card flip settings", script: "test:card-flip-settings" },
     { area: "economy guardrails", script: "test:economy-guardrails" },
     { area: "economy edge cases", script: "test:economy-guardrails-edge" },

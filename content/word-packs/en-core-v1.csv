@@ -1,0 +1,421 @@
+word,difficulty,category,subcategory,taboo1,taboo2,taboo3,taboo4,taboo5
+Toothbrush,1,Everyday Life,,Bristles,Mouth,Bathroom,Dentist,Floss
+Umbrella,1,Everyday Life,,Rain,Wet,Open,Handle,Storm
+Pillow,1,Everyday Life,,Bed,Sleep,Head,Soft,Feathers
+Mirror,1,Everyday Life,,Reflection,Glass,Look,Bathroom,Face
+Wallet,1,Everyday Life,,Money,Cash,Cards,Pocket,Leather
+Keys,1,Everyday Life,,Lock,Door,Open,Car,Ring
+Alarm clock,1,Everyday Life,,Wake up,Morning,Ring,Snooze,Bedside
+Blanket,1,Everyday Life,,Warm,Bed,Cover,Cozy,Wool
+Towel,1,Everyday Life,,Dry,Shower,Bath,Beach,Wet
+Soap,1,Everyday Life,,Wash,Bubbles,Hands,Clean,Bar
+Stairs,1,Everyday Life,,Steps,Up,Down,Climb,Floor
+Bus,1,Everyday Life,,Driver,Stop,Ride,School,Ticket
+Bicycle,1,Everyday Life,,Pedal,Wheels,Ride,Helmet,Chain
+Birthday,1,Everyday Life,,Cake,Candles,Party,Presents,Age
+Pajamas,1,Everyday Life,,Sleep,Night,Bed,Wear,Comfy
+Trash can,1,Everyday Life,,Garbage,Rubbish,Bin,Lid,Throw
+Homework,1,Everyday Life,,School,Teacher,Assignment,Study,Due
+Remote control,2,Everyday Life,,TV,Channel,Buttons,Couch,Batteries
+Dishwasher,2,Everyday Life,,Kitchen,Plates,Clean,Machine,Load
+Laundry,2,Everyday Life,,Clothes,Wash,Dirty,Basket,Detergent
+Vacuum cleaner,2,Everyday Life,,Dust,Carpet,Bag,Floor,Noise
+Doorbell,2,Everyday Life,,Ring,Visitor,Button,Ding dong,Knock
+Elevator,2,Everyday Life,,Lift,Floor,Up,Buttons,Building
+Microwave,2,Everyday Life,,Heat,Kitchen,Popcorn,Minutes,Leftovers
+Kettle,2,Everyday Life,,Boil,Water,Tea,Whistle,Kitchen
+Traffic light,2,Everyday Life,,Red,Green,Yellow,Stop,Go
+Seat belt,2,Everyday Life,,Car,Buckle,Safety,Click,Crash
+Piggy bank,2,Everyday Life,,Coins,Save,Money,Break,Kids
+Suitcase,2,Everyday Life,,Travel,Pack,Luggage,Clothes,Airport
+Neighbor,2,Everyday Life,,Next door,House,Street,Fence,Borrow
+Hiccups,2,Everyday Life,,Breath,Scare,Hold,Water,Annoying
+Sneeze,2,Everyday Life,,Nose,Cold,Achoo,Tissue,Allergies
+Yawn,2,Everyday Life,,Tired,Mouth,Sleepy,Bored,Stretch
+Grocery list,2,Everyday Life,,Shopping,Supermarket,Write,Food,Forget
+Rush hour,3,Everyday Life,,Traffic,Commute,Morning,Busy,Crowded
+Leftovers,3,Everyday Life,,Dinner,Fridge,Reheat,Tomorrow,Extra
+Junk drawer,3,Everyday Life,,Kitchen,Random,Stuff,Messy,Batteries
+Commute,3,Everyday Life,,Work,Drive,Train,Daily,Travel
+Errand,3,Everyday Life,,Task,Store,Quick,Run,Pick up
+Allowance,3,Everyday Life,,Money,Weekly,Parents,Chores,Kids
+Thermostat,3,Everyday Life,,Temperature,Heating,Wall,Degrees,Cold
+Garage sale,3,Everyday Life,,Yard,Sell,Used,Cheap,Weekend
+Pizza,1,Food and Drink,,Cheese,Slice,Pepperoni,Italy,Delivery
+Pancake,1,Food and Drink,,Breakfast,Syrup,Flip,Flat,Batter
+Sandwich,1,Food and Drink,,Bread,Lunch,Ham,Cheese,Toast
+Ice cream,1,Food and Drink,,Cone,Cold,Scoop,Vanilla,Dessert
+Popcorn,1,Food and Drink,,Movie,Butter,Kernels,Salty,Microwave
+Banana,1,Food and Drink,,Yellow,Peel,Monkey,Fruit,Split
+Watermelon,1,Food and Drink,,Seeds,Summer,Green,Red,Juicy
+Strawberry,1,Food and Drink,,Red,Fruit,Seeds,Jam,Shortcake
+Spaghetti,1,Food and Drink,,Pasta,Noodles,Meatballs,Sauce,Italian
+Cheese,1,Food and Drink,,Mouse,Milk,Cheddar,Slice,Pizza
+Chocolate,1,Food and Drink,,Cocoa,Sweet,Bar,Brown,Candy
+Burger,1,Food and Drink,,Patty,Bun,Beef,Cheese,Fries
+French fries,1,Food and Drink,,Potato,Ketchup,Salty,Crispy,Fast food
+Cookie,1,Food and Drink,,Bake,Chocolate chip,Milk,Jar,Crumbs
+Lemonade,1,Food and Drink,,Sour,Sugar,Stand,Summer,Yellow
+Cereal,1,Food and Drink,,Bowl,Milk,Breakfast,Spoon,Box
+Sushi,1,Food and Drink,,Rice,Fish,Japan,Raw,Chopsticks
+Peanut butter,2,Food and Drink,,Jelly,Sandwich,Spread,Sticky,Jar
+Pretzel,2,Food and Drink,,Twisted,Salt,Knot,Bread,Mustard
+Milkshake,2,Food and Drink,,Ice cream,Straw,Thick,Diner,Blender
+Guacamole,2,Food and Drink,,Avocado,Dip,Green,Chips,Mexican
+Meatball,2,Food and Drink,,Spaghetti,Round,Beef,Sauce,Italian
+Burrito,2,Food and Drink,,Tortilla,Wrap,Beans,Rice,Mexican
+Cupcake,2,Food and Drink,,Frosting,Small,Birthday,Sprinkles,Muffin
+Smoothie,2,Food and Drink,,Blender,Fruit,Yogurt,Drink,Straw
+Barbecue,2,Food and Drink,,Grill,Smoke,Ribs,Charcoal,Backyard
+Cinnamon roll,2,Food and Drink,,Spice,Swirl,Icing,Bakery,Sweet
+Pickle,2,Food and Drink,,Cucumber,Jar,Sour,Green,Vinegar
+Broccoli,2,Food and Drink,,Green,Vegetable,Tree,Healthy,Steamed
+Garlic,2,Food and Drink,,Vampire,Clove,Smell,Bread,Breath
+Pineapple,2,Food and Drink,,Tropical,Spiky,Yellow,Hawaii,Pizza
+Coconut,2,Food and Drink,,Palm tree,Island,Shell,Milk,Brown
+Bacon,2,Food and Drink,,Pig,Breakfast,Crispy,Strips,Eggs
+Doughnut,2,Food and Drink,,Hole,Glazed,Sprinkles,Fried,Coffee
+Brunch,3,Food and Drink,,Breakfast,Lunch,Late,Sunday,Weekend
+Gingerbread,3,Food and Drink,,Cookie,Man,House,Spice,Holiday
+Quesadilla,3,Food and Drink,,Tortilla,Cheese,Mexican,Folded,Melted
+Artichoke,3,Food and Drink,,Vegetable,Leaves,Heart,Dip,Green
+S'mores,3,Food and Drink,,Campfire,Marshmallow,Graham cracker,Chocolate,Roast
+Kale,3,Food and Drink,,Leafy,Green,Salad,Healthy,Smoothie
+Tofu,3,Food and Drink,,Soy,Bean curd,Vegan,White,Protein
+Hummus,3,Food and Drink,,Chickpeas,Dip,Pita,Tahini,Mediterranean
+Dog,1,Animals,,Bark,Puppy,Bone,Leash,Pet
+Cat,1,Animals,,Meow,Kitten,Whiskers,Purr,Pet
+Elephant,1,Animals,,Trunk,Big,Gray,Ears,Tusks
+Giraffe,1,Animals,,Neck,Tall,Spots,Africa,Leaves
+Lion,1,Animals,,King,Mane,Roar,Jungle,Pride
+Monkey,1,Animals,,Banana,Tree,Swing,Tail,Ape
+Penguin,1,Animals,,Ice,Antarctica,Waddle,Tuxedo,Bird
+Kangaroo,1,Animals,,Australia,Jump,Pouch,Hop,Joey
+Shark,1,Animals,,Fin,Teeth,Ocean,Bite,Great white
+Butterfly,1,Animals,,Wings,Caterpillar,Colorful,Flutter,Insect
+Snake,1,Animals,,Slither,Hiss,Venom,Reptile,Long
+Frog,1,Animals,,Jump,Pond,Green,Ribbit,Tadpole
+Owl,1,Animals,,Hoot,Night,Wise,Bird,Eyes
+Bee,1,Animals,,Honey,Buzz,Sting,Hive,Yellow
+Horse,1,Animals,,Ride,Saddle,Gallop,Mane,Pony
+Cow,1,Animals,,Milk,Moo,Farm,Spots,Beef
+Turtle,1,Animals,,Shell,Slow,Reptile,Sea,Tortoise
+Octopus,2,Animals,,Tentacles,Eight,Ink,Sea,Suckers
+Dolphin,2,Animals,,Smart,Ocean,Mammal,Fin,Jump
+Jellyfish,2,Animals,,Sting,Ocean,Tentacles,Transparent,Blob
+Crab,2,Animals,,Claws,Sideways,Beach,Shell,Pinch
+Squirrel,2,Animals,,Nuts,Acorn,Tree,Bushy tail,Park
+Raccoon,2,Animals,,Mask,Trash,Night,Bandit,Rings
+Skunk,2,Animals,,Smell,Stink,Black,White,Spray
+Beaver,2,Animals,,Dam,Teeth,Wood,River,Tail
+Hedgehog,2,Animals,,Spikes,Small,Curl,Prickly,Garden
+Parrot,2,Animals,,Talk,Colorful,Pirate,Bird,Repeat
+Flamingo,2,Animals,,Pink,One leg,Bird,Lawn,Shrimp
+Peacock,2,Animals,,Feathers,Tail,Proud,Blue,Show off
+Camel,2,Animals,,Hump,Desert,Water,Sand,Ride
+Bat,2,Animals,,Night,Cave,Wings,Vampire,Upside down
+Spider,2,Animals,,Web,Eight legs,Silk,Creepy,Fly
+Ladybug,2,Animals,,Red,Spots,Black,Insect,Lucky
+Sloth,2,Animals,,Slow,Lazy,Tree,Hanging,Sleep
+Platypus,3,Animals,,Duck,Bill,Australia,Mammal,Eggs
+Armadillo,3,Animals,,Shell,Roll,Texas,Ball,Plates
+Chameleon,3,Animals,,Color,Change,Lizard,Camouflage,Tongue
+Narwhal,3,Animals,,Tusk,Unicorn,Whale,Arctic,Ocean
+Hyena,3,Animals,,Laugh,Africa,Scavenger,Spots,Lion
+Walrus,3,Animals,,Tusks,Whiskers,Ice,Arctic,Blubber
+Tadpole,3,Animals,,Frog,Baby,Pond,Tail,Swim
+Porcupine,3,Animals,,Quills,Sharp,Spiky,Rodent,Needles
+Teacher,1,Jobs,,School,Class,Students,Lessons,Homework
+Doctor,1,Jobs,,Hospital,Sick,Medicine,Patient,Stethoscope
+Nurse,1,Jobs,,Hospital,Patient,Shot,Care,Doctor
+Firefighter,1,Jobs,,Hose,Truck,Ladder,Rescue,Smoke
+Police officer,1,Jobs,,Cop,Badge,Arrest,Crime,Siren
+Chef,1,Jobs,,Cook,Kitchen,Restaurant,Hat,Recipe
+Pilot,1,Jobs,,Plane,Fly,Cockpit,Airport,Captain
+Dentist,1,Jobs,,Teeth,Cavity,Drill,Floss,Smile
+Farmer,1,Jobs,,Tractor,Crops,Barn,Harvest,Cows
+Baker,1,Jobs,,Bread,Oven,Cake,Flour,Dough
+Vet,1,Jobs,,Animals,Pets,Doctor,Sick,Clinic
+Mail carrier,1,Jobs,,Letters,Package,Stamps,Delivery,Envelope
+Waiter,1,Jobs,,Restaurant,Order,Tip,Menu,Table
+Astronaut,1,Jobs,,Space,Rocket,Moon,Helmet,Gravity
+Clown,1,Jobs,,Circus,Red nose,Funny,Makeup,Balloon
+Hairdresser,1,Jobs,,Scissors,Salon,Style,Dye,Trim
+Cashier,1,Jobs,,Register,Store,Money,Checkout,Receipt
+Lawyer,2,Jobs,,Court,Judge,Case,Attorney,Client
+Judge,2,Jobs,,Court,Gavel,Robe,Verdict,Law
+Plumber,2,Jobs,,Pipes,Leak,Sink,Toilet,Wrench
+Electrician,2,Jobs,,Wires,Power,Lights,Outlet,Shock
+Carpenter,2,Jobs,,Wood,Hammer,Nails,Saw,Build
+Mechanic,2,Jobs,,Car,Engine,Repair,Garage,Tools
+Librarian,2,Jobs,,Books,Quiet,Check out,Shelves,Read
+Lifeguard,2,Jobs,,Pool,Beach,Whistle,Swim,Rescue
+Magician,2,Jobs,,Rabbit,Hat,Tricks,Wand,Abracadabra
+Architect,2,Jobs,,Buildings,Design,Blueprint,Plans,House
+Journalist,2,Jobs,,News,Reporter,Article,Interview,Newspaper
+Scientist,2,Jobs,,Lab,Experiment,Research,Coat,Microscope
+Tailor,2,Jobs,,Sew,Clothes,Suit,Measure,Needle
+Beekeeper,2,Jobs,,Honey,Hive,Suit,Smoke,Sting
+Gardener,2,Jobs,,Plants,Flowers,Weeds,Lawn,Shovel
+Referee,2,Jobs,,Whistle,Game,Rules,Foul,Red card
+Coach,2,Jobs,,Team,Train,Players,Sports,Whistle
+Detective,3,Jobs,,Mystery,Clues,Crime,Magnifying glass,Solve
+Locksmith,3,Jobs,,Keys,Door,Open,Copy,Picks
+Lumberjack,3,Jobs,,Trees,Axe,Wood,Flannel,Chop
+Pharmacist,3,Jobs,,Medicine,Prescription,Pills,Drugstore,Counter
+Paramedic,3,Jobs,,Ambulance,Emergency,First aid,Siren,Hospital
+Accountant,3,Jobs,,Numbers,Taxes,Money,Math,Spreadsheet
+Translator,3,Jobs,,Language,Words,Interpreter,Foreign,Dictionary
+Blacksmith,3,Jobs,,Anvil,Hammer,Horseshoe,Iron,Forge
+Soccer,1,Sports and Games,,Ball,Goal,Kick,Field,World Cup
+Basketball,1,Sports and Games,,Hoop,Dribble,Court,Dunk,Net
+Baseball,1,Sports and Games,,Bat,Pitcher,Home run,Glove,Diamond
+Tennis,1,Sports and Games,,Racket,Court,Net,Serve,Ball
+Swimming,1,Sports and Games,,Pool,Water,Goggles,Laps,Stroke
+Golf,1,Sports and Games,,Club,Hole,Tee,Green,Caddie
+Bowling,1,Sports and Games,,Pins,Strike,Lane,Ball,Spare
+Boxing,1,Sports and Games,,Gloves,Punch,Ring,Knockout,Fight
+Skiing,1,Sports and Games,,Snow,Mountain,Poles,Slope,Winter
+Chess,1,Sports and Games,,King,Queen,Checkmate,Board,Pawn
+Hide and seek,1,Sports and Games,,Count,Find,Kids,Tag,Ready or not
+Trophy,1,Sports and Games,,Win,Cup,Gold,Champion,Prize
+Medal,1,Sports and Games,,Gold,Silver,Bronze,Olympics,Neck
+Olympics,1,Sports and Games,,Rings,Torch,Gold,Games,Athletes
+Jump rope,1,Sports and Games,,Skip,Playground,Count,Double Dutch,Swing
+Tag,1,Sports and Games,,Chase,It,Run,Touch,Playground
+Kite,1,Sports and Games,,Wind,String,Fly,Sky,Tail
+Volleyball,2,Sports and Games,,Net,Spike,Beach,Serve,Bump
+Hockey,2,Sports and Games,,Ice,Puck,Stick,Skates,Goalie
+Surfing,2,Sports and Games,,Waves,Board,Ocean,Beach,Wetsuit
+Skateboard,2,Sports and Games,,Wheels,Ramp,Tricks,Deck,Park
+Gymnastics,2,Sports and Games,,Flip,Balance beam,Tumble,Flexible,Olympics
+Archery,2,Sports and Games,,Bow,Arrow,Target,Bullseye,Aim
+Wrestling,2,Sports and Games,,Mat,Pin,Grapple,Ring,Takedown
+Karate,2,Sports and Games,,Black belt,Kick,Chop,Japan,Martial arts
+Marathon,2,Sports and Games,,Run,Miles,Long,Race,Finish line
+Dodgeball,2,Sports and Games,,Throw,Gym,Duck,Teams,Hit
+Crossword,2,Sports and Games,,Puzzle,Clues,Grid,Down,Newspaper
+Checkers,2,Sports and Games,,Board,Red,Black,King me,Jump
+Jigsaw puzzle,2,Sports and Games,,Pieces,Picture,Box,Edges,Fit
+Charades,2,Sports and Games,,Act out,Silent,Guess,Movie,Mime
+Darts,2,Sports and Games,,Board,Throw,Bullseye,Points,Aim
+Rock climbing,2,Sports and Games,,Wall,Harness,Rope,Grip,Mountain
+Scuba diving,2,Sports and Games,,Oxygen tank,Underwater,Fins,Mask,Ocean
+Photo finish,3,Sports and Games,,Close,Race,Camera,Line,Tie
+Hat trick,3,Sports and Games,,Three,Goals,Hockey,Soccer,Score
+Overtime,3,Sports and Games,,Extra,Tie,Minutes,Game,Sudden death
+Triathlon,3,Sports and Games,,Swim,Bike,Run,Three,Endurance
+Pole vault,3,Sports and Games,,Jump,Bar,High,Bend,Track
+Curling,3,Sports and Games,,Ice,Stone,Broom,Sweep,Scotland
+Javelin,3,Sports and Games,,Throw,Spear,Track and field,Distance,Olympics
+Underdog,3,Sports and Games,,Team,Win,Unlikely,Favorite,Upset
+Computer,1,Science and Tech,,Keyboard,Mouse,Screen,Laptop,Internet
+Robot,1,Science and Tech,,Machine,Metal,Beep,Program,Artificial
+Internet,1,Science and Tech,,Online,Web,Browser,Surf,Connection
+Rocket,1,Science and Tech,,Space,Launch,Blast off,Moon,Fuel
+Magnet,1,Science and Tech,,Attract,Fridge,Metal,North,Pull
+Telescope,1,Science and Tech,,Stars,Lens,Look,Planets,Far
+Microscope,1,Science and Tech,,Small,Cells,Lens,Lab,Zoom
+Planet,1,Science and Tech,,Earth,Mars,Orbit,Sun,Solar system
+Battery,1,Science and Tech,,Power,Charge,Remote,Dead,Energy
+Keyboard,1,Science and Tech,,Type,Letters,Computer,Piano,Buttons
+Email,1,Science and Tech,,Inbox,Send,Message,Address,Attachment
+Password,1,Science and Tech,,Secret,Login,Account,Letters,Forgot
+Electricity,1,Science and Tech,,Power,Lightning,Plug,Outlet,Volts
+Laptop,1,Science and Tech,,Computer,Portable,Screen,Keyboard,Battery
+Calculator,1,Science and Tech,,Math,Numbers,Add,Buttons,Solve
+Dinosaur,1,Science and Tech,,Extinct,Fossil,T-rex,Jurassic,Bones
+Satellite,1,Science and Tech,,Orbit,Space,Signal,Dish,Moon
+Gravity,2,Science and Tech,,Fall,Apple,Pull,Earth,Weight
+Galaxy,2,Science and Tech,,Stars,Milky Way,Space,Universe,Spiral
+Black hole,2,Science and Tech,,Space,Gravity,Light,Swallow,Star
+Comet,2,Science and Tech,,Tail,Ice,Space,Orbit,Shooting star
+Fossil,2,Science and Tech,,Bones,Dinosaur,Rock,Ancient,Dig
+Virus,2,Science and Tech,,Sick,Germ,Spread,Computer,Flu
+Oxygen,2,Science and Tech,,Breathe,Air,Gas,Tank,Lungs
+Laser,2,Science and Tech,,Beam,Light,Red,Pointer,Cut
+Hologram,2,Science and Tech,,Light,Image,Projection,Ghostly,Sci-fi
+Algorithm,2,Science and Tech,,Steps,Code,Instructions,Computer,Problem
+Website,2,Science and Tech,,Internet,Page,Online,Browser,Link
+Emoji,2,Science and Tech,,Smiley,Face,Text,Icon,Message
+Hashtag,2,Science and Tech,,Social media,Trending,Symbol,Post,Topic
+Podcast,2,Science and Tech,,Listen,Episode,Audio,Host,Show
+Barcode,2,Science and Tech,,Scan,Lines,Store,Price,Checkout
+Fingerprint,2,Science and Tech,,Thumb,Unique,Police,Crime,Unlock
+Solar panel,2,Science and Tech,,Sun,Roof,Energy,Electricity,Green
+Artificial intelligence,3,Science and Tech,,Robot,Computer,Smart,Learning,Chatbot
+Virtual reality,3,Science and Tech,,Headset,Game,Goggles,Simulation,Immersive
+Friction,3,Science and Tech,,Rub,Heat,Surface,Slide,Force
+Periodic table,3,Science and Tech,,Elements,Chemistry,Symbols,Chart,Atoms
+Light year,3,Science and Tech,,Distance,Space,Stars,Speed,Far
+Microchip,3,Science and Tech,,Computer,Tiny,Circuit,Silicon,Processor
+Eclipse,3,Science and Tech,,Moon,Sun,Shadow,Dark,Solar
+Hypothesis,3,Science and Tech,,Guess,Science,Experiment,Test,Theory
+Airport,1,Places and Travel,,Plane,Flight,Gate,Terminal,Luggage
+Hotel,1,Places and Travel,,Room,Stay,Bed,Lobby,Vacation
+Beach,1,Places and Travel,,Sand,Ocean,Waves,Sunscreen,Towel
+Museum,1,Places and Travel,,Art,Exhibit,History,Paintings,Statues
+Library,1,Places and Travel,,Books,Quiet,Borrow,Read,Shelves
+Hospital,1,Places and Travel,,Doctor,Nurse,Sick,Emergency,Ambulance
+Zoo,1,Places and Travel,,Animals,Cages,Lion,Visit,Keeper
+Island,1,Places and Travel,,Water,Ocean,Palm tree,Deserted,Tropical
+Bridge,1,Places and Travel,,River,Cross,Over,Golden Gate,Build
+Playground,1,Places and Travel,,Swings,Slide,Kids,Park,Recess
+Mall,1,Places and Travel,,Shopping,Stores,Food court,Escalator,Parking
+Paris,1,Places and Travel,,France,Eiffel Tower,Croissant,Love,Beret
+Japan,1,Places and Travel,,Tokyo,Sushi,Asia,Island,Cherry blossoms
+Egypt,1,Places and Travel,,Pyramids,Nile,Sphinx,Pharaoh,Desert
+Italy,1,Places and Travel,,Rome,Pizza,Pasta,Boot,Venice
+Mexico,1,Places and Travel,,Tacos,Sombrero,Spanish,Cancun,Mariachi
+Australia,1,Places and Travel,,Kangaroo,Sydney,Koala,Down Under,Continent
+Passport,2,Places and Travel,,Travel,Stamp,Photo,Country,Airport
+Train station,2,Places and Travel,,Platform,Tracks,Ticket,Departure,Commuter
+Gas station,2,Places and Travel,,Fuel,Pump,Car,Fill up,Highway
+Lighthouse,2,Places and Travel,,Ships,Tower,Coast,Beam,Rocks
+Skyscraper,2,Places and Travel,,Tall,Building,City,Floors,Elevator
+Campsite,2,Places and Travel,,Tent,Bonfire,Woods,Sleeping bag,Outdoors
+Souvenir,2,Places and Travel,,Gift,Trip,Shop,Remember,Magnet
+Postcard,2,Places and Travel,,Mail,Stamp,Picture,Vacation,Send
+Road trip,2,Places and Travel,,Car,Drive,Highway,Snacks,Map
+Cruise,2,Places and Travel,,Ship,Ocean,Vacation,Deck,Captain
+Theme park,2,Places and Travel,,Rides,Roller coaster,Tickets,Mascot,Lines
+Venice,2,Places and Travel,,Gondola,Canals,Italy,Boats,Water
+Eiffel Tower,2,Places and Travel,,Paris,France,Iron,Tall,Landmark
+Grand Canyon,2,Places and Travel,,Arizona,Rocks,Deep,Colorado River,Hiking
+Niagara Falls,2,Places and Travel,,Waterfall,Canada,Mist,Barrel,Honeymoon
+Antarctica,2,Places and Travel,,Ice,Penguins,Cold,South Pole,Continent
+Hawaii,2,Places and Travel,,Island,Hula,Volcano,Aloha,Surfing
+Jet lag,3,Places and Travel,,Tired,Time zone,Flight,Sleep,Travel
+Layover,3,Places and Travel,,Flight,Connection,Airport,Wait,Stop
+Itinerary,3,Places and Travel,,Plan,Schedule,Trip,List,Travel
+Hostel,3,Places and Travel,,Cheap,Backpacker,Bunk beds,Shared,Travel
+Equator,3,Places and Travel,,Line,Hot,Middle,Earth,Hemisphere
+Stonehenge,3,Places and Travel,,England,Rocks,Circle,Ancient,Mystery
+Time zone,3,Places and Travel,,Hours,Clock,Difference,Earth,East
+Customs,3,Places and Travel,,Airport,Declare,Luggage,Officer,Passport
+Sun,1,Nature and Weather,,Hot,Bright,Sky,Day,Star
+Moon,1,Nature and Weather,,Night,Full,Crescent,Astronaut,Craters
+Rainbow,1,Nature and Weather,,Colors,Sky,Arc,Pot of gold,Storm
+Snowman,1,Nature and Weather,,Carrot,Winter,Cold,Scarf,Melt
+Tree,1,Nature and Weather,,Leaves,Branches,Trunk,Wood,Forest
+Flower,1,Nature and Weather,,Petals,Garden,Bloom,Rose,Bee
+Storm,1,Nature and Weather,,Thunder,Lightning,Rain,Wind,Dark
+Cloud,1,Nature and Weather,,Sky,White,Fluffy,Rain,Gray
+Ocean,1,Nature and Weather,,Sea,Waves,Water,Salt,Blue
+Mountain,1,Nature and Weather,,Climb,Peak,High,Snow,Hike
+Volcano,1,Nature and Weather,,Lava,Erupt,Hot,Mountain,Ash
+Thunder,1,Nature and Weather,,Lightning,Storm,Loud,Boom,Clouds
+Leaf,1,Nature and Weather,,Tree,Green,Fall,Autumn,Branch
+Waterfall,1,Nature and Weather,,River,Cliff,Niagara,Mist,Drop
+Desert,1,Nature and Weather,,Sand,Hot,Dry,Cactus,Camel
+Wind,1,Nature and Weather,,Blow,Air,Breeze,Kite,Storm
+Summer,1,Nature and Weather,,Hot,Season,Vacation,Beach,July
+Tornado,2,Nature and Weather,,Twister,Funnel,Wind,Storm,Kansas
+Hurricane,2,Nature and Weather,,Storm,Wind,Rain,Eye,Ocean
+Snowflake,2,Nature and Weather,,Unique,Cold,Winter,Ice,Crystal
+Lightning,2,Nature and Weather,,Thunder,Bolt,Storm,Flash,Electricity
+Iceberg,2,Nature and Weather,,Titanic,Floating,Tip,Arctic,Cold
+Glacier,2,Nature and Weather,,Ice,Melt,Mountain,Slow,Frozen
+Cave,2,Nature and Weather,,Dark,Bats,Rocks,Explore,Stalactite
+Cactus,2,Nature and Weather,,Desert,Spikes,Prickly,Plant,Succulent
+Sunflower,2,Nature and Weather,,Yellow,Seeds,Tall,Field,Petals
+Fog,2,Nature and Weather,,Mist,Gray,See,Thick,Morning
+Hail,2,Nature and Weather,,Ice,Storm,Balls,Falling,Damage
+Autumn,2,Nature and Weather,,Fall,Leaves,Season,Orange,September
+Puddle,2,Nature and Weather,,Rain,Water,Jump,Splash,Mud
+Swamp,2,Nature and Weather,,Mud,Alligator,Wet,Marsh,Frogs
+Coral reef,2,Nature and Weather,,Fish,Ocean,Colorful,Underwater,Diving
+Tide,2,Nature and Weather,,Ocean,Moon,High,Low,Beach
+Avalanche,2,Nature and Weather,,Snow,Mountain,Slide,Danger,Ski
+Drought,3,Nature and Weather,,Dry,Rain,Water,Crops,Thirsty
+Northern lights,3,Nature and Weather,,Aurora,Sky,Colors,Arctic,Night
+Geyser,3,Nature and Weather,,Hot water,Eruption,Steam,Yellowstone,Spray
+Humidity,3,Nature and Weather,,Moisture,Sticky,Air,Weather,Muggy
+Frost,3,Nature and Weather,,Ice,Cold,Morning,Grass,Window
+Dew,3,Nature and Weather,,Morning,Grass,Drops,Wet,Water
+Pollen,3,Nature and Weather,,Bees,Flowers,Allergies,Yellow,Sneeze
+Erosion,3,Nature and Weather,,Wear away,Water,Wind,Soil,Rocks
+Pyramid,1,History and Legends,,Egypt,Pharaoh,Triangle,Mummy,Desert
+Mummy,1,History and Legends,,Egypt,Bandages,Tomb,Pharaoh,Wrapped
+Castle,1,History and Legends,,King,Queen,Tower,Moat,Knight
+Knight,1,History and Legends,,Armor,Sword,Horse,Shield,Castle
+Pirate,1,History and Legends,,Ship,Treasure,Parrot,Eye patch,Captain
+Dragon,1,History and Legends,,Fire,Wings,Scales,Castle,Myth
+Unicorn,1,History and Legends,,Horn,Horse,Magic,Rainbow,White
+Mermaid,1,History and Legends,,Fish,Tail,Ocean,Sea,Half
+Crown,1,History and Legends,,King,Queen,Head,Jewels,Gold
+Treasure,1,History and Legends,,Gold,Chest,Pirate,Map,Buried
+Ghost,1,History and Legends,,Boo,Haunted,White,Sheet,Spooky
+Witch,1,History and Legends,,Broom,Hat,Spell,Cauldron,Black cat
+Wizard,1,History and Legends,,Magic,Wand,Spell,Robe,Beard
+Giant,1,History and Legends,,Huge,Tall,Beanstalk,Big,Footsteps
+Caveman,1,History and Legends,,Stone Age,Club,Fire,Prehistoric,Hunt
+Cowboy,1,History and Legends,,Horse,Hat,Lasso,Ranch,Wild West
+Sword,1,History and Legends,,Blade,Knight,Sharp,Fight,Duel
+Viking,2,History and Legends,,Norway,Ship,Helmet,Horns,Raid
+Samurai,2,History and Legends,,Japan,Sword,Warrior,Honor,Armor
+Gladiator,2,History and Legends,,Rome,Arena,Fight,Sword,Colosseum
+Pharaoh,2,History and Legends,,Egypt,King,Pyramid,Nile,Ruler
+Phoenix,2,History and Legends,,Fire,Bird,Ashes,Reborn,Flames
+Fairy,2,History and Legends,,Wings,Magic,Tiny,Wand,Dust
+Genie,2,History and Legends,,Lamp,Wishes,Three,Bottle,Aladdin
+Troll,2,History and Legends,,Bridge,Ugly,Under,Cave,Internet
+Werewolf,2,History and Legends,,Moon,Howl,Transform,Night,Silver
+Medusa,2,History and Legends,,Snakes,Hair,Stone,Greek,Mirror
+Pegasus,2,History and Legends,,Winged,Horse,Greek,Flying,White
+Catapult,2,History and Legends,,Launch,Castle,Throw,Rocks,Siege
+Shipwreck,2,History and Legends,,Ocean,Sink,Titanic,Underwater,Treasure
+Explorer,2,History and Legends,,Discover,Map,Journey,Adventure,Compass
+Wild West,2,History and Legends,,Cowboys,Sheriff,Outlaws,Desert,Horses
+Robin Hood,2,History and Legends,,Bow,Arrow,Steal,Rich,Poor
+Ice Age,2,History and Legends,,Mammoth,Frozen,Glacier,Prehistoric,Cold
+Sphinx,3,History and Legends,,Egypt,Riddle,Lion,Pyramids,Statue
+Minotaur,3,History and Legends,,Bull,Labyrinth,Maze,Greek,Monster
+Cyclops,3,History and Legends,,One eye,Giant,Greek,Monster,Cave
+Renaissance,3,History and Legends,,Italy,Art,Rebirth,Painting,Europe
+Printing press,3,History and Legends,,Books,Paper,Ink,Invention,Newspaper
+Hieroglyphs,3,History and Legends,,Egypt,Symbols,Writing,Pictures,Ancient
+Atlantis,3,History and Legends,,Lost city,Underwater,Sunken,Myth,Ocean
+Morse code,3,History and Legends,,Dots,Dashes,Telegraph,SOS,Signal
+Guitar,1,Arts and Entertainment,,Strings,Strum,Rock,Acoustic,Chords
+Piano,1,Arts and Entertainment,,Keys,Black and white,Grand,Play,Notes
+Drums,1,Arts and Entertainment,,Beat,Sticks,Loud,Band,Cymbals
+Violin,1,Arts and Entertainment,,Bow,Strings,Fiddle,Orchestra,Chin
+Movie,1,Arts and Entertainment,,Film,Cinema,Popcorn,Theater,Actor
+Cartoon,1,Arts and Entertainment,,Animated,Kids,Drawing,TV,Characters
+Circus,1,Arts and Entertainment,,Tent,Clown,Acrobat,Ringmaster,Elephant
+Painting,1,Arts and Entertainment,,Brush,Canvas,Art,Colors,Frame
+Concert,1,Arts and Entertainment,,Music,Band,Stage,Tickets,Crowd
+Dance,1,Arts and Entertainment,,Music,Moves,Party,Ballet,Steps
+Superhero,1,Arts and Entertainment,,Cape,Powers,Villain,Save,Mask
+Microphone,1,Arts and Entertainment,,Sing,Speak,Loud,Stage,Karaoke
+Puppet,1,Arts and Entertainment,,Strings,Hand,Show,Sock,Doll
+Balloon,1,Arts and Entertainment,,Air,Party,Pop,Float,Helium
+Fireworks,1,Arts and Entertainment,,Sky,Bang,Colors,New Year,Sparkle
+Video game,1,Arts and Entertainment,,Controller,Play,Console,Level,Screen
+Roller coaster,1,Arts and Entertainment,,Ride,Loop,Fast,Scream,Theme park
+Orchestra,2,Arts and Entertainment,,Conductor,Violins,Symphony,Music,Musicians
+Ballet,2,Arts and Entertainment,,Tutu,Dance,Tiptoe,Swan Lake,Pointe
+Opera,2,Arts and Entertainment,,Singing,Soprano,Italian,Stage,Drama
+Karaoke,2,Arts and Entertainment,,Sing,Microphone,Lyrics,Screen,Party
+Magic trick,2,Arts and Entertainment,,Rabbit,Hat,Wand,Illusion,Card
+Comic book,2,Arts and Entertainment,,Superhero,Pictures,Panels,Speech bubble,Read
+Sculpture,2,Arts and Entertainment,,Statue,Clay,Marble,Carve,Art
+Portrait,2,Arts and Entertainment,,Painting,Face,Picture,Artist,Pose
+Theater,2,Arts and Entertainment,,Stage,Play,Actors,Curtain,Audience
+Red carpet,2,Arts and Entertainment,,Celebrities,Premiere,Photographers,Walk,Awards
+Sitcom,2,Arts and Entertainment,,Funny,TV,Laugh track,Episodes,Comedy
+Trailer,2,Arts and Entertainment,,Movie,Preview,Coming soon,Clips,Teaser
+Origami,2,Arts and Entertainment,,Paper,Fold,Japan,Crane,Art
+Graffiti,2,Arts and Entertainment,,Wall,Spray paint,Street,Art,Tag
+Lullaby,2,Arts and Entertainment,,Baby,Sleep,Song,Soft,Night
+Saxophone,2,Arts and Entertainment,,Jazz,Blow,Brass,Instrument,Reed
+Harmonica,2,Arts and Entertainment,,Mouth,Blow,Blues,Small,Instrument
+Encore,3,Arts and Entertainment,,Again,Concert,Clapping,Crowd,More
+Audition,3,Arts and Entertainment,,Try out,Role,Judge,Perform,Nervous
+Cliffhanger,3,Arts and Entertainment,,Ending,Suspense,Next episode,Season,Wait
+Plot twist,3,Arts and Entertainment,,Surprise,Story,Ending,Unexpected,Movie
+Spoiler,3,Arts and Entertainment,,Ending,Ruin,Tell,Movie,Secret
+Paparazzi,3,Arts and Entertainment,,Photos,Celebrities,Cameras,Chase,Famous
+Masquerade,3,Arts and Entertainment,,Masks,Ball,Costume,Party,Disguise
+Easel,3,Arts and Entertainment,,Painting,Canvas,Stand,Artist,Wooden
