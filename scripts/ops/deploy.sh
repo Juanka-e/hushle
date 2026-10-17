@@ -68,6 +68,17 @@ fi
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull mysql redis nginx
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile migration build migrate
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile jobs build jobs
+# Existing installs must be backed up before any migration or container recreation.
+if [[ -n "$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -aq mysql)" ]]; then
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d mysql redis --wait --wait-timeout 120
+  existing_app="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -q app)"
+  if [[ -n "$existing_app" ]] && ! docker inspect --format '{{range .Mounts}}{{println .Destination}}{{end}}' "$existing_app" | grep -qx '/data/assets'; then
+    echo "Legacy app has no persistent asset mount. Export its public cosmetics/branding before recreating it; see docs/deploy/persistent-assets-and-data-backups.md" >&2
+    exit 1
+  fi
+  mkdir -p "$ROOT_DIR/data/assets"
+  ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" bash "$ROOT_DIR/scripts/ops/data-backup.sh"
+fi
 acquire_schema_ops_lock "$ROOT_DIR" "production-deploy"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile migration run --rm migrate
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans

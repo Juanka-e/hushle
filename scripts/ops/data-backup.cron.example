@@ -1,0 +1,3 @@
+# UTC. Install only after a successful manual backup and isolated restore drill.
+# Daily DB + immutable asset snapshot; errors must be monitored.
+15 3 * * * cd /opt/hushle && ENV_FILE=/opt/hushle/.env.production bash scripts/ops/data-backup.sh >> /var/log/hushle-data-backup.log 2>&1
