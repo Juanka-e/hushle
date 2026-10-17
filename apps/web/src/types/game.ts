@@ -113,6 +113,11 @@ export interface GameState {
     } | null;
     altinSkorAktif: boolean;
     toplamSure?: number;
+    connectionPause?: ConnectionPauseSummary | null;
+}
+
+export interface ConnectionPauseSummary {
+    waitingForPlayers: boolean;
 }
 
 // ─── Socket Events ─────────────────────────────────────────────
@@ -122,6 +127,7 @@ export interface TransitionData {
     gozetmen: { ad: string; takim: string } | null;
     kalanSure: number;
     oyunDurduruldu: boolean;
+    connectionPause?: ConnectionPauseSummary | null;
     ilkGecis: boolean;
     cardBackTheme: ResolvedCardBackTheme | null;
 }

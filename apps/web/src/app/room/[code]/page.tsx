@@ -337,10 +337,10 @@ export default function RoomPage() {
     }, [currentVisibleName]);
 
     useEffect(() => {
-        if (currentVisibleName.trim().length > 0) {
+        if (isRoomClientReady && currentVisibleName.trim().length > 0) {
             window.localStorage.setItem("tabu_username", currentVisibleName);
         }
-    }, [currentVisibleName]);
+    }, [currentVisibleName, isRoomClientReady]);
 
     useEffect(() => {
         if (view !== GameView.LOBBY) {
@@ -486,13 +486,18 @@ export default function RoomPage() {
                     setCardBackTheme(data.cardBackTheme);
                 });
 
-                socket.on("turGecisDurumGuncelle", (data: { oyunDurduruldu: boolean; kalanSure: number }) => {
+                socket.on("turGecisDurumGuncelle", (data: {
+                    oyunDurduruldu: boolean;
+                    kalanSure: number;
+                    connectionPause?: TransitionData["connectionPause"];
+                }) => {
                     setTransition((prev) =>
                         prev
                             ? {
                                   ...prev,
                                   kalanSure: data.kalanSure,
                                   oyunDurduruldu: data.oyunDurduruldu,
+                                  connectionPause: data.connectionPause ?? prev.connectionPause,
                               }
                             : null
                     );
@@ -813,6 +818,7 @@ export default function RoomPage() {
                     narratorName={narratorName}
                     inspectorName={inspectorName}
                     isHost={isHost as boolean}
+                    canResumePausedGame={Boolean(isHost) || myRole === "Anlatıcı"}
                     settings={settings}
                     cardFaceTheme={cardFaceTheme}
                     cardBackTheme={cardBackTheme}
@@ -1032,7 +1038,7 @@ export default function RoomPage() {
                             : undefined
                     }
                     onMoveNarrator={isHost && view === GameView.LOBBY ? (playerId, direction) => emit("narrator_order", { playerId, direction }) : undefined}
-                    onKickPlayer={isHost ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
+                    onKickPlayer={isHost && view === GameView.LOBBY ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
                     onTransferHost={isHost ? (playerId) => emit("yoneticiligiDevret", { targetPlayerId: playerId }) : undefined}
                 />
 
@@ -1319,7 +1325,7 @@ export default function RoomPage() {
                             : undefined
                     }
                     onMoveNarrator={isHost && view === GameView.LOBBY ? (playerId, direction) => emit("narrator_order", { playerId, direction }) : undefined}
-                    onKickPlayer={isHost ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
+                    onKickPlayer={isHost && view === GameView.LOBBY ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
                     onTransferHost={isHost ? (playerId) => emit("yoneticiligiDevret", { targetPlayerId: playerId }) : undefined}
                 />
 

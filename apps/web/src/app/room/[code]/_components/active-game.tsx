@@ -36,6 +36,7 @@ interface ActiveGameProps {
     narratorName: string;
     inspectorName: string;
     isHost: boolean;
+    canResumePausedGame: boolean;
     settings: { sure: number; mod: "tur" | "skor"; deger: number };
     cardFaceTheme: ResolvedCardFaceTheme | null;
     cardBackTheme: ResolvedCardBackTheme | null;
@@ -53,6 +54,7 @@ export function ActiveGame({
     narratorName,
     inspectorName,
     isHost,
+    canResumePausedGame,
     settings,
     cardFaceTheme,
     cardBackTheme,
@@ -250,21 +252,38 @@ export function ActiveGame({
 
             {gameState?.oyunDurduruldu && (
                 <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-sm dark:bg-slate-900/60">
-                    {isHost ? (
-                        <button
-                            onClick={onPauseResume}
-                            className="pointer-events-auto flex h-20 w-20 items-center justify-center rounded-full bg-blue-600 text-white shadow-2xl transition-transform hover:scale-105"
-                        >
-                            <Play size={32} className="ml-1" />
-                        </button>
-                    ) : (
-                        <div className="text-center space-y-4">
-                            <div className="w-20 h-20 bg-gray-400 dark:bg-slate-600 text-white rounded-full flex items-center justify-center shadow-2xl mx-auto">
-                                <Pause size={32} />
-                            </div>
-                            <p className="text-sm text-gray-500 font-medium">{t("game.paused")}</p>
+                    <div className="max-w-sm space-y-4 px-6 text-center">
+                        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gray-400 text-white shadow-2xl dark:bg-slate-600">
+                            <Pause size={32} />
                         </div>
-                    )}
+                        <div>
+                            <p className="font-bold text-slate-800 dark:text-white">
+                                {gameState.connectionPause
+                                    ? gameState.connectionPause.waitingForPlayers
+                                        ? t("game.connectionPaused")
+                                        : t("game.connectionRecovered")
+                                    : t("game.paused")}
+                            </p>
+                            {gameState.connectionPause && (
+                                <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+                                    {gameState.connectionPause.waitingForPlayers
+                                        ? t("game.connectionPausedHelp")
+                                        : t("game.connectionRecoveredHelp")}
+                                </p>
+                            )}
+                        </div>
+                        {canResumePausedGame &&
+                            (!gameState.connectionPause ||
+                                !gameState.connectionPause.waitingForPlayers) && (
+                                <button
+                                    onClick={onPauseResume}
+                                    className="pointer-events-auto inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white shadow-xl transition hover:bg-blue-700"
+                                >
+                                    <Play size={20} />
+                                    {t("transition.resume")}
+                                </button>
+                            )}
+                    </div>
                 </div>
             )}
         </div>
