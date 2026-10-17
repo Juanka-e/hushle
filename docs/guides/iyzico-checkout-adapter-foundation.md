@@ -92,6 +92,10 @@ order owner and must never log them.
   a `303` redirect without the raw token.
 - The callback writes verification proof only. It never marks an order paid and
   never fulfills coin or inventory; webhook/reconciliation retain that authority.
+- At the edge, `infra/cloudflare/edge-security-policy.json` puts the callback in the
+  `payment-provider-return` route class: no challenge, Origin, Referer or session
+  rule (a challenge page would drop the posted token), and an edge rate limit may
+  only block. See `docs/deploy/cloudflare-admin.md`.
 - Order status can expose the allowlisted hosted URL only to the authenticated
   order owner. The separate raw session reference is never serialized.
 

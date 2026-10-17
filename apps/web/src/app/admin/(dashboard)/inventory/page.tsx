@@ -712,7 +712,7 @@ export default function AdminInventoryPage() {
                                                 <Link href={buildSupportHref(inventory.username)}>Destek</Link>
                                             </Button>
                                             <Button asChild variant="outline" size="sm">
-                                                <Link href={buildUsersHref(inventory.username)}>Kullanici</Link>
+                                                <Link href={buildUsersHref(inventory.username)}>Kullanıcı</Link>
                                             </Button>
                                             <Button asChild variant="outline" size="sm">
                                                 <Link href={buildAuditHref(inventory.username)}>Audit</Link>
@@ -721,7 +721,7 @@ export default function AdminInventoryPage() {
                                     </div>
                                     <div className="mt-4 grid gap-3 md:grid-cols-3">
                                         <SummaryPill
-                                            label="Korumali Sahiplik"
+                                            label="Korumalı Sahiplik"
                                             value={String(
                                                 inventory.items.filter((item) => item.source !== "grant").length
                                             )}
@@ -735,7 +735,7 @@ export default function AdminInventoryPage() {
                                             }
                                         />
                                         <SummaryPill
-                                            label="Operasyon Kaydi"
+                                            label="Operasyon Kaydı"
                                             value={String(inventory.recentOperations.length)}
                                         />
                                     </div>

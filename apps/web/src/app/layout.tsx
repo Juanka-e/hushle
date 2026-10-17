@@ -7,6 +7,7 @@ import { AuthProvider } from "@/components/providers/session-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { BrandingProvider } from "@/components/providers/branding-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { GuestClaimFinalizer } from "@/components/game/guest-claim-finalizer";
 import { GlobalRuntimeBanner } from "@/components/system/global-runtime-banner";
 import { buildRootMetadata, buildRootViewport } from "@/lib/branding/metadata";
 import { getSystemSettings } from "@/lib/system-settings/service";
@@ -69,6 +70,7 @@ export default async function RootLayout({
                   />
                 ) : null}
                 {children}
+                <GuestClaimFinalizer />
                 <Toaster />
               </ThemeProvider>
             </BrandingProvider>

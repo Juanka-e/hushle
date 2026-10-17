@@ -1,5 +1,8 @@
 import { createServer } from "http";
 import next from "next";
+import { migrateLegacyAssets, serveStoredAsset } from "./src/lib/assets/storage";
+import path from "node:path";
+import { prisma } from "./src/lib/prisma";
 import { Server } from "socket.io";
 import { getToken } from "next-auth/jwt";
 import { fileURLToPath } from "node:url";
@@ -8,6 +11,11 @@ import {
     getLocalRoomCapacityMetrics,
     getRoomMetrics,
 } from "./src/lib/socket/game-socket";
+import {
+    getMatchSettlementBufferSize,
+    startMatchSettlementWorker,
+} from "./src/lib/match-settlement/runtime";
+import { getMatchSettlementHealth } from "./src/lib/match-settlement/service";
 import { isHealthEndpointAllowed } from "./src/lib/security/health-check";
 import { getPaymentSchedulerHealth } from "./src/lib/payments/scheduler-health";
 import { getPaymentCheckoutControl } from "./src/lib/payments/checkout-control";
@@ -46,6 +54,7 @@ import {
 } from "./src/lib/security/telemetry-rollup";
 import { getProductAnalyticsStatus } from "./src/lib/analytics/product-events";
 import { getWordAnalyticsStatus } from "./src/lib/analytics/word-analytics";
+import { getConnectionPauseAnalyticsStatus } from "./src/lib/analytics/connection-pause-analytics";
 import {
     emitObservabilityEvent,
     flushObservabilityExporter,
@@ -72,6 +81,7 @@ const app = next({ dev, hostname, port, dir: appDirectory });
 const handler = app.getRequestHandler();
 
 app.prepare().then(async () => {
+    await migrateLegacyAssets(path.join(appDirectory, "public"));
     let socketRedisAdapter: SocketRedisAdapterHandle | null = null;
     let roomOwnership: RoomOwnershipCoordinator | null = null;
     let roomRouting: RoomRouteResolver | null = null;
@@ -86,6 +96,8 @@ app.prepare().then(async () => {
         );
         req.headers["x-request-id"] = requestId;
         res.setHeader("X-Request-Id", requestId);
+
+        if (await serveStoredAsset(req, res)) return;
 
         if (req.url !== "/api/health" || req.method !== "GET") {
             await handler(req, res);
@@ -109,12 +121,14 @@ app.prepare().then(async () => {
 
         const metrics = getRoomMetrics();
         const paymentsEnabled = process.env.PAYMENTS_ENABLED?.trim().toLowerCase() === "true";
-        const [redis, paymentSchedulers, paymentCheckoutControl] = await Promise.all([
+        const [redis, paymentSchedulers, paymentCheckoutControl, databaseAvailable, matchSettlementRows] = await Promise.all([
             getRedisHealth(),
             getPaymentSchedulerHealth(),
             paymentsEnabled
                 ? getPaymentCheckoutControl().catch(() => null)
                 : Promise.resolve(null),
+            prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
+            getMatchSettlementHealth().catch(() => null),
         ]);
         const socketRedisAdapterStatus =
             socketRedisAdapter?.getStatus() ?? {
@@ -172,12 +186,13 @@ app.prepare().then(async () => {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
             JSON.stringify({
-                status: realtimeDegraded || paymentSchedulersDegraded || paymentCheckoutControlDegraded
+                status: !databaseAvailable || realtimeDegraded || paymentSchedulersDegraded || paymentCheckoutControlDegraded
                     ? "degraded"
                     : "ok",
                 uptime: process.uptime(),
                 dependencies: {
                     redis,
+                    database: { available: databaseAvailable },
                 },
                 realtime: {
                     topology: realtimeTopologyStatus,
@@ -190,8 +205,16 @@ app.prepare().then(async () => {
                         getTelemetryRollupStatus(telemetryRollupConfig),
                     productAnalytics: getProductAnalyticsStatus(),
                     wordAnalytics: getWordAnalyticsStatus(),
+                    connectionPauses: getConnectionPauseAnalyticsStatus(),
                 },
                 observability: getObservabilityStatus(),
+                matchSettlements: {
+                    available: matchSettlementRows !== null,
+                    pending: matchSettlementRows?.pending ?? null,
+                    processing: matchSettlementRows?.processing ?? null,
+                    deadLetter: matchSettlementRows?.deadLetter ?? null,
+                    buffered: getMatchSettlementBufferSize(),
+                },
                 payments: {
                     schedulers: paymentSchedulers,
                     checkoutControl: paymentCheckoutControl ? {
@@ -287,6 +310,8 @@ app.prepare().then(async () => {
         );
     };
     publishCurrentCapacity();
+    // Settles finished matches left pending by restarts or brief DB outages.
+    const matchSettlementWorker = startMatchSettlementWorker();
     const capacityHeartbeat = setInterval(publishCurrentCapacity, 10_000);
     capacityHeartbeat.unref();
     const ownershipHeartbeat = roomOwnership.getConfig().enabled
@@ -334,6 +359,7 @@ app.prepare().then(async () => {
         await socketRedisAdapter?.close();
         await roomOwnership?.close();
         await removeCapacityHeartbeat();
+        await matchSettlementWorker.stop();
         await flushObservabilityExporter();
         await closeRedisClient();
         if (!httpServer.listening) {

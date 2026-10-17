@@ -35,7 +35,7 @@ export async function GET(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kelime detay istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kelime detay isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -82,7 +82,7 @@ export async function PUT(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kelime guncelleme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kelime güncelleme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -207,7 +207,7 @@ export async function DELETE(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kelime silme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kelime silme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

@@ -113,6 +113,23 @@ export interface GameState {
     } | null;
     altinSkorAktif: boolean;
     toplamSure?: number;
+    connectionPause?: ConnectionPauseSummary | null;
+}
+
+export interface ConnectionPauseMissingPlayer {
+    playerId: string;
+    ad: string;
+    takim: "A" | "B" | null;
+}
+
+export interface ConnectionPauseSummary {
+    waitingForPlayers: boolean;
+    /** Added with connection pause resolution; absent from older servers. */
+    missingPlayers?: ConnectionPauseMissingPlayer[];
+    /** Seconds until the host may resolve the pause; 0 means a decision is allowed. */
+    resolutionAvailableInSeconds?: number;
+    /** Whether removing the missing players still leaves two online players per team. */
+    canContinueWithoutMissing?: boolean;
 }
 
 // ─── Socket Events ─────────────────────────────────────────────
@@ -122,6 +139,7 @@ export interface TransitionData {
     gozetmen: { ad: string; takim: string } | null;
     kalanSure: number;
     oyunDurduruldu: boolean;
+    connectionPause?: ConnectionPauseSummary | null;
     ilkGecis: boolean;
     cardBackTheme: ResolvedCardBackTheme | null;
 }
@@ -139,6 +157,8 @@ export interface TurnInfo {
 export interface GameOverData {
     kazananTakim: "A" | "B" | "Berabere";
     skor: { A: number; B: number };
+    /** "host_ended": the host ended the match early; no coins, no win. */
+    endReason?: "completed" | "host_ended";
 }
 
 // ─── Category (from DB) ────────────────────────────────────────

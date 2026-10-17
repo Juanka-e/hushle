@@ -694,9 +694,9 @@ export default function AdminCoinGrantsPage() {
                     ["all", "Tüm operasyonel"],
                     ["active", "Aktif"],
                     ["inactive", "Pasif"],
-                    ["used", "Kullanilan"],
-                    ["exhausted", "Tukenen"],
-                    ["archived", "Arsiv"],
+                    ["used", "Kullanılan"],
+                    ["exhausted", "Tükenen"],
+                    ["archived", "Arşiv"],
                 ] as Array<[CampaignViewFilter, string]>).map(([key, label]) => (
                     <Button
                         key={key}

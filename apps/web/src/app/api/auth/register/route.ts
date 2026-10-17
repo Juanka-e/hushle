@@ -9,10 +9,7 @@ import {
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { getSystemSettings } from "@/lib/system-settings/service";
-import {
-    getFeatureDisabledMessage,
-    isRegistrationAvailable,
-} from "@/lib/system-settings/policies";
+import { isRegistrationAvailable } from "@/lib/system-settings/policies";
 import { verifyCaptchaForAction } from "@/lib/security/captcha";
 import {
     isEmailWithinLimit,
@@ -27,13 +24,45 @@ import {
     getEmailProviderReadiness,
 } from "@hushle/platform-email";
 import { UserAccountStatus } from "@hushle/platform-db";
+import { claimGuestMatches } from "@/lib/match-settlement/guest-claim";
+import {
+    summarizeGuestClaim,
+    type GuestClaimSummary,
+} from "@/lib/match-settlement/guest-claim-rules";
+import { PlayerErrorCode, playerError, playerErrorFromValidation } from "@/lib/errors/player-error";
+import { PlayerNoticeCode, playerNotice } from "@/lib/errors/player-notice";
+import { passwordPolicyError } from "@/lib/auth/password-policy-error";
 
 const registerSchema = z.object({
-    username: z.string().min(3, "Kullanici adi en az 3 karakter olmalidir."),
-    email: z.email("Gecerli bir e-posta adresi girilmelidir."),
-    password: z.string().max(256, "Parola çok uzun."),
+    username: z.string().min(3),
+    email: z.email(),
+    password: z.string().max(256),
     captchaToken: z.string().trim().min(1).max(2048).optional().nullable(),
+    // Signed guest identity of the tab the visitor played in; moves those matches here.
+    // A malformed value is dropped instead of failing the registration.
+    guestToken: z.string().trim().min(20).max(512).nullable().optional().catch(null),
 });
+
+/** Player-facing code for the first invalid registration field. */
+const REGISTER_FIELD_ERROR_CODES = {
+    username: PlayerErrorCode.USERNAME_TOO_SHORT,
+    email: PlayerErrorCode.INVALID_EMAIL,
+    password: PlayerErrorCode.PASSWORD_TOO_LONG,
+} as const;
+
+/** Never fails a registration: an unclaimed match is a lost bonus, not a lost account. */
+async function claimGuestMatchesOnSignup(
+    userId: number,
+    guestToken: string | null | undefined
+): Promise<GuestClaimSummary | null> {
+    if (!guestToken) return null;
+    try {
+        return summarizeGuestClaim(await claimGuestMatches({ userId, guestToken }));
+    } catch (error) {
+        console.error("Guest match claim during registration failed", error);
+        return null;
+    }
+}
 
 export async function POST(req: Request) {
     try {
@@ -45,13 +74,13 @@ export async function POST(req: Request) {
         });
         if (!rateLimit.allowed) {
             return NextResponse.json(
-                { error: "Cok fazla kayit denemesi yaptiniz. Daha sonra tekrar deneyin." },
+                playerError(PlayerErrorCode.RATE_LIMITED),
                 { status: 429, headers: buildRateLimitHeaders(rateLimit) }
             );
         }
 
         const body = await req.json();
-        const { username, email, password, captchaToken } = registerSchema.parse(body);
+        const { username, email, password, captchaToken, guestToken } = registerSchema.parse(body);
         const settings = await getSystemSettings();
         const passwordPolicy = evaluatePasswordPolicy(password, {
             username,
@@ -60,11 +89,7 @@ export async function POST(req: Request) {
         });
         if (!passwordPolicy.accepted) {
             return NextResponse.json(
-                {
-                    error:
-                        passwordPolicy.issues[0] ??
-                        "Daha güçlü bir parola seçin.",
-                },
+                passwordPolicyError(password, passwordPolicy),
                 { status: 400 }
             );
         }
@@ -72,10 +97,7 @@ export async function POST(req: Request) {
         const breachCheck = await checkPasswordBreach(password);
         if (breachCheck.status === "breached") {
             return NextResponse.json(
-                {
-                    error:
-                        "Bu parola bilinen veri ihlallerinde kullanılmış. Lütfen farklı bir parola seçin.",
-                },
+                playerError(PlayerErrorCode.PASSWORD_BREACHED),
                 { status: 400 }
             );
         }
@@ -85,14 +107,14 @@ export async function POST(req: Request) {
 
         if (!isEmailWithinLimit(sanitizedEmail)) {
             return NextResponse.json(
-                { error: "E-posta adresi cok uzun." },
+                playerError(PlayerErrorCode.EMAIL_TOO_LONG),
                 { status: 400 }
             );
         }
 
         if (!isRegistrationAvailable(settings)) {
             return NextResponse.json(
-                { error: getFeatureDisabledMessage("register") },
+                playerError(PlayerErrorCode.REGISTRATION_DISABLED),
                 { status: 409 }
             );
         }
@@ -103,10 +125,7 @@ export async function POST(req: Request) {
         const emailReadiness = getEmailProviderReadiness();
         if (verificationRequired && !emailReadiness.configured) {
             return NextResponse.json(
-                {
-                    error:
-                        "E-posta doğrulama servisi şu anda hazır değil. Lütfen kısa süre sonra tekrar deneyin.",
-                },
+                playerError(PlayerErrorCode.EMAIL_SERVICE_UNAVAILABLE),
                 { status: 503 }
             );
         }
@@ -119,7 +138,7 @@ export async function POST(req: Request) {
         });
         if (!captchaResult.ok) {
             return NextResponse.json(
-                { error: "Guvenlik dogrulamasi basarisiz. Lutfen tekrar deneyin." },
+                playerError(PlayerErrorCode.CAPTCHA_FAILED),
                 { status: 403 }
             );
         }
@@ -130,7 +149,7 @@ export async function POST(req: Request) {
 
         if (existingUser) {
             return NextResponse.json(
-                { error: "Bu kullanici adi zaten alinmis." },
+                playerError(PlayerErrorCode.USERNAME_TAKEN),
                 { status: 400 }
             );
         }
@@ -141,7 +160,7 @@ export async function POST(req: Request) {
         });
         if (existingEmailUser) {
             return NextResponse.json(
-                { error: "Bu e-posta adresi zaten kullaniliyor." },
+                playerError(PlayerErrorCode.EMAIL_TAKEN),
                 { status: 400 }
             );
         }
@@ -190,24 +209,31 @@ export async function POST(req: Request) {
             userId: user.id,
             request: req,
         });
+        const guestClaim = await claimGuestMatchesOnSignup(user.id, guestToken);
 
         return NextResponse.json(
             {
-                message: verificationRequired
-                    ? "Hesabını etkinleştirmek için e-posta adresini doğrula."
-                    : "Kayıt başarılı.",
+                ...playerNotice(
+                    verificationRequired
+                        ? PlayerNoticeCode.REGISTRATION_VERIFY_EMAIL
+                        : PlayerNoticeCode.REGISTRATION_COMPLETE
+                ),
                 userId: user.id,
                 verificationRequired,
                 verificationEmailQueued: verificationRequired,
+                ...(guestClaim ? { guestClaim } : {}),
             },
             { status: 201 }
         );
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return NextResponse.json({ error: error.issues[0].message }, { status: 400 });
+            return NextResponse.json(
+                playerErrorFromValidation(error, REGISTER_FIELD_ERROR_CODES),
+                { status: 400 }
+            );
         }
         return NextResponse.json(
-            { error: "Kayit sirasinda bir hata olustu." },
+            playerError(PlayerErrorCode.REGISTRATION_FAILED),
             { status: 500 }
         );
     }

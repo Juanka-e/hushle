@@ -25,7 +25,9 @@ const passwordRequest = readFileSync(
     ),
     "utf8"
 );
-assert.match(passwordRequest, /GENERIC_MESSAGE/);
+assert.match(passwordRequest, /GENERIC_NOTICE = playerNotice\(PlayerNoticeCode\.PASSWORD_RESET_REQUESTED\)/);
+// Rate limit, unknown account and mail failure all return the same notice, so accounts cannot be enumerated.
+assert.equal(passwordRequest.match(/\{ \.\.\.GENERIC_NOTICE \}/g)?.length, 3);
 assert.match(passwordRequest, /consumeDistributedRequestRateLimit/);
 assert.match(passwordRequest, /isTrustedStateChangeRequest/);
 assert.doesNotMatch(passwordRequest, /writeAuditLog/);

@@ -272,6 +272,10 @@ Kod ve deployment kontrati hazir:
 - Gelecek `/api/payments/webhooks/{provider}` rotalari browser challenge,
   cookie session, Origin ve Referer kontrolunden ayridir; raw-body provider
   imzasi ve event dedupe zorunludur.
+- `/api/payments/callback/iyzico` (iyzico ödeme sayfasından tarayıcıyla dönen
+  form POST'u) `payment-provider-return` sınıfındadır: challenge, Origin/Referer
+  ve session şartı uygulanmaz; bu yolda edge rate-limit yalnız Block aksiyonuyla
+  kullanılır.
 - Production preflight proxy, origin lock ve
   `PAYMENT_WEBHOOK_EDGE_POLICY=signature_first_no_challenge` kararini kontrol eder.
 

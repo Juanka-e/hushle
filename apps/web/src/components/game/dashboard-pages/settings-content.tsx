@@ -23,6 +23,8 @@ import {
 } from "@/lib/dashboard-settings";
 import type { UserInventoryResponse } from "@/types/economy";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
+import { resolveApiNoticeMessage } from "@/lib/errors/resolve-player-notice";
 
 interface LinkedAccountProvider {
   id: "google";
@@ -34,7 +36,7 @@ interface LinkedAccountProvider {
 
 export function SettingsContent() {
   const { data: session } = useSession();
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null);
@@ -156,7 +158,7 @@ export function SettingsContent() {
         | { error?: string }
         | null;
       if (!response.ok) {
-        setAccountLinkMessage(payload?.error || t("settings.unlinkFailed"));
+        setAccountLinkMessage(resolveApiErrorMessage(locale, payload, t("settings.unlinkFailed")));
         return;
       }
       setLinkedProviders((current) =>
@@ -193,7 +195,7 @@ export function SettingsContent() {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        setSaveError(payload?.error || t("settings.profileUpdateFailed"));
+        setSaveError(resolveApiErrorMessage(locale, payload, t("settings.profileUpdateFailed")));
         return;
       }
 
@@ -228,14 +230,12 @@ export function SettingsContent() {
         body: JSON.stringify({ newEmail, currentPassword }),
       });
       const payload = (await response.json().catch(() => null)) as {
-        error?: string;
-        message?: string;
         pendingEmail?: string;
       } | null;
       setEmailChangeMessage(
         response.ok
-          ? payload?.message || t("settings.verificationLinkSent")
-          : payload?.error || t("settings.emailChangeFailed")
+          ? resolveApiNoticeMessage(locale, payload, t("settings.verificationLinkSent"))
+          : resolveApiErrorMessage(locale, payload, t("settings.emailChangeFailed"))
       );
       if (response.ok) {
         setPendingEmail(payload?.pendingEmail || newEmail.trim());
@@ -264,7 +264,7 @@ export function SettingsContent() {
       setEmailChangeMessage(
         response.ok
           ? t("settings.emailChangeCancelled")
-          : payload?.error || t("settings.cancelFailed")
+          : resolveApiErrorMessage(locale, payload, t("settings.cancelFailed"))
       );
       if (response.ok) {
         setPendingEmail(null);
@@ -285,14 +285,12 @@ export function SettingsContent() {
         method: "POST",
       });
       const payload = (await response.json().catch(() => null)) as {
-        error?: string;
-        message?: string;
         status?: string;
       } | null;
       setVerificationMessage(
         response.ok
-          ? payload?.message || t("auth.verificationQueued")
-          : payload?.error || t("settings.verificationSendFailed")
+          ? resolveApiNoticeMessage(locale, payload, t("auth.verificationQueued"))
+          : resolveApiErrorMessage(locale, payload, t("settings.verificationSendFailed"))
       );
       if (payload?.status === "already_verified") {
         setEmailVerifiedAt(new Date().toISOString());

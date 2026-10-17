@@ -11,6 +11,7 @@ import {
     consumeDistributedRequestRateLimit,
 } from "@/lib/security/request-rate-limit";
 import { getSessionUser } from "@/lib/session";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export async function GET(
     _request: Request,
@@ -18,7 +19,7 @@ export async function GET(
 ) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giriş gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
     const rateLimit = await consumeDistributedRequestRateLimit({
         bucket: "payment-order-status",
@@ -28,7 +29,7 @@ export async function GET(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Sipariş durumu çok sık sorgulandı." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -55,7 +56,7 @@ export async function GET(
         },
     });
     if (!order) {
-        return NextResponse.json({ error: "Sipariş bulunamadı." }, { status: 404 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORDER_NOT_FOUND), { status: 404 });
     }
     const { providerSessionReference, providerHostedUrl, provider, ...publicOrder } = order;
     const paytrSession =

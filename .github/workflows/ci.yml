@@ -40,6 +40,11 @@ jobs:
       - name: ESLint
         run: npm run lint
 
+      - name: Test persistent storage and backups
+        run: |
+          npm run test:persistent-assets
+          npm run test:data-backup
+
       - name: Test mobile API foundation
         run: npm run test:mobile-api
 
@@ -118,6 +123,21 @@ jobs:
         run: npm run test:wallet-ledger-integration
         env:
           WALLET_LEDGER_INTEGRATION_TEST: "true"
+
+      - name: Test server-side match settlement
+        run: npm run test:match-settlement-integration
+        env:
+          MATCH_SETTLEMENT_INTEGRATION_TEST: "true"
+
+      - name: Test guest match claims
+        run: npm run test:guest-match-claim-integration
+        env:
+          GUEST_MATCH_CLAIM_INTEGRATION_TEST: "true"
+
+      - name: Test guest claim analytics
+        run: npm run test:guest-claim-analytics-integration
+        env:
+          GUEST_CLAIM_ANALYTICS_INTEGRATION_TEST: "true"
 
       - name: Test payment fulfillment concurrency
         run: |
@@ -237,6 +257,25 @@ jobs:
           PAYMENT_INTEGRATIONS_ADMIN_E2E: "true"
           ADMIN_ACCESS_MODE: "public_login"
           ADMIN_ACCESS_FAIL_CLOSED: "false"
+
+      - name: Test connection pause panel and Admin Lab UI
+        run: npm run test:connection-pause-ui-e2e
+        env:
+          CONNECTION_PAUSE_UI_E2E: "true"
+          CONNECTION_PAUSE_GRACE_SECONDS: "5"
+          ADMIN_ACCESS_MODE: "public_login"
+          ADMIN_ACCESS_FAIL_CLOSED: "false"
+          ROOM_JOIN_MAX_ATTEMPTS: "100"
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-pause-ui"
+
+      - name: Test guest match claim UI
+        run: npm run test:guest-match-claim-ui-e2e
+        env:
+          GUEST_CLAIM_UI_E2E: "true"
+          ROOM_JOIN_MAX_ATTEMPTS: "100"
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-guest-claim-ui"
 
       - name: Test payment checkout UI
         run: npm run test:payment-checkout-e2e

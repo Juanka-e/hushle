@@ -4,6 +4,7 @@ import {
     type AccountCapability,
     type AccountCapabilityRecord,
 } from "@hushle/platform-auth";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export function enforceAccountCapability(
     account: AccountCapabilityRecord,
@@ -14,11 +15,7 @@ export function enforceAccountCapability(
     }
 
     return NextResponse.json(
-        {
-            error:
-                "Bu işlemi kullanmak için önce e-posta adresini doğrulamalısın.",
-            code: "EMAIL_VERIFICATION_REQUIRED",
-        },
+        playerError(PlayerErrorCode.EMAIL_VERIFICATION_REQUIRED),
         { status: 403 }
     );
 }

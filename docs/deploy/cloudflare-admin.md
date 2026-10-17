@@ -49,13 +49,22 @@ Kaynak politika: `infra/cloudflare/edge-security-policy.json`.
 - Payload önce durable inbox'a kaydedilir, hızlı `2xx/OK` dönülür ve işleme jobs worker devam eder.
 - Body size, content type ve endpoint bazlı hacim sınırı uygulanır; IP allowlist tek güven kaynağı değildir.
 
+### Ödeme Dönüşü `/api/payments/callback/iyzico`
+
+- iyzico'nun barındırılan ödeme sayfası, ödeme bitince kullanıcının tarayıcısını bu adrese form `POST`'u ile geri gönderir. İstek gerçek bir tarayıcıdan gelir ama siteler arası bir `POST`'tur.
+- Bu yolda Managed Challenge, JS Challenge, Turnstile veya Bot Fight Mode challenge'ı kullanılmaz. Challenge sayfası `POST` gövdesindeki token'ı taşımaz; ödeme dönüşü kaybolur ve kullanıcı siparişine geri dönemez.
+- `Origin`/`Referer` kuralı ve cookie session şartı da konmaz: `Origin` iyzico'dur veya `null` olabilir, `Referer` düşebilir, `SameSite=Lax` cookie siteler arası `POST`'ta gönderilmez.
+- Asıl kontrol uygulamadadır: `IYZICO_CALLBACK_MODE` kapısı, UUID sipariş kimliği, tek alanlı ve 4 KiB ile sınırlı form gövdesi, token biçim kontrolü, token özeti ve sipariş başına Redis hız sınırı (5 dakikada 10 ve 20 istek), sunucu tarafında imzalı retrieve. Callback yalnız doğrulama kanıtı yazar; siparişi ödenmiş saymaz, coin veya envanter vermez (bu yetki webhook ve reconciliation'dadır). Yanıt `303` yönlendirmesidir ve token'ı URL'ye yazmaz.
+- Edge'de DDoS koruması ve managed WAF açık kalır. Bu yolu kapsayan bir Cloudflare rate-limit kuralı varsa aksiyonu yalnız **Block** olur ve eşiği uygulama sınırlarının çok üstünde tutulur (örneğin IP başına 10 saniyede 30 istek). Challenge aksiyonlu bir rate-limit kuralı bu yolu dışarıda bırakmalıdır.
+- Politikadaki sınıfı `payment-provider-return`'dür; kötü User-Agent ve datacenter ağı aday kuralları bu sınıfı dışarıda bırakır.
+
 Cloudflare Free Bot Fight Mode custom rule ile istisna edilemediğinden ödeme callback'lerini yanlışlıkla challenge edebilir. Bütün provider callback'leri gerçek production smoke testinden geçmeden global olarak açılmaz.
 
 ## Aday Kurallar
 
-1. Kötü User-Agent: yalnız browser navigation için önce gözlem, sonra Managed Challenge. WebSocket ve payment webhook hariç.
+1. Kötü User-Agent: yalnız browser navigation için önce gözlem, sonra Managed Challenge. WebSocket, payment webhook ve iyzico ödeme dönüşü hariç.
 2. Boş/kötü Referer: uygulanmaz.
-3. Datacenter/VPN/hosting ağı: yalnız hassas browser girişlerinde gözlem; global block uygulanmaz.
+3. Datacenter/VPN/hosting ağı: yalnız hassas browser girişlerinde gözlem; global block uygulanmaz. Ödeme dönüşü ve webhook'lar bu kurala girmez.
 4. Verified bot: public `GET` SEO rotalarında korunur; state-changing API veya socket yetkisi sağlamaz.
 5. Admin: `/admin*` ve `/api/admin*` Cloudflare Access MFA arkasına alınır. Uygulamanın kendi admin session/RBAC kontrolü yine çalışır.
 
@@ -65,7 +74,7 @@ Cloudflare Free Bot Fight Mode custom rule ile istisna edilemediğinden ödeme c
 2. False-positive listesinde mobil operatör, VPN, okul/iş ağı, uptime monitor ve ödeme sağlayıcılarını kontrol et.
 3. Browser-only aday kuralı Managed Challenge yap.
 4. Block'a ancak tekrarlanabilir kötü imza ve düşük false-positive kanıtı varsa geç.
-5. WebSocket reconnect, guest join, kayıt, login ve her ödeme webhook'unu gerçek cihaz/ağ ile tekrar test et.
+5. WebSocket reconnect, guest join, kayıt, login, iyzico ödeme dönüşü ve her ödeme webhook'unu gerçek cihaz/ağ ile tekrar test et.
 
 ## Test
 

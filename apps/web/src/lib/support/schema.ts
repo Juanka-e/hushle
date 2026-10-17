@@ -28,7 +28,7 @@ export const supportTicketAdminUpdateSchema = z
             value.status !== undefined ||
             value.priority !== undefined ||
             value.assignedAdminUserId !== undefined,
-        "En az bir alan guncellenmeli."
+        "En az bir alan güncellenmeli."
     );
 
 export const supportTicketAdminMessageSchema = z.object({

@@ -76,10 +76,10 @@ function buildRuntimeItems(): IntegrationItem[] {
             category: "runtime",
             title: "Database",
             status: databaseConfigured ? "ready" : "missing",
-            summary: databaseConfigured ? "MySQL baglantisi tanimli." : "DATABASE_URL eksik.",
+            summary: databaseConfigured ? "MySQL bağlantısı tanımlı." : "DATABASE_URL eksik.",
             details: [
                 `DATABASE_URL: ${databaseConfigured ? "configured" : "missing"}`,
-                "Source of truth MySQL tarafinda kalir.",
+                "Source of truth MySQL tarafında kalır.",
             ],
         },
         {
@@ -93,8 +93,8 @@ function buildRuntimeItems(): IntegrationItem[] {
                       ? "partial"
                     : "missing",
             summary: authSecretStrong
-                ? "Auth temel env baglantilari kontrol edildi."
-                : "AUTH_SECRET zayif veya eksik.",
+                ? "Auth temel env bağlantıları kontrol edildi."
+                : "AUTH_SECRET zayıf veya eksik.",
             details: [
                 `AUTH_SECRET: ${authSecretStrong ? "strong" : "missing_or_weak"}`,
                 `NEXTAUTH_URL: ${nextAuthUrl ? nextAuthUrl : "missing"}`,
@@ -118,7 +118,7 @@ function buildCaptchaItems(settings: SystemSettings): IntegrationItem[] {
             summary:
                 settings.security.captcha.provider === "turnstile"
                     ? `Aktif provider. Mode: ${settings.security.captcha.turnstileMode}.`
-                    : "Alternate provider olarak hazir tutuluyor.",
+                    : "Alternate provider olarak hazır tutuluyor.",
             details: [
                 `Configured: ${readiness.turnstileConfigured ? "yes" : "no"}`,
                 `Provider active: ${settings.security.captcha.provider === "turnstile" ? "yes" : "no"}`,
@@ -203,8 +203,8 @@ function buildMessagingItems(): IntegrationItem[] {
             title: "Email Outbound",
             status: email.configured ? "ready" : "missing",
             summary: email.configured
-                ? "Transactional SMTP provider ve outbox delivery hazir."
-                : "Transactional email provider yapilandirmasi eksik.",
+                ? "Transactional SMTP provider ve outbox delivery hazır."
+                : "Transactional email provider yapılandırması eksik.",
             details: [
                 `Provider: ${email.provider}`,
                 `Configured: ${email.configured ? "yes" : "no"}`,
@@ -319,7 +319,7 @@ function buildStorageItems(
             category: "storage",
             title: "Branding Asset Storage",
             status: "ready",
-            summary: "Branding uploadlar local public storage uzerinden calisiyor.",
+            summary: "Branding uploadlar local public storage üzerinden çalışıyor.",
             details: [
                 "Current path: public/branding/*",
                 "Useful for development and simple deployments.",

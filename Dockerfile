@@ -12,13 +12,14 @@ COPY packages/domain-game/package.json ./packages/domain-game/package.json
 COPY packages/platform-auth/package.json ./packages/platform-auth/package.json
 COPY packages/platform-cache/package.json ./packages/platform-cache/package.json
 COPY packages/platform-db/package.json ./packages/platform-db/package.json
+COPY packages/platform-email/package.json ./packages/platform-email/package.json
 COPY packages/platform-inventory/package.json ./packages/platform-inventory/package.json
 COPY packages/platform-observability/package.json ./packages/platform-observability/package.json
 COPY packages/platform-player/package.json ./packages/platform-player/package.json
 COPY packages/platform-payments/package.json ./packages/platform-payments/package.json
 COPY packages/platform-store/package.json ./packages/platform-store/package.json
 COPY packages/platform-wallet/package.json ./packages/platform-wallet/package.json
-RUN npm ci
+RUN npm ci --no-audit
 
 COPY . .
 RUN SKIP_DATABASE_DURING_BUILD=true npm run build

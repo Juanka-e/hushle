@@ -10,6 +10,7 @@ import {
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import { disconnectUserSockets } from "@/lib/socket/user-session-control";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 const confirmSchema = z.object({
     token: z.string().trim().min(40).max(160),
@@ -17,7 +18,7 @@ const confirmSchema = z.object({
 
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
-        return NextResponse.json({ error: "Geçersiz istek." }, { status: 403 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
     }
     const limit = await consumeDistributedRequestRateLimit({
         bucket: "email-change-confirm",
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
     });
     if (!limit.allowed) {
         return NextResponse.json(
-            { error: "Çok fazla doğrulama denemesi yapıldı." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(limit) }
         );
     }
@@ -41,10 +42,7 @@ export async function POST(request: Request) {
         });
         if (!result.ok) {
             return NextResponse.json(
-                {
-                    error:
-                        "Bağlantı geçersiz, süresi dolmuş veya değişiklik artık kullanılamıyor.",
-                },
+                playerError(PlayerErrorCode.EMAIL_CHANGE_LINK_INVALID),
                 { status: 400, headers: buildRateLimitHeaders(limit) }
             );
         }
@@ -66,13 +64,13 @@ export async function POST(request: Request) {
     } catch (error) {
         if (error instanceof z.ZodError || error instanceof SyntaxError) {
             return NextResponse.json(
-                { error: "Geçersiz doğrulama isteği." },
+                playerError(PlayerErrorCode.INVALID_REQUEST),
                 { status: 400 }
             );
         }
         console.error("Email change confirmation failed", error);
         return NextResponse.json(
-            { error: "E-posta adresi değiştirilemedi." },
+            playerError(PlayerErrorCode.EMAIL_CHANGE_CONFIRM_FAILED),
             { status: 500 }
         );
     }

@@ -7,6 +7,7 @@ import {
     getAdminAccessFailureMessage,
 } from "@/lib/admin/access-policy";
 import { isTrustedStateChangeRequest } from "@/lib/security/request-origin";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 import {
     buildContentSecurityPolicy,
     generateCspNonce,
@@ -83,7 +84,7 @@ export default auth((req) => {
         !isTrustedStateChangeRequest(requestLike)
     ) {
         return respond(NextResponse.json(
-            { error: "Origin dogrulamasi basarisiz." },
+            playerError(PlayerErrorCode.ORIGIN_REJECTED),
             { status: 403 }
         ));
     }
@@ -132,7 +133,7 @@ export default auth((req) => {
     if (pathname.startsWith("/api/admin")) {
         if (!isAuthed(req) || role !== "admin") {
             return respond(NextResponse.json(
-                { error: "Yetkisiz erisim." },
+                { error: "Yetkisiz erişim." },
                 { status: 401 }
             ));
         }
@@ -159,7 +160,7 @@ export default auth((req) => {
     ) {
         if (!isAuthed(req)) {
             return respond(NextResponse.json(
-                { error: "Giris gerekli." },
+                playerError(PlayerErrorCode.AUTH_REQUIRED),
                 { status: 401 }
             ));
         }
