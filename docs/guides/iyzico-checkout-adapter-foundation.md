@@ -39,6 +39,12 @@ SSRF surface.
   `currency`, `basketId`, `conversationId`, `paidPrice`, `price`, `token`).
 - Signature decimal inputs remove trailing fractional zeros exactly as required
   by the provider contract. Invalid or missing signatures fail closed.
+- Retrieved `price`/`paidPrice` values may be JSON numbers or zero-padded strings
+  (`5.20000000`, `10.510`); they convert to exact minor units. Any non-zero digit
+  after the second fraction digit is rejected as `invalid_provider_response`.
+- `npm run test:payment-provider-spec-vectors` pins the response signature, the
+  trailing-zero table and the `IYZWSv2` header encoding to the vectors published in
+  the official documentation.
 - Response minimization: provider HTML, card metadata, and error text are not
   returned from the adapter.
 
