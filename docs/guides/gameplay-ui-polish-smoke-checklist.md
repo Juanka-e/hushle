@@ -48,7 +48,7 @@ yuzeylerinde kritik UX kirilmalarini hizli yakalamak.
 1. notifications sheet mobilde sagdan acilirken ana content ile toast cakismamali
 2. sheet acikken yeni toast gorunurse ustte yeterli boslukla durmali
 3. `Tumunu oku` ve `Tumunu temizle` aksiyonlari dar ekranda alt satira duzgun inmeli
-4. support ticket bildirimi `Yardim merkezinde ac` aksiyonuyla support sheet'i dogru acmali
+4. support ticket bildirimi `Yardım merkezinde aç` aksiyonuyla support sheet'i dogru acmali
 5. sheet kapatma butonu her zaman gorunur kalmali
 
 ## Quick Equip

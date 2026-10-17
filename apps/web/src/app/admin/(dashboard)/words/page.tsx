@@ -228,7 +228,7 @@ export default function AdminWordsPage() {
             }
 
             const childName = categoryById.get(selectedChild)?.name ?? "Alt kategori";
-            return `"${category.name}" ve "${childName}" birlikte secili. Aynı kelimeyi hem ana kategoriye hem alt kategorisine baglama.`;
+            return `"${category.name}" ve "${childName}" birlikte seçili. Aynı kelimeyi hem ana kategoriye hem alt kategorisine bağlama.`;
         }
 
         return "";
@@ -262,7 +262,7 @@ export default function AdminWordsPage() {
                 cache: "no-store",
             });
             if (!response.ok) {
-                toast.error("Kelime listesi yuklenemedi.");
+                toast.error("Kelime listesi yüklenemedi.");
                 return;
             }
 
@@ -273,7 +273,7 @@ export default function AdminWordsPage() {
             setPage(payload.page);
             setAnalyticsByWordId(payload.analyticsByWordId);
         } catch {
-            toast.error("Kelime listesi yuklenemedi.");
+            toast.error("Kelime listesi yüklenemedi.");
         } finally {
             setLoading(false);
         }
@@ -365,17 +365,17 @@ export default function AdminWordsPage() {
             .filter((value) => value.length > 0);
 
         if (!formWord.trim()) {
-            setFormError("Kelime bos olamaz.");
+            setFormError("Kelime boş olamaz.");
             return;
         }
 
         if (cleanedTaboos.length === 0) {
-            setFormError("En az bir yasakli kelime gerekli.");
+            setFormError("En az bir yasaklı kelime gerekli.");
             return;
         }
 
         if (categorySelectionWarning) {
-            setFormError("Ana kategori ve onun alt kategorisi ayni kelimede birlikte tutulamaz.");
+            setFormError("Ana kategori ve onun alt kategorisi aynı kelimede birlikte tutulamaz.");
             return;
         }
 
@@ -408,10 +408,10 @@ export default function AdminWordsPage() {
 
             setFormOpen(false);
             resetForm();
-            toast.success(editingWord ? "Kelime guncellendi." : "Kelime olusturuldu.");
+            toast.success(editingWord ? "Kelime güncellendi." : "Kelime oluşturuldu.");
             await fetchWords();
         } catch {
-            setFormError("Ag hatasi olustu.");
+            setFormError("Ağ hatası oluştu.");
         } finally {
             setFormSaving(false);
         }
@@ -428,7 +428,7 @@ export default function AdminWordsPage() {
     ]);
 
     const handleDelete = useCallback(async (word: Word) => {
-        if (!window.confirm(`"${word.wordText}" kaydini silmek istediginize emin misiniz?`)) {
+        if (!window.confirm(`"${word.wordText}" kaydını silmek istediğinize emin misiniz?`)) {
             return;
         }
 
@@ -478,7 +478,7 @@ export default function AdminWordsPage() {
 
             if (!response.ok) {
                 const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-                toast.error(payload?.error ?? "Secili kelimeler silinemedi.");
+                toast.error(payload?.error ?? "Seçili kelimeler silinemedi.");
                 return;
             }
 
@@ -489,7 +489,7 @@ export default function AdminWordsPage() {
             setBulkDeleteReason("");
             await fetchWords();
         } catch {
-            toast.error("Secili kelimeler silinemedi.");
+            toast.error("Seçili kelimeler silinemedi.");
         } finally {
             setBulkDeleting(false);
         }
@@ -498,9 +498,9 @@ export default function AdminWordsPage() {
     return (
         <div className="space-y-6">
             <AdminPageHeader
-                title="Kelime Yonetimi"
-                description="Kelime havuzunu arama, filtreleme ve hizli duzenleme akislariyla yonetin."
-                meta={`${total} kayit`}
+                title="Kelime Yönetimi"
+                description="Kelime havuzunu arama, filtreleme ve hızlı düzenleme akışlarıyla yönetin."
+                meta={`${total} kayıt`}
                 icon={<BookOpen className="h-5 w-5 text-sky-500" />}
                 action={
                     <div className="flex flex-wrap items-center gap-2">
@@ -523,7 +523,7 @@ export default function AdminWordsPage() {
                         </select>
                         <Button variant="outline" onClick={() => setBulkOpen(true)} className="gap-2">
                             <FileUp size={16} />
-                            Toplu Yukle
+                            Toplu Yükle
                         </Button>
                         <Button onClick={openCreate} className="gap-2">
                             <Plus size={16} />
@@ -556,7 +556,7 @@ export default function AdminWordsPage() {
                         }}
                         className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none"
                     >
-                        <option value="">Tum zorluklar</option>
+                        <option value="">Tüm zorluklar</option>
                         <option value="1">Kolay</option>
                         <option value="2">Orta</option>
                         <option value="3">Zor</option>
@@ -565,7 +565,7 @@ export default function AdminWordsPage() {
                         value={analyticsDays}
                         onChange={(event) => setAnalyticsDays(Number(event.target.value) as 7 | 30)}
                         className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none"
-                        aria-label="Kelime performans araligi"
+                        aria-label="Kelime performans aralığı"
                     >
                         <option value={7}>Son 7 gün</option>
                         <option value={30}>Son 30 gün</option>
@@ -579,7 +579,7 @@ export default function AdminWordsPage() {
                         className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none"
                         disabled={categoriesLoading}
                     >
-                        <option value="">Tum kategoriler</option>
+                        <option value="">Tüm kategoriler</option>
                         {flatCategories.map((category) => (
                             <option key={category.id} value={String(category.id)}>
                                 {category.indent ? `- ${category.name}` : category.name}
@@ -613,15 +613,15 @@ export default function AdminWordsPage() {
             </AdminSelectionBar>
 
             <AdminTableShell
-                title="Kelime Kayitlari"
+                title="Kelime Kayıtları"
                 description="Liste server-side filtrelenir. Performans verisi karar desteğidir; kelimeler otomatik değiştirilmez veya gizlenmez."
                 loading={loading}
                 isEmpty={!loading && words.length === 0}
                 emptyState={
                     <AdminEmptyState
                         icon={<BookOpen className="h-6 w-6" />}
-                        title="Kelime bulunamadi"
-                        description="Arama veya filtre sonucunda gosterilecek kayit yok."
+                        title="Kelime bulunamadı"
+                        description="Arama veya filtre sonucunda gösterilecek kayıt yok."
                     />
                 }
                 footer={
@@ -640,16 +640,16 @@ export default function AdminWordsPage() {
                                     type="checkbox"
                                     checked={allSelected}
                                     onChange={() => toggleAll()}
-                                    aria-label="Tum gorunen kelimeleri sec"
+                                    aria-label="Tüm görünen kelimeleri seç"
                                     className="h-4 w-4 rounded border-border"
                                 />
                             </TableHead>
                             <TableHead>Kelime</TableHead>
                             <TableHead>Zorluk</TableHead>
-                            <TableHead>Yasakli Kelimeler</TableHead>
+                            <TableHead>Yasaklı Kelimeler</TableHead>
                             <TableHead>Kategoriler</TableHead>
                             <TableHead>Performans</TableHead>
-                            <TableHead className="text-right">Islem</TableHead>
+                            <TableHead className="text-right">İşlem</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -660,7 +660,7 @@ export default function AdminWordsPage() {
                                         type="checkbox"
                                         checked={selectedIds.has(word.id)}
                                         onChange={() => toggleOne(word.id)}
-                                        aria-label={`${word.wordText} sec`}
+                                        aria-label={`${word.wordText} seç`}
                                         className="h-4 w-4 rounded border-border"
                                     />
                                 </TableCell>
@@ -747,10 +747,10 @@ export default function AdminWordsPage() {
                         <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card/95 px-5 py-4 backdrop-blur">
                             <div>
                                 <h2 className="text-lg font-semibold text-foreground">
-                                    {editingWord ? "Kelime duzenle" : "Yeni kelime"}
+                                    {editingWord ? "Kelime düzenle" : "Yeni kelime"}
                                 </h2>
                                 <p className="text-sm text-muted-foreground">
-                                    Kelime, zorluk, yasakli kelime ve kategori alanlarini tek formda yonet.
+                                    Kelime, zorluk, yasaklı kelime ve kategori alanlarını tek formda yönet.
                                 </p>
                             </div>
                             <Button
@@ -780,7 +780,7 @@ export default function AdminWordsPage() {
                                 <Input
                                     value={formWord}
                                     onChange={(event) => setFormWord(event.target.value)}
-                                    placeholder="Kelimeyi yazin..."
+                                    placeholder="Kelimeyi yazın..."
                                 />
                             </div>
 
@@ -809,7 +809,7 @@ export default function AdminWordsPage() {
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <label className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                        Yasakli kelimeler
+                                        Yasaklı kelimeler
                                     </label>
                                     {formTabooWords.length < 10 ? (
                                         <Button
@@ -832,7 +832,7 @@ export default function AdminWordsPage() {
                                                 onChange={(event) =>
                                                     updateTabooWord(index, event.target.value)
                                                 }
-                                                placeholder={`Yasakli kelime ${index + 1}`}
+                                                placeholder={`Yasaklı kelime ${index + 1}`}
                                             />
                                             {formTabooWords.length > 1 ? (
                                                 <Button
@@ -879,10 +879,10 @@ export default function AdminWordsPage() {
                                 </div>
                                 <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
                                     <p>
-                                        Ana kategori satiri genel havuzu temsil eder. Alt kategori satiri ise yalniz kendi alt havuzunu temsil eder.
+                                        Ana kategori satırı genel havuzu temsil eder. Alt kategori satırı ise yalnız kendi alt havuzunu temsil eder.
                                     </p>
                                     <p>
-                                        UI parent + child secimini ayni anda tutmaz; alt kategori secersen parent otomatik kaldirilir.
+                                        UI parent + child seçimini aynı anda tutmaz; alt kategori seçersen parent otomatik kaldırılır.
                                     </p>
                                     {formHelperText ? (
                                         <p className="font-semibold text-sky-700 dark:text-sky-300">
@@ -907,7 +907,7 @@ export default function AdminWordsPage() {
                                     resetForm();
                                 }}
                             >
-                                Iptal
+                                İptal
                             </Button>
                             <Button
                                 type="button"
@@ -916,7 +916,7 @@ export default function AdminWordsPage() {
                                 className="gap-2"
                             >
                                 {formSaving ? <Loader2 size={16} className="animate-spin" /> : null}
-                                {editingWord ? "Guncelle" : "Kaydet"}
+                                {editingWord ? "Güncelle" : "Kaydet"}
                             </Button>
                         </div>
                     </div>
@@ -992,13 +992,13 @@ export default function AdminWordsPage() {
                                 </div>
                                 <p className="mt-2">
                                     {bulkMode === "csv_categories"
-                                        ? "Farkli kategorilerde cok sayida kelime yuklemek icin kategori ve alt kategori adlarini CSV icinde ver."
-                                        : "Tum satirlara ayni kategori veya alt kategori atanacaksa bu modu kullan."}
+                                        ? "Farklı kategorilerde çok sayıda kelime yüklemek için kategori ve alt kategori adlarını CSV içinde ver."
+                                        : "Tüm satırlara aynı kategori veya alt kategori atanacaksa bu modu kullan."}
                                 </p>
                                 <p className="mt-2 text-xs">
                                     {bulkMode === "csv_categories"
-                                        ? "Alt kategori yoksa alt_kategori sutununu bos birak. Alt kategori verilirse kelime yalniz alt kategoriye baglanir."
-                                        : "Bu modda CSV icinden kategori okunmaz. Alt kategori secersen kelime parent + child yerine yalniz alt kategoriye yazilir."}
+                                        ? "Alt kategori yoksa alt_kategori sütununu boş bırak. Alt kategori verilirse kelime yalnız alt kategoriye bağlanır."
+                                        : "Bu modda CSV içinden kategori okunmaz. Alt kategori seçersen kelime parent + child yerine yalnız alt kategoriye yazılır."}
                                 </p>
                                 {bulkAssignmentSummary ? (
                                     <p className="mt-2 rounded-xl border border-border/70 bg-card px-3 py-2 text-xs font-medium text-sky-700 dark:text-sky-300">
@@ -1013,11 +1013,11 @@ export default function AdminWordsPage() {
                                     <div className="mt-2 space-y-1 font-mono">
                                         {bulkMode === "csv_categories" ? (
                                             <>
-                                                <div>marti,1,Hayvanlar,,kanat,deniz,ucmak</div>
-                                                <div>levrek,2,Yiyecek,Deniz Urunleri,balik,izgara,kilcik</div>
+                                                <div>martı,1,Hayvanlar,,kanat,deniz,uçmak</div>
+                                                <div>levrek,2,Yiyecek,Deniz Ürünleri,balık,ızgara,kılçık</div>
                                             </>
                                         ) : (
-                                            <div>marti,1,kanat,deniz,ucmak</div>
+                                            <div>martı,1,kanat,deniz,uçmak</div>
                                         )}
                                     </div>
                                 </div>
@@ -1025,7 +1025,7 @@ export default function AdminWordsPage() {
 
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                                    CSV dosyasi
+                                    CSV dosyası
                                 </label>
                                 <Input
                                     type="file"

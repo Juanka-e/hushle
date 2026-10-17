@@ -13,6 +13,7 @@ import {
 } from "@/lib/security/request-rate-limit";
 import { isTrustedStateChangeRequest } from "@/lib/security/request-origin";
 import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
+import { PlayerNoticeCode, playerNotice } from "@/lib/errors/player-notice";
 
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     if (result === "already_verified") {
         return NextResponse.json({
             status: "already_verified",
-            message: "E-posta adresin zaten doğrulanmış.",
+            ...playerNotice(PlayerNoticeCode.EMAIL_ALREADY_VERIFIED),
         });
     }
     if (result === "email_missing") {
@@ -86,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
         {
             status: "queued",
-            message: "Doğrulama bağlantısı gönderim kuyruğuna alındı.",
+            ...playerNotice(PlayerNoticeCode.VERIFICATION_EMAIL_QUEUED),
         },
         { status: 202, headers: buildRateLimitHeaders(limit) }
     );

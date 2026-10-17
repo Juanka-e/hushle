@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla istek gonderildi. Lutfen bekleyin." },
+            { error: "Çok fazla istek gönderildi. Lütfen bekleyin." },
             {
                 status: 429,
                 headers: buildRateLimitHeaders(rateLimit),
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kategori olusturma denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kategori oluşturma denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: "Gecersiz veri.", details: error.issues },
+                { error: "Geçersiz veri.", details: error.issues },
                 { status: 400 }
             );
         }
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
         }
         console.error("Failed to create category:", error);
         return NextResponse.json(
-            { error: "Kategori olusturulamadi." },
+            { error: "Kategori oluşturulamadı." },
             { status: 500 }
         );
     }

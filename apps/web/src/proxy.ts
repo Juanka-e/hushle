@@ -133,7 +133,7 @@ export default auth((req) => {
     if (pathname.startsWith("/api/admin")) {
         if (!isAuthed(req) || role !== "admin") {
             return respond(NextResponse.json(
-                { error: "Yetkisiz erisim." },
+                { error: "Yetkisiz erişim." },
                 { status: 401 }
             ));
         }

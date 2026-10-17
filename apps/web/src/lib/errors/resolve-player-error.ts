@@ -1,5 +1,5 @@
 import { DEFAULT_LOCALE, type AppLocale } from "@/lib/i18n/config";
-import { translate } from "@/lib/i18n/dictionaries";
+import { translate, type TranslationKey } from "@/lib/i18n/dictionaries";
 import {
     PlayerErrorCode,
     isPlayerErrorCode,
@@ -40,6 +40,23 @@ export function sanitizePlayerErrorParams(value: unknown): PlayerErrorParams | u
 }
 
 /**
+ * Dictionary text for `key` filled with `params`, or "" when the template needs a param that is missing,
+ * so the caller falls back to the server text instead of showing a `{placeholder}`.
+ */
+export function translateWithParams(
+    locale: AppLocale,
+    key: TranslationKey,
+    params: PlayerErrorParams | undefined
+): string {
+    // Check the template, not the output: a param value such as a player name may contain braces.
+    const required = [...translate(locale, key).matchAll(PLACEHOLDER)].map((match) => match[1]);
+    const hasEveryParam = required.every(
+        (name) => params !== undefined && Object.prototype.hasOwnProperty.call(params, name)
+    );
+    return hasEveryParam ? translate(locale, key, params) : "";
+}
+
+/**
  * Display text for a server error in the viewer's locale.
  * Known code: the localized dictionary text (operator-written notices stay as written in Turkish).
  * Unknown code: the server message. No usable message: the caller's fallback or a generic error.
@@ -59,14 +76,11 @@ export function resolvePlayerErrorMessage(
         if (input.custom === true && message && locale === DEFAULT_LOCALE) {
             return message;
         }
-        const key = `errors.${input.code}` as const;
-        const params = sanitizePlayerErrorParams(input.params);
-        // Check the template, not the output: a param value such as a player name may contain braces.
-        const required = [...translate(locale, key).matchAll(PLACEHOLDER)].map((match) => match[1]);
-        const hasEveryParam = required.every(
-            (name) => params !== undefined && Object.prototype.hasOwnProperty.call(params, name)
+        const text = translateWithParams(
+            locale,
+            `errors.${input.code}`,
+            sanitizePlayerErrorParams(input.params)
         );
-        const text = hasEveryParam ? translate(locale, key, params) : "";
         if (text.trim()) {
             return text;
         }

@@ -30,6 +30,7 @@ import {
     type GuestClaimSummary,
 } from "@/lib/match-settlement/guest-claim-rules";
 import { PlayerErrorCode, playerError, playerErrorFromValidation } from "@/lib/errors/player-error";
+import { PlayerNoticeCode, playerNotice } from "@/lib/errors/player-notice";
 import { passwordPolicyError } from "@/lib/auth/password-policy-error";
 
 const registerSchema = z.object({
@@ -212,9 +213,11 @@ export async function POST(req: Request) {
 
         return NextResponse.json(
             {
-                message: verificationRequired
-                    ? "Hesabını etkinleştirmek için e-posta adresini doğrula."
-                    : "Kayıt başarılı.",
+                ...playerNotice(
+                    verificationRequired
+                        ? PlayerNoticeCode.REGISTRATION_VERIFY_EMAIL
+                        : PlayerNoticeCode.REGISTRATION_COMPLETE
+                ),
                 userId: user.id,
                 verificationRequired,
                 verificationEmailQueued: verificationRequired,

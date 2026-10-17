@@ -6,7 +6,7 @@ const codeSchema = z
     .trim()
     .min(3)
     .max(80)
-    .regex(/^[A-Z0-9_-]+$/i, "Kod sadece harf, rakam, tire ve alt cizgi icerebilir.");
+    .regex(/^[A-Z0-9_-]+$/i, "Kod sadece harf, rakam, tire ve alt çizgi içerebilir.");
 
 export const coinGrantCampaignWriteSchema = z.object({
     code: codeSchema,
@@ -30,7 +30,7 @@ export const coinGrantCodeBatchCreateSchema = z.object({
         .trim()
         .min(2)
         .max(20)
-        .regex(/^[A-Z0-9_-]+$/i, "Prefix sadece harf, rakam, tire ve alt cizgi icerebilir.")
+        .regex(/^[A-Z0-9_-]+$/i, "Prefix sadece harf, rakam, tire ve alt çizgi içerebilir.")
         .optional()
         .nullable(),
     quantity: z.number().int().min(1).max(100).default(1),

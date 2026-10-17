@@ -26,16 +26,16 @@ const economyGuardPresets: Array<{
     label: string;
     description: string;
 }> = [
-    { value: "", label: "Tum Kayitlar", description: "Standart audit gorunumu." },
+    { value: "", label: "Tüm Kayıtlar", description: "Standart audit görünümü." },
     {
         value: "match_reward",
-        label: "Mac Odulleri",
-        description: "Tum match finalize kayitlarini gosterir.",
+        label: "Maç Ödülleri",
+        description: "Tüm match finalize kayıtlarını gösterir.",
     },
     {
         value: "triggered",
         label: "Koruma Tetikleri",
-        description: "Ceiling veya tekrar grup etkisi alan maclari gosterir.",
+        description: "Ceiling veya tekrar grup etkisi alan maçları gösterir.",
     },
     {
         value: "ceiling",
@@ -45,7 +45,7 @@ const economyGuardPresets: Array<{
     {
         value: "repeated_group",
         label: "Tekrar Grup",
-        description: "Ayni lineup damping tetiklerini izole eder.",
+        description: "Aynı lineup damping tetiklerini izole eder.",
     },
 ];
 
@@ -139,7 +139,7 @@ function renderEconomyGuard(log: AdminAuditLogView) {
     const repeatedGroupLabel =
         log.economyGuard.repeatedGroupOrdinal !== null &&
         log.economyGuard.repeatedGroupThreshold !== null
-            ? `${log.economyGuard.repeatedGroupOrdinal}. mac / esik ${log.economyGuard.repeatedGroupThreshold}`
+            ? `${log.economyGuard.repeatedGroupOrdinal}. maç / eşik ${log.economyGuard.repeatedGroupThreshold}`
             : "aktif";
 
     return (
@@ -155,13 +155,13 @@ function renderEconomyGuard(log: AdminAuditLogView) {
                     ? renderEconomyPill("Kaynak", log.economyGuard.rewardSource, "neutral")
                     : null}
                 {log.economyGuard.sureSeconds !== null
-                    ? renderEconomyPill("Sure", `${log.economyGuard.sureSeconds}s`, "neutral")
+                    ? renderEconomyPill("Süre", `${log.economyGuard.sureSeconds}s`, "neutral")
                     : null}
             </div>
 
             {rewardRequested !== null && rewardAllowed !== null ? (
                 <div className="rounded-xl bg-background/80 px-3 py-2 text-[12px] leading-5 text-foreground">
-                    <span className="font-semibold">Odul</span>
+                    <span className="font-semibold">Ödül</span>
                     <span className="mx-2 text-muted-foreground">{rewardRequested}</span>
                     <span className="text-muted-foreground">-&gt;</span>
                     <span className="mx-2 font-semibold">{rewardAllowed}</span>
@@ -170,7 +170,7 @@ function renderEconomyGuard(log: AdminAuditLogView) {
                             ({blockedRewardCoin} coin kesildi)
                         </span>
                     ) : (
-                        <span className="text-emerald-700">(tam odul)</span>
+                        <span className="text-emerald-700">(tam ödül)</span>
                     )}
                 </div>
             ) : null}
@@ -370,7 +370,7 @@ export default function AdminAuditPage() {
 
     const stats = useMemo(
         () => [
-            { label: "gorunen", value: String(logs.length) },
+            { label: "görünen", value: String(logs.length) },
             { label: "toplam", value: String(total) },
             { label: "sayfa", value: `${page} / ${pages}` },
         ],
@@ -383,7 +383,7 @@ export default function AdminAuditPage() {
     return (
         <div className="space-y-6">
             <AdminPageHeader
-                title="Audit Kayitlari"
+                title="Audit Kayıtları"
                 description="Aktif ve arşivlenmiş operasyon kayıtlarını ayrı, güvenli görünümlerde inceleyin."
                 meta={`${source === "hot" ? "aktif" : "arşiv"} · ${total} kayıt`}
                 icon={<Activity className="h-5 w-5 text-emerald-500" />}
@@ -423,7 +423,7 @@ export default function AdminAuditPage() {
                             <Input
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
-                                placeholder="Action, admin, resource veya ozet ara..."
+                                placeholder="Action, admin, resource veya özet ara..."
                                 className="pl-9"
                             />
                         </div>
@@ -433,7 +433,7 @@ export default function AdminAuditPage() {
                             onChange={(event) => setAction(event.target.value)}
                             className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none"
                         >
-                            <option value="">Tum action&apos;lar</option>
+                            <option value="">Tüm action&apos;lar</option>
                             {actionOptions.map((option) => (
                                 <option key={option} value={option}>
                                     {option}
@@ -446,7 +446,7 @@ export default function AdminAuditPage() {
                             onChange={(event) => setResourceType(event.target.value)}
                             className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none"
                         >
-                            <option value="">Tum resource tipleri</option>
+                            <option value="">Tüm resource tipleri</option>
                             {resourceTypeOptions.map((option) => (
                                 <option key={option} value={option}>
                                     {option}
@@ -459,7 +459,7 @@ export default function AdminAuditPage() {
                             onChange={(event) => setActorRole(event.target.value)}
                             className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none"
                         >
-                            <option value="">Tum roller</option>
+                            <option value="">Tüm roller</option>
                             {roleOptions.map((option) => (
                                 <option key={option} value={option}>
                                     {option}
@@ -521,8 +521,8 @@ export default function AdminAuditPage() {
                 emptyState={
                     <AdminEmptyState
                         icon={<Activity className="h-6 w-6" />}
-                        title="Audit kaydi bulunamadi"
-                        description="Mevcut filtrelerle eslesen bir operasyon kaydi yok."
+                        title="Audit kaydı bulunamadı"
+                        description="Mevcut filtrelerle eşleşen bir operasyon kaydı yok."
                     />
                 }
                 footer={<AdminPagination page={page} pageCount={pages} onPageChange={setPage} />}
@@ -534,7 +534,7 @@ export default function AdminAuditPage() {
                             <TableHead>Actor</TableHead>
                             <TableHead>Action</TableHead>
                             <TableHead>Resource</TableHead>
-                            <TableHead>Ozet</TableHead>
+                            <TableHead>Özet</TableHead>
                             <TableHead>Not</TableHead>
                             <TableHead>Koruma</TableHead>
                             <TableHead>Metadata</TableHead>

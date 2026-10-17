@@ -14,22 +14,22 @@ const categoryMeta = {
     runtime: {
         label: "Runtime",
         icon: Database,
-        description: "Database, auth core ve temel ortam baglantilari.",
+        description: "Database, auth core ve temel ortam bağlantıları.",
     },
     security: {
         label: "Security",
         icon: ShieldCheck,
-        description: "Captcha ve benzeri dogrulama katmanlari.",
+        description: "Captcha ve benzeri doğrulama katmanları.",
     },
     access: {
         label: "Access",
         icon: KeyRound,
-        description: "Admin erisim politikasi ve gateway readiness.",
+        description: "Admin erişim politikası ve gateway readiness.",
     },
     messaging: {
         label: "Messaging",
         icon: Mail,
-        description: "Kullaniciya ulasan provider katmanlari.",
+        description: "Kullanıcıya ulaşan provider katmanları.",
     },
     storage: {
         label: "Storage",
@@ -117,8 +117,8 @@ export default async function AdminIntegrationsPage() {
                     </div>
                     <h1 className="text-3xl font-black tracking-tight text-foreground">Integrations</h1>
                     <p className="max-w-3xl text-sm text-muted-foreground">
-                        Harici baglantilar, runtime provider readiness ve production oncesi wiring durumu tek panelde gorunur.
-                        Secret degerler burada gosterilmez; sadece yapinin hazir olup olmadigi net olarak izlenir.
+                        Harici bağlantılar, runtime provider readiness ve production öncesi wiring durumu tek panelde görünür.
+                        Secret değerler burada gösterilmez; sadece yapının hazır olup olmadığı net olarak izlenir.
                     </p>
                 </div>
             </div>

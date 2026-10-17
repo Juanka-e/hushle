@@ -27,7 +27,7 @@ export async function POST(
 
     const params = paramsSchema.safeParse(await context.params);
     if (!params.success) {
-        return NextResponse.json({ error: "Gecersiz destek talebi." }, { status: 422 });
+        return NextResponse.json({ error: "Geçersiz destek talebi." }, { status: 422 });
     }
 
     const rateLimit = consumeRequestRateLimit({
@@ -38,7 +38,7 @@ export async function POST(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla destek mesaji gonderildi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla destek mesajı gönderildi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -65,10 +65,10 @@ export async function POST(
     } catch (error) {
         if (error instanceof SupportDeskWorkflowError) {
             const messages: Record<string, string> = {
-                ticket_not_found: "Destek talebi bulunamadi.",
-                forbidden: "Bu talep icin yetkin yok.",
-                ticket_closed: "Kapali destek talebine yeni mesaj eklenemez.",
-                invalid_assignee: "Gecersiz islem.",
+                ticket_not_found: "Destek talebi bulunamadı.",
+                forbidden: "Bu talep için yetkin yok.",
+                ticket_closed: "Kapalı destek talebine yeni mesaj eklenemez.",
+                invalid_assignee: "Geçersiz işlem.",
             };
             const status = error.code === "ticket_not_found" ? 404 : 409;
             return NextResponse.json({ error: messages[error.code] }, { status });
@@ -76,13 +76,13 @@ export async function POST(
 
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: error.issues[0]?.message || "Gecersiz destek mesaji." },
+                { error: error.issues[0]?.message || "Geçersiz destek mesajı." },
                 { status: 422 }
             );
         }
 
         console.error("Failed to create support admin message:", error);
-        return NextResponse.json({ error: "Destek mesaji eklenemedi." }, { status: 500 });
+        return NextResponse.json({ error: "Destek mesajı eklenemedi." }, { status: 500 });
     }
 }
 

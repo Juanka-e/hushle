@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kampanya listeleme istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kampanya listeleme isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kampanya olusturma denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kampanya oluşturma denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -104,13 +104,13 @@ export async function POST(request: NextRequest) {
         );
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return NextResponse.json({ error: "Gecersiz veri.", details: error.issues }, { status: 400 });
+            return NextResponse.json({ error: "Geçersiz veri.", details: error.issues }, { status: 400 });
         }
         if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "P2002") {
             return NextResponse.json({ error: "Bu kampanya kodu zaten kullanılıyor. Farklı bir kod gir." }, { status: 409 });
         }
 
         console.error("Failed to create discount campaign:", error);
-        return NextResponse.json({ error: "Indirim kampanyasi olusturulamadi." }, { status: 500 });
+        return NextResponse.json({ error: "İndirim kampanyası oluşturulamadı." }, { status: 500 });
     }
 }

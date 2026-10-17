@@ -34,14 +34,14 @@ const navItems = [
     { href: "/admin/inventory", icon: Shirt, label: "Envanter" },
     { href: "/admin/promotions", icon: TicketPercent, label: "Promosyonlar" },
     { href: "/admin/coin-grants", icon: Gift, label: "Coin Grants" },
-    { href: "/admin/users", icon: Users, label: "Kullanicilar" },
+    { href: "/admin/users", icon: Users, label: "Kullanıcılar" },
     { href: "/admin/support", icon: Headset, label: "Support" },
     { href: "/admin/email-delivery", icon: MailWarning, label: "E-posta Teslimatı" },
     { href: "/admin/payments", icon: CreditCard, label: "Ödemeler" },
     { href: "/admin/audit", icon: Activity, label: "Audit" },
     { href: "/admin/lab", icon: FlaskConical, label: "Lab" },
     { href: "/admin/integrations", icon: PlugZap, label: "Integrations" },
-    { href: "/admin/system-settings", icon: SlidersHorizontal, label: "Sistem Ayarlari" },
+    { href: "/admin/system-settings", icon: SlidersHorizontal, label: "Sistem Ayarları" },
     { href: "/admin/announcements", icon: Megaphone, label: "Duyurular" },
 ];
 
@@ -92,23 +92,23 @@ export function AdminSidebar({ username }: AdminSidebarProps) {
             <Separator />
 
             <div className="p-2 md:p-3">
-                <Link href="/" title="Oyuna Don">
+                <Link href="/" title="Oyuna Dön">
                     <Button
                         variant="ghost"
                         className="w-full justify-center gap-3 text-sm text-muted-foreground md:justify-start"
                     >
                         <Gamepad2 aria-hidden="true" className="h-4 w-4" />
-                        <span className="sr-only md:not-sr-only">Oyuna Don</span>
+                        <span className="sr-only md:not-sr-only">Oyuna Dön</span>
                     </Button>
                 </Link>
                 <Button
                     variant="ghost"
                     className="w-full justify-center gap-3 text-sm text-destructive hover:text-destructive md:justify-start"
-                    title="Cikis Yap"
+                    title="Çıkış Yap"
                     onClick={() => signOut({ callbackUrl: "/admin/login" })}
                 >
                     <LogOut aria-hidden="true" className="h-4 w-4" />
-                    <span className="sr-only md:not-sr-only">Cikis Yap</span>
+                    <span className="sr-only md:not-sr-only">Çıkış Yap</span>
                 </Button>
             </div>
         </aside>

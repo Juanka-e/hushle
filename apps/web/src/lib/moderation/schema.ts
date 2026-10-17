@@ -22,7 +22,7 @@ export const moderationActionSchema = z
         if (value.suspendedUntil) {
             context.addIssue({
                 code: z.ZodIssueCode.custom,
-                message: "Sadece suspend islemi suspendedUntil alabilir.",
+                message: "Sadece suspend işlemi suspendedUntil alabilir.",
                 path: ["suspendedUntil"],
             });
         }

@@ -24,6 +24,7 @@ import {
 import type { UserInventoryResponse } from "@/types/economy";
 import { useI18n } from "@/components/providers/i18n-provider";
 import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
+import { resolveApiNoticeMessage } from "@/lib/errors/resolve-player-notice";
 
 interface LinkedAccountProvider {
   id: "google";
@@ -229,13 +230,11 @@ export function SettingsContent() {
         body: JSON.stringify({ newEmail, currentPassword }),
       });
       const payload = (await response.json().catch(() => null)) as {
-        error?: string;
-        message?: string;
         pendingEmail?: string;
       } | null;
       setEmailChangeMessage(
         response.ok
-          ? payload?.message || t("settings.verificationLinkSent")
+          ? resolveApiNoticeMessage(locale, payload, t("settings.verificationLinkSent"))
           : resolveApiErrorMessage(locale, payload, t("settings.emailChangeFailed"))
       );
       if (response.ok) {
@@ -286,13 +285,11 @@ export function SettingsContent() {
         method: "POST",
       });
       const payload = (await response.json().catch(() => null)) as {
-        error?: string;
-        message?: string;
         status?: string;
       } | null;
       setVerificationMessage(
         response.ok
-          ? payload?.message || t("auth.verificationQueued")
+          ? resolveApiNoticeMessage(locale, payload, t("auth.verificationQueued"))
           : resolveApiErrorMessage(locale, payload, t("settings.verificationSendFailed"))
       );
       if (payload?.status === "already_verified") {

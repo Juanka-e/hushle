@@ -213,9 +213,9 @@ test.describe("connection pause panel", () => {
 
     async function loginAdmin(page: Page): Promise<void> {
         await page.goto("/admin/login");
-        await page.getByLabel("Kullanici Adi").fill(adminUsername);
-        await page.getByLabel("Sifre").fill(adminPassword);
-        await page.getByRole("button", { name: "Giris Yap" }).click();
+        await page.getByLabel("Kullanıcı Adı").fill(adminUsername);
+        await page.getByLabel("Şifre").fill(adminPassword);
+        await page.getByRole("button", { name: "Giriş Yap" }).click();
         await page.waitForURL(/\/admin(?:\/)?$/);
     }
 

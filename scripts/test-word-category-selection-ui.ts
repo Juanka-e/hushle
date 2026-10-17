@@ -20,6 +20,6 @@ assert.deepEqual(resolveWordCategoryToggle([], 1, categories).nextSelection, [1]
 assert.deepEqual(resolveWordCategoryToggle([1], 11, categories).nextSelection, [11]);
 assert.deepEqual(resolveWordCategoryToggle([11, 12], 1, categories).nextSelection, [1]);
 assert.match(describeBulkCategoryAssignment("1", "", categories), /genel havuza/);
-assert.match(describeBulkCategoryAssignment("1", "11", categories), /yalniz alt kategoriyi kullanir/);
+assert.match(describeBulkCategoryAssignment("1", "11", categories), /yalnız alt kategoriyi kullanır/);
 
 console.log("word-category-selection-ui smoke test passed");
