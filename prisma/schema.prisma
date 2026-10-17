@@ -136,6 +136,14 @@ enum MatchSettlementStatus {
   dead_letter
 }
 
+enum GuestSeatClaimStatus {
+  unclaimed
+  pending
+  settled
+  rejected
+  expired
+}
+
 enum EmailMessageClass {
   transactional
   marketing
@@ -294,6 +302,7 @@ model User {
   purchases    Purchase[]
   matchResults MatchResult[]
   guestLinks   GuestProgress[]
+  guestSeatClaims MatchSettlementGuestSeat[]
   auditLogs    AuditLog[]   @relation("AuditActor")
   systemSettingsUpdated SystemSetting[] @relation("SystemSettingUpdatedBy")
   moderationActionsAuthored UserModerationEvent[] @relation("ModerationActor")
@@ -1378,11 +1387,44 @@ model MatchSettlement {
   createdAt                  DateTime              @default(now()) @map("created_at")
   updatedAt                  DateTime              @updatedAt @map("updated_at")
 
+  guestSeats MatchSettlementGuestSeat[]
+
   @@unique([roomCode, matchStartedAt])
   @@index([status, availableAt])
   @@index([status, claimExpiresAt])
   @@index([status, settledAt])
   @@map("match_settlements")
+}
+
+/// One row per non-spectator guest seat of a recorded match, so the guest can move the
+/// match to an account after signing up. The claimant's reward follows the same rules as
+/// a registered player's; rows are purged together with their settlement.
+model MatchSettlementGuestSeat {
+  id            Int                  @id @default(autoincrement())
+  settlementId  Int                  @map("settlement_id")
+  guestPlayerId String               @map("guest_player_id") @db.VarChar(128)
+  matchEndedAt  DateTime             @map("match_ended_at")
+  status        GuestSeatClaimStatus @default(unclaimed)
+  claimUserId   Int?                 @map("claim_user_id")
+  claimedAt     DateTime?            @map("claimed_at")
+  availableAt   DateTime?            @map("available_at")
+  attemptCount  Int                  @default(0) @map("attempt_count")
+  lastError     String?              @map("last_error") @db.VarChar(255)
+  outcome       String?              @db.VarChar(40)
+  matchResultId Int?                 @map("match_result_id")
+  coinEarned    Int?                 @map("coin_earned")
+  settledAt     DateTime?            @map("settled_at")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  settlement MatchSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  claimUser  User?           @relation(fields: [claimUserId], references: [id], onDelete: SetNull)
+
+  @@unique([settlementId, guestPlayerId])
+  @@index([guestPlayerId, status])
+  @@index([status, availableAt])
+  @@index([claimUserId, status])
+  @@map("match_settlement_guest_seats")
 }
 
 model GuestProgress {

@@ -7,6 +7,7 @@ import { isSuspensionActive } from "@/lib/moderation/service";
 import { getSystemSettings } from "@/lib/system-settings/service";
 import type { SystemSettings } from "@/types/system-settings";
 import { publishParticipantSettlementEffects } from "./effects";
+import { getClaimableGuestSeats } from "./guest-claim-rules";
 import { settleParticipantReward } from "./participant-reward";
 import {
     MATCH_SETTLEMENT_CLAIM_TTL_MS,
@@ -68,28 +69,57 @@ export async function recordMatchSettlement(
         select: { id: true },
     });
     if (known) return { id: known.id, created: false };
-    // skipDuplicates (INSERT IGNORE) settles a concurrent race without an error log;
-    // the snapshot is already validated, so no column can be silently truncated.
-    const inserted = await prisma.matchSettlement.createMany({
-        data: [
-            {
-                roomCode: snapshot.roomCode,
-                matchStartedAt,
-                matchEndedAt: new Date(snapshot.matchEndedAt),
-                endReason: snapshot.endReason,
-                snapshotVersion: snapshot.version,
-                snapshot: snapshot as unknown as Prisma.InputJsonValue,
-                registeredParticipantCount: registeredCount,
-                guestParticipantCount: guestCount,
-            },
-        ],
-        skipDuplicates: true,
+    const matchEndedAt = new Date(snapshot.matchEndedAt);
+    const guestSeats = getClaimableGuestSeats(snapshot);
+    // The guest seats commit with the match, so a claim never sees a half-recorded match.
+    return prisma.$transaction(async (tx) => {
+        // skipDuplicates (INSERT IGNORE) settles a concurrent race without an error log;
+        // the snapshot is already validated, so no column can be silently truncated.
+        const inserted = await tx.matchSettlement.createMany({
+            data: [
+                {
+                    roomCode: snapshot.roomCode,
+                    matchStartedAt,
+                    matchEndedAt,
+                    endReason: snapshot.endReason,
+                    snapshotVersion: snapshot.version,
+                    snapshot: snapshot as unknown as Prisma.InputJsonValue,
+                    registeredParticipantCount: registeredCount,
+                    guestParticipantCount: guestCount,
+                },
+            ],
+            skipDuplicates: true,
+        });
+        const row = await tx.matchSettlement.findUniqueOrThrow({
+            where: { roomCode_matchStartedAt: matchKey },
+            select: { id: true },
+        });
+        const created = inserted.count === 1;
+        if (created && guestSeats.length > 0) {
+            await tx.matchSettlementGuestSeat.createMany({
+                data: guestSeats.map((guestPlayerId) => ({
+                    settlementId: row.id,
+                    guestPlayerId,
+                    matchEndedAt,
+                })),
+                skipDuplicates: true,
+            });
+            // A guest already moved to an account keeps moving: a match recorded after the
+            // claim (slow record, second match in the same tab) goes straight to its owner.
+            const owners = await tx.guestProgress.findMany({
+                where: { playerId: { in: guestSeats }, linkedUserId: { not: null } },
+                select: { playerId: true, linkedUserId: true },
+            });
+            const claimedAt = new Date();
+            for (const owner of owners) {
+                await tx.matchSettlementGuestSeat.updateMany({
+                    where: { settlementId: row.id, guestPlayerId: owner.playerId, status: "unclaimed" },
+                    data: { status: "pending", claimUserId: owner.linkedUserId, claimedAt, availableAt: claimedAt },
+                });
+            }
+        }
+        return { id: row.id, created };
     });
-    const row = await prisma.matchSettlement.findUniqueOrThrow({
-        where: { roomCode_matchStartedAt: matchKey },
-        select: { id: true },
-    });
-    return { id: row.id, created: inserted.count === 1 };
 }
 
 function claimableWhere(now: Date): Prisma.MatchSettlementWhereInput {
@@ -105,7 +135,7 @@ function claimableWhere(now: Date): Prisma.MatchSettlementWhereInput {
  * Creates wallet/profile outside the reward transaction. INSERT IGNORE lets a concurrent
  * settlement of the same user win the race without an error.
  */
-async function ensureParticipantCore(userId: number): Promise<void> {
+export async function ensureParticipantCore(userId: number): Promise<void> {
     await prisma.wallet.createMany({ data: [{ userId, coinBalance: 0 }], skipDuplicates: true });
     await prisma.userProfile.createMany({ data: [{ userId }], skipDuplicates: true });
 }

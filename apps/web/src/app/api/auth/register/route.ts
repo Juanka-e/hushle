@@ -27,13 +27,35 @@ import {
     getEmailProviderReadiness,
 } from "@hushle/platform-email";
 import { UserAccountStatus } from "@hushle/platform-db";
+import { claimGuestMatches } from "@/lib/match-settlement/guest-claim";
+import {
+    summarizeGuestClaim,
+    type GuestClaimSummary,
+} from "@/lib/match-settlement/guest-claim-rules";
 
 const registerSchema = z.object({
     username: z.string().min(3, "Kullanici adi en az 3 karakter olmalidir."),
     email: z.email("Gecerli bir e-posta adresi girilmelidir."),
     password: z.string().max(256, "Parola çok uzun."),
     captchaToken: z.string().trim().min(1).max(2048).optional().nullable(),
+    // Signed guest identity of the tab the visitor played in; moves those matches here.
+    // A malformed value is dropped instead of failing the registration.
+    guestToken: z.string().trim().min(20).max(512).nullable().optional().catch(null),
 });
+
+/** Never fails a registration: an unclaimed match is a lost bonus, not a lost account. */
+async function claimGuestMatchesOnSignup(
+    userId: number,
+    guestToken: string | null | undefined
+): Promise<GuestClaimSummary | null> {
+    if (!guestToken) return null;
+    try {
+        return summarizeGuestClaim(await claimGuestMatches({ userId, guestToken }));
+    } catch (error) {
+        console.error("Guest match claim during registration failed", error);
+        return null;
+    }
+}
 
 export async function POST(req: Request) {
     try {
@@ -51,7 +73,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { username, email, password, captchaToken } = registerSchema.parse(body);
+        const { username, email, password, captchaToken, guestToken } = registerSchema.parse(body);
         const settings = await getSystemSettings();
         const passwordPolicy = evaluatePasswordPolicy(password, {
             username,
@@ -190,6 +212,7 @@ export async function POST(req: Request) {
             userId: user.id,
             request: req,
         });
+        const guestClaim = await claimGuestMatchesOnSignup(user.id, guestToken);
 
         return NextResponse.json(
             {
@@ -199,6 +222,7 @@ export async function POST(req: Request) {
                 userId: user.id,
                 verificationRequired,
                 verificationEmailQueued: verificationRequired,
+                ...(guestClaim ? { guestClaim } : {}),
             },
             { status: 201 }
         );
