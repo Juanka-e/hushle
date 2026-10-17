@@ -1,9 +1,20 @@
 # Kalan Isler
 
-> Son guncelleme: 14 August 2026
+> Son guncelleme: 6 October 2026
 > Durum: aktif uygulanabilir backlog
 
 ## Su Anki Oncelik Sirasi
+
+2026-10-06 veri guvenligi kapanislari: kalici kozmetik/branding storage,
+immutable upload, eski dosyalari silmeden migration, MySQL + gorsel checksum'li
+backup ve izole restore, basarili CI'ye bagli deploy, app healthcheck, IP ingress
+guven zinciri, finalize wallet lock ve Redis rate-limit uygulandi. Lint/i18n
+regresyonlari duzeltildi. Detay ve operator komutlari:
+[`persistent-assets-and-data-backups.md`](../deploy/persistent-assets-and-data-backups.md).
+
+Henuz kapanmayan release gate'leri: dependency advisory/runtime ayrimi, durable
+match/reward outbox, atomik release/rollback, gercek R2/S3 acceptance ve
+backup cron/alarm kurulumu. Bunlar yedekleme altyapisi var diye tamamlandi sayilmaz.
 
 2026-09-07 planlama notu: dahili sesli sohbet ertelendi. IP gizliligi,
 P2P/TURN/SFU maliyetleri ve yeniden degerlendirme kosullari; ilk takim flip'i,
