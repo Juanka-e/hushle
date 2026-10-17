@@ -15,13 +15,14 @@ safe-area, adres çubuğu, sanal klavye, touch ve performans davranışı ayrıc
 
 ## Projeler
 
-`playwright.webkit.config.ts` üç proje çalıştırır:
+`playwright.webkit.config.ts` dört proje çalıştırır:
 
 | Proje | Test | Amaç |
 | --- | --- | --- |
 | `webkit-iphone-public` | `web-responsive.spec.ts` | iPhone viewport ve touch public yüzeyleri |
 | `webkit-desktop-public` | `web-responsive.spec.ts` | desktop Safari benzeri public yüzeyler |
 | `webkit-iphone-auth` | `web-launch-auth.spec.ts` | registered kullanıcı kayıt, login, dashboard ve lobby akışı |
+| `webkit-desktop-card-text` | `game-card-text.spec.ts` | kart yazısının sığması ve genişlik değişince sayfa hatası vermeden yeniden sığması |
 
 Auth projesi yalnız `WEB_LAUNCH_DB_E2E=true` ile çalışır. CI disposable MySQL
 üzerinde bu değeri zorunlu açar; yerel Docker kapalıyken test açıkça skip olur.
@@ -47,5 +48,6 @@ Her iki komut `npm run test:web-launch-readiness` zincirine bağlıdır.
 
 - iki public projedeki sekiz responsive kontrol geçmeli
 - CI disposable DB üzerinde tek WebKit registered akışı geçmeli
+- kart yazısı kontrolleri WebKit'te de geçmeli; genişlik değişiminde `ResizeObserver loop` sayfa hatası çıkmamalı
 - test motoru eksikse veya WebKit başlatılamıyorsa kapı kırmızı olmalı
 - fiziksel cihaz maddeleri WebKit emülasyonu sonucuyla kapatılmamalı

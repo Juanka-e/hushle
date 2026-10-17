@@ -39,6 +39,8 @@ const checks: ReadinessCheck[] = [
     { area: "word category selection", script: "test:word-category-selection-ui" },
     { area: "curated word packs", script: "test:word-packs" },
     { area: "card flip settings", script: "test:card-flip-settings" },
+    { area: "card text casing and fit", script: "test:card-text" },
+    { area: "word pool sampling", script: "test:word-pool" },
     { area: "economy guardrails", script: "test:economy-guardrails" },
     { area: "economy edge cases", script: "test:economy-guardrails-edge" },
     { area: "wallet ledger", script: "test:wallet-ledger" },
