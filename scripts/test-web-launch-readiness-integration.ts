@@ -103,6 +103,13 @@ const checks: IntegrationCheck[] = [
         script: "test:connection-pause-resolution-e2e",
         env: { CONNECTION_PAUSE_E2E_TEST: "true", CONNECTION_PAUSE_GRACE_SECONDS: "5" },
     },
+    {
+        // Real play must reach Admin Lab. Signs up one account; needs the server's
+        // REDIS_KEY_PREFIX here too and CONNECTION_PAUSE_GRACE_SECONDS=5 on the server.
+        area: "admin lab data flow",
+        script: "test:admin-lab-data-flow-e2e",
+        env: { ADMIN_LAB_DATA_FLOW_E2E_TEST: "true", CONNECTION_PAUSE_GRACE_SECONDS: "5" },
+    },
 ];
 
 const npmCliPath = process.env.npm_execpath;

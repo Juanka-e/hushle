@@ -556,7 +556,11 @@ function testStaticContracts() {
     assert.match(cardSource, /Bağlantı kopmaları/);
     assert.match(cardSource, /Redis bağlı değil; veri toplanamıyor\./);
     assert.match(cardSource, /\/api\/admin\/lab\/connection-pauses\?days=\$\{range\}/);
-    assert.match(cardSource, /aria-pressed=\{active\}/);
+    // The 7/30 toggle is shared by every Lab card.
+    assert.match(cardSource, /<LabRangeActions\s+label="Bağlantı kopmaları zaman aralığı"/);
+    assert.match(cardSource, /data-testid="connection-pause-lab"/);
+    const partsSource = readFileSync("apps/web/src/components/admin/lab/lab-card-parts.tsx", "utf8");
+    assert.match(partsSource, /aria-pressed=\{active\}/);
     assert.match(cardSource, /import type \{[\s\S]*?\} from "@\/lib\/analytics\/connection-pause-analytics";/);
 }
 

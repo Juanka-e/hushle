@@ -1,6 +1,7 @@
 import { FlaskConical } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { ConnectionPauseCard } from "@/components/admin/lab/connection-pause-card";
+import { GuestClaimCard } from "@/components/admin/lab/guest-claim-card";
 
 export default function AdminLabPage() {
     return (
@@ -8,10 +9,11 @@ export default function AdminLabPage() {
             <AdminPageHeader
                 title="Lab"
                 description="Oyun içi davranış verileri. Kişisel veri tutulmaz."
-                meta="Toplu günlük sayaçlar"
+                meta="Yalnız toplu sayılar"
                 icon={<FlaskConical className="h-5 w-5 text-violet-500" />}
             />
             <ConnectionPauseCard />
+            <GuestClaimCard />
         </div>
     );
 }
