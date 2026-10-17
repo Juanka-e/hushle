@@ -3,7 +3,7 @@ import { Prisma } from "@hushle/platform-db";
 import { prisma } from "@/lib/prisma";
 import { createUserNotificationWithClient } from "@/lib/notifications/service";
 import { invalidateNotificationUnreadCountCache } from "@/lib/cache/application-cache";
-import { applyWalletLedgerMutation } from "@/lib/wallet-ledger/service";
+import { applyWalletLedgerMutation, ensureWallet } from "@/lib/wallet-ledger/service";
 import type {
     CoinGrantCampaignWriteInput,
     CoinGrantCodeBatchCreateInput,
@@ -693,13 +693,8 @@ export async function redeemCoinGrantCode(input: {
     const now = new Date();
 
     try {
+        await ensureWallet(prisma, input.userId);
         const result = await prisma.$transaction(async (tx) => {
-            await tx.wallet.upsert({
-                where: { userId: input.userId },
-                update: {},
-                create: { userId: input.userId, coinBalance: 0 },
-            });
-
             const codeRecord = await tx.coinGrantCode.findUnique({
                 where: { code: normalizedCode },
                 include: {
