@@ -27,6 +27,7 @@ const checks: ReadinessCheck[] = [
     { area: "room game-start transition", script: "test:room-game-start" },
     { area: "room connection continuity", script: "test:room-connection-continuity" },
     { area: "server-side match settlement", script: "test:match-settlement" },
+    { area: "guest match claim", script: "test:guest-match-claim" },
     { area: "connection pause resolution", script: "test:connection-pause-resolution" },
     { area: "connection pause analytics", script: "test:connection-pause-analytics" },
     { area: "connection pause room UI", script: "test:connection-pause-ui" },

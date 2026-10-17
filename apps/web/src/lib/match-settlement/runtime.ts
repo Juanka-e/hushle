@@ -1,5 +1,6 @@
 import { reportError } from "@hushle/platform-observability";
 import type { RoomMatchSnapshot } from "@/lib/socket/game-socket";
+import { settlePendingGuestSeatsOf, sweepDueGuestSeatClaims } from "./guest-claim";
 import { createSettlementQueue, type SettlementQueue } from "./queue";
 import {
     purgeSettledMatchSettlements,
@@ -24,7 +25,10 @@ const queue =
     globalForSettlement.__hushleMatchSettlementQueue ??
     createSettlementQueue({
         record: recordMatchSettlement,
-        settle: (id) => settleMatchSettlement(id),
+        settle: async (id) => {
+            await settleMatchSettlement(id);
+            await settlePendingGuestSeatsOf(id);
+        },
         onDrop: (key) => report("match_settlement.buffer.dropped", new Error("Settlement buffer full"), { key }),
         onError: (event, error, context) => report(event, error, context),
     });
@@ -49,7 +53,10 @@ export function getMatchSettlementBufferSize(): number {
 export function startMatchSettlementWorker(): SettlementWorker {
     const worker = createSettlementWorker({
         flush: (options) => queue.flushDue(options),
-        sweep: () => sweepDueMatchSettlements(),
+        sweep: async () => {
+            await sweepDueMatchSettlements();
+            await sweepDueGuestSeatClaims();
+        },
         purge: () => purgeSettledMatchSettlements(),
         onError: (event, error) => report(event, error),
     });

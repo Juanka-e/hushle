@@ -56,6 +56,8 @@ export async function settleParticipantReward(
         userId: number;
         settings: SystemSettings;
         now: Date;
+        /** Extra ledger context, e.g. the guest seat a claimed match came from. */
+        ledgerMetadata?: Record<string, string | number | boolean>;
     }
 ): Promise<ParticipantRewardOutcome> {
     const { snapshot, userId, settings, now } = input;
@@ -185,6 +187,7 @@ export async function settleParticipantReward(
             referenceType: "match_result",
             referenceId: matchResultId,
             metadata: {
+                ...input.ledgerMetadata,
                 gameMode: snapshot.gameMode,
                 won,
             },

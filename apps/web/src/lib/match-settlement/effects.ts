@@ -59,8 +59,13 @@ export async function publishParticipantSettlementEffects(input: {
     settlementId: number;
     userId: number;
     outcome: ParticipantRewardOutcome;
+    /** Set when the match reached this account through a guest seat claim. */
+    guestClaimSeatId?: number;
 }): Promise<void> {
     const { snapshot, settlementId, userId, outcome } = input;
+    const claimContext: Record<string, number> = input.guestClaimSeatId
+        ? { guestClaimSeatId: input.guestClaimSeatId }
+        : {};
 
     if (outcome.kind === "not_eligible") {
         const { evaluation } = outcome;
@@ -73,6 +78,7 @@ export async function publishParticipantSettlementEffects(input: {
                 summary: `Denied match reward settlement for room ${snapshot.roomCode}`,
                 metadata: {
                     ...baseMetadata(snapshot, settlementId, evaluation.roomMetrics),
+                    ...claimContext,
                     rewardSource: evaluation.source,
                     eligibilityDecision: evaluation.decision,
                     eligibilityReasons: evaluation.reasonCodes,
@@ -93,6 +99,7 @@ export async function publishParticipantSettlementEffects(input: {
     const metrics = evaluation.roomMetrics;
     const metadata = {
         ...baseMetadata(snapshot, settlementId, metrics),
+        ...claimContext,
         rewardSource: evaluation.source,
         eligibilityDecision: evaluation.decision,
         eligibilityReasons: evaluation.reasonCodes,
@@ -131,11 +138,14 @@ export async function publishParticipantSettlementEffects(input: {
             snapshot.endReason === "host_ended",
     };
 
-    const detailedAuditRequired = requiresDetailedMatchFinalizeAudit({
-        reviewFlags: evaluation.reviewFlags,
-        repeatedGroupTriggered: repeatedGroup.triggered,
-        rewardGuardTriggered: ceiling.triggered,
-    });
+    // Claimed guest matches always keep a full audit row so they can be reviewed later.
+    const detailedAuditRequired =
+        input.guestClaimSeatId !== undefined ||
+        requiresDetailedMatchFinalizeAudit({
+            reviewFlags: evaluation.reviewFlags,
+            repeatedGroupTriggered: repeatedGroup.triggered,
+            rewardGuardTriggered: ceiling.triggered,
+        });
     let telemetryRecorded = false;
     if (!detailedAuditRequired) {
         try {
