@@ -127,6 +127,11 @@ jobs:
       - name: Test Prisma migration contract
         run: npm run test:prisma-migrations
 
+      - name: Test word pool against MySQL
+        run: npm run test:word-pool-integration
+        env:
+          WORD_POOL_INTEGRATION_TEST: "true"
+
       - name: Test wallet ledger concurrency
         run: npm run test:wallet-ledger-integration
         env:
