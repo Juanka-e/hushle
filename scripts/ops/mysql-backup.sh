@@ -45,7 +45,7 @@ mv "$TEMP_FILE" "$OUTPUT_FILE"
 trap - EXIT
 
 (
-  cd "$BACKUP_DIR"
+  cd "$(dirname "$OUTPUT_FILE")"
   sha256sum "$(basename "$OUTPUT_FILE")" > "$(basename "$OUTPUT_FILE").sha256"
 )
 

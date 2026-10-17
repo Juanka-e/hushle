@@ -16,6 +16,8 @@ REQUIRED_ENV_KEYS=(
 
 # shellcheck source=scripts/ops/lib/schema-ops-lock.sh
 source "$ROOT_DIR/scripts/ops/lib/schema-ops-lock.sh"
+# shellcheck source=scripts/ops/lib/release.sh
+source "$ROOT_DIR/scripts/ops/lib/release.sh"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "Missing env file: $ENV_FILE" >&2
@@ -29,6 +31,26 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
 fi
 
 cd "$ROOT_DIR"
+
+# deploy [sha]: deploy the extracted release (.release-sha); the default.
+# rollback: switch back to the previous release without rebuilding.
+# status: print the current and previous release.
+case "${1:-deploy}" in
+  deploy)
+    ;;
+  rollback)
+    [[ $# -eq 1 ]] || release_fail "Usage: deploy.sh rollback"
+    release_rollback
+    exit 0
+    ;;
+  status)
+    release_status
+    exit 0
+    ;;
+  *)
+    release_fail "Usage: deploy.sh [deploy [sha] | rollback | status]"
+    ;;
+esac
 
 preflight_mounts=(
   -v "$ROOT_DIR:/app:ro"
@@ -65,6 +87,10 @@ if ! grep -Eq '^REDIS_URL=.+$' "$ENV_FILE"; then
   echo "REDIS_URL not set explicitly in $ENV_FILE. Falling back to docker internal default redis://redis:6379." >&2
 fi
 
+# Takes the deploy lock, records the release and builds its app image once.
+# HUSHLE_RELEASE tags the images built below with the release SHA.
+release_begin_deploy "${2:-}"
+
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull mysql redis nginx
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile migration build migrate
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile jobs build jobs
@@ -80,6 +106,7 @@ if [[ -n "$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -aq mysq
   ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" bash "$ROOT_DIR/scripts/ops/data-backup.sh"
 fi
 acquire_schema_ops_lock "$ROOT_DIR" "production-deploy"
+release_assert_schema_known "$HUSHLE_RELEASE" "deploy"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile migration run --rm migrate
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans --wait --wait-timeout 180
+release_finish_deploy
 docker image prune -f >/dev/null 2>&1 || true

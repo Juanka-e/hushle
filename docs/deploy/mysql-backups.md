@@ -50,6 +50,21 @@ Restore varsayilan olarak ayni dizindeki `.sha256` dosyasini zorunlu tutar.
 Eski bir backup'i kontrollu olarak restore etmek gerekirse yalniz o komut icin
 `BACKUP_REQUIRE_CHECKSUM=false` verilebilir.
 
+Hedef DB kontrolleri (schema-ops kilidi altinda, import'tan hemen once):
+
+- Hedef DB yoksa veya bu kullanici goremiyorsa restore baslamaz; once DB'yi acin.
+- Hedefte tablo varsa restore reddedilir. Bilerek uzerine yazmak icin
+  `RESTORE_OVERWRITE_CONFIRM=<hedef-db-adi>` verilir. Dump yalniz kendi tablolarini
+  silip yeniden kurar; hedefte fazladan tablo kalabilir. Bu yuzden yeni bos DB
+  tercih edilir.
+- MySQL sistem semalari (`mysql`, `sys`, `information_schema`,
+  `performance_schema`) her durumda reddedilir.
+- `./scripts/ops/mysql-restore.sh --preflight` yalniz bu kontrolleri calistirir.
+
+Tam veri (DB + gorsel) snapshot'lari `data-backup.sh` ile alinir ve
+`data-restore.sh` ile listelenip geri yuklenir:
+`docs/deploy/persistent-assets-and-data-backups.md`.
+
 Haftalik, gecici veritabanina restore smoke testi:
 
 ```bash
@@ -173,6 +188,8 @@ Guvenlik ve retention:
 - local kopya varsayilan otomatik silinmez (`RETENTION_DAYS=0`)
 - remote gunluk kopya ilk asamada 30 gun
 - remote silme scriptle degil provider lifecycle policy ile yonetilir
+  (dogrulanmis lifecycle JSON'u ve backup anahtari politikasi:
+  `docs/deploy/persistent-assets-and-data-backups.md`)
 - `BACKUP_REMOTE_RETENTION_DAYS` lifecycle icin operasyonel kontrattir
 - backup yazma kimligine remote delete yetkisi verilmez
 - kritik production icin versioning ve mumkunse Object Lock degerlendirilir
