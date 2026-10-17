@@ -124,6 +124,18 @@ enum UserAccountStatus {
   pending_email_verification
 }
 
+enum MatchEndReason {
+  completed
+  host_ended
+}
+
+enum MatchSettlementStatus {
+  pending
+  processing
+  settled
+  dead_letter
+}
+
 enum EmailMessageClass {
   transactional
   marketing
@@ -1331,6 +1343,7 @@ model MatchResult {
   lineupPlayerCount        Int      @default(0) @map("lineup_player_count")
   lineupAuthenticatedCount Int      @default(0) @map("lineup_authenticated_count")
   lineupGuestCount         Int      @default(0) @map("lineup_guest_count")
+  endReason                MatchEndReason @default(completed) @map("end_reason")
   createdAt                DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1339,6 +1352,37 @@ model MatchResult {
   @@index([userId, createdAt])
   @@index([userId, lineupKey, createdAt])
   @@map("match_results")
+}
+
+/// Immutable server-side record of a finished match. Rewards are settled from
+/// this snapshot so they survive closed clients, lobby resets and restarts.
+/// Guests are kept in the snapshot (no IP) for a future account-claim flow.
+model MatchSettlement {
+  id                         Int                   @id @default(autoincrement())
+  roomCode                   String                @map("room_code") @db.VarChar(12)
+  matchStartedAt             DateTime              @map("match_started_at")
+  matchEndedAt               DateTime              @map("match_ended_at")
+  endReason                  MatchEndReason        @default(completed) @map("end_reason")
+  snapshotVersion            Int                   @default(1) @map("snapshot_version")
+  snapshot                   Json                  @db.Json
+  registeredParticipantCount Int                   @default(0) @map("registered_participant_count")
+  guestParticipantCount      Int                   @default(0) @map("guest_participant_count")
+  status                     MatchSettlementStatus @default(pending)
+  attemptCount               Int                   @default(0) @map("attempt_count")
+  availableAt                DateTime              @default(now()) @map("available_at")
+  lastAttemptAt              DateTime?             @map("last_attempt_at")
+  lastError                  String?               @map("last_error") @db.VarChar(255)
+  claimToken                 String?               @map("claim_token") @db.Char(36)
+  claimExpiresAt             DateTime?             @map("claim_expires_at")
+  settledAt                  DateTime?             @map("settled_at")
+  createdAt                  DateTime              @default(now()) @map("created_at")
+  updatedAt                  DateTime              @updatedAt @map("updated_at")
+
+  @@unique([roomCode, matchStartedAt])
+  @@index([status, availableAt])
+  @@index([status, claimExpiresAt])
+  @@index([status, settledAt])
+  @@map("match_settlements")
 }
 
 model GuestProgress {

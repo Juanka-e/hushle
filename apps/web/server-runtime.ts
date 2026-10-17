@@ -11,6 +11,11 @@ import {
     getLocalRoomCapacityMetrics,
     getRoomMetrics,
 } from "./src/lib/socket/game-socket";
+import {
+    getMatchSettlementBufferSize,
+    startMatchSettlementWorker,
+} from "./src/lib/match-settlement/runtime";
+import { getMatchSettlementHealth } from "./src/lib/match-settlement/service";
 import { isHealthEndpointAllowed } from "./src/lib/security/health-check";
 import { getPaymentSchedulerHealth } from "./src/lib/payments/scheduler-health";
 import { getPaymentCheckoutControl } from "./src/lib/payments/checkout-control";
@@ -115,13 +120,14 @@ app.prepare().then(async () => {
 
         const metrics = getRoomMetrics();
         const paymentsEnabled = process.env.PAYMENTS_ENABLED?.trim().toLowerCase() === "true";
-        const [redis, paymentSchedulers, paymentCheckoutControl, databaseAvailable] = await Promise.all([
+        const [redis, paymentSchedulers, paymentCheckoutControl, databaseAvailable, matchSettlementRows] = await Promise.all([
             getRedisHealth(),
             getPaymentSchedulerHealth(),
             paymentsEnabled
                 ? getPaymentCheckoutControl().catch(() => null)
                 : Promise.resolve(null),
             prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
+            getMatchSettlementHealth().catch(() => null),
         ]);
         const socketRedisAdapterStatus =
             socketRedisAdapter?.getStatus() ?? {
@@ -200,6 +206,13 @@ app.prepare().then(async () => {
                     wordAnalytics: getWordAnalyticsStatus(),
                 },
                 observability: getObservabilityStatus(),
+                matchSettlements: {
+                    available: matchSettlementRows !== null,
+                    pending: matchSettlementRows?.pending ?? null,
+                    processing: matchSettlementRows?.processing ?? null,
+                    deadLetter: matchSettlementRows?.deadLetter ?? null,
+                    buffered: getMatchSettlementBufferSize(),
+                },
                 payments: {
                     schedulers: paymentSchedulers,
                     checkoutControl: paymentCheckoutControl ? {
@@ -295,6 +308,8 @@ app.prepare().then(async () => {
         );
     };
     publishCurrentCapacity();
+    // Settles finished matches left pending by restarts or brief DB outages.
+    const matchSettlementWorker = startMatchSettlementWorker();
     const capacityHeartbeat = setInterval(publishCurrentCapacity, 10_000);
     capacityHeartbeat.unref();
     const ownershipHeartbeat = roomOwnership.getConfig().enabled
@@ -342,6 +357,7 @@ app.prepare().then(async () => {
         await socketRedisAdapter?.close();
         await roomOwnership?.close();
         await removeCapacityHeartbeat();
+        await matchSettlementWorker.stop();
         await flushObservabilityExporter();
         await closeRedisClient();
         if (!httpServer.listening) {

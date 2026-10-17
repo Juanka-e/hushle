@@ -132,6 +132,11 @@ jobs:
         env:
           WALLET_LEDGER_INTEGRATION_TEST: "true"
 
+      - name: Test server-side match settlement
+        run: npm run test:match-settlement-integration
+        env:
+          MATCH_SETTLEMENT_INTEGRATION_TEST: "true"
+
       - name: Test payment fulfillment concurrency
         run: |
           npm run test:economy-grant-contract
