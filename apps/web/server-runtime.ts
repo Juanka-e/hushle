@@ -54,6 +54,7 @@ import {
 } from "./src/lib/security/telemetry-rollup";
 import { getProductAnalyticsStatus } from "./src/lib/analytics/product-events";
 import { getWordAnalyticsStatus } from "./src/lib/analytics/word-analytics";
+import { getConnectionPauseAnalyticsStatus } from "./src/lib/analytics/connection-pause-analytics";
 import {
     emitObservabilityEvent,
     flushObservabilityExporter,
@@ -204,6 +205,7 @@ app.prepare().then(async () => {
                         getTelemetryRollupStatus(telemetryRollupConfig),
                     productAnalytics: getProductAnalyticsStatus(),
                     wordAnalytics: getWordAnalyticsStatus(),
+                    connectionPauses: getConnectionPauseAnalyticsStatus(),
                 },
                 observability: getObservabilityStatus(),
                 matchSettlements: {

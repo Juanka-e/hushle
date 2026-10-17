@@ -12,6 +12,7 @@ import {
     resolveTabuFinish,
     shouldFinishTabuAfterAction,
     shouldFinishTabuBeforeRound,
+    resolveMatchWinner,
     type GameModeId,
     type TabuRoomSettings,
     type WordAction,
@@ -58,9 +59,22 @@ import {
 } from "./room-game-start";
 import {
     calculateActiveMatchDurationSeconds,
+    classifyConnectionPauseTrigger,
+    evaluateContinueWithoutMissing,
+    getConnectionPauseResolutionWindow,
     resolveAbandonedRoomTtlMs,
     resolveConnectionContinuity,
+    type ConnectionContinuityPlayer,
 } from "./room-connection-continuity";
+import {
+    CONNECTION_PAUSE_RESOLVE_ACTIONS,
+    CONNECTION_PAUSE_RESOLVE_EVENT,
+} from "./connection-pause-contract";
+import {
+    recordConnectionPauseResolved,
+    recordConnectionPauseStarted,
+    type ConnectionPauseOutcome,
+} from "@/lib/analytics/connection-pause-analytics";
 import type { PlayerCosmetics } from "@/types/game";
 import type { CapacitySettings } from "@/types/system-settings";
 import { registerMetricsProvider } from "./room-metrics";
@@ -152,6 +166,8 @@ interface ActiveTransitionSnapshot {
 interface ConnectionPauseState {
     startedAt: number;
     missingPlayerIds: string[];
+    /** When every missing player had returned; the pause waits for a manual resume. */
+    recoveredAt?: number | null;
 }
 
 interface MatchParticipantSnapshot {
@@ -186,6 +202,8 @@ interface RoomData {
     pauseStartedAt: number | null;
     pausedDurationMs: number;
     matchEndReason: MatchEndReason | null;
+    /** Participants removed by "continue without"; they stay in matchParticipants for rewards. */
+    departedPlayerIds: string[];
     matchParticipants: MatchParticipantSnapshot[];
     activeWordAnalytics: {
         wordId: number;
@@ -278,6 +296,17 @@ const configuredAbandonedRoomTtlMinutes = Number.parseInt(
     process.env.ABANDONED_ROOM_TTL_MINUTES || "30",
     10
 );
+const configuredConnectionPauseGraceSeconds = Number.parseInt(
+    process.env.CONNECTION_PAUSE_GRACE_SECONDS || "60",
+    10
+);
+// How long players get to reconnect before the host may continue without them or end the match.
+const CONNECTION_PAUSE_GRACE_MS =
+    (Number.isFinite(configuredConnectionPauseGraceSeconds) &&
+    configuredConnectionPauseGraceSeconds >= 5 &&
+    configuredConnectionPauseGraceSeconds <= 600
+        ? configuredConnectionPauseGraceSeconds
+        : 60) * 1000;
 const ABANDONED_ROOM_TTL_MS =
     (Number.isFinite(configuredAbandonedRoomTtlMinutes) &&
     configuredAbandonedRoomTtlMinutes > 0
@@ -512,6 +541,8 @@ export function setupGameSocket(
         return rooms.get(roomCode);
     }
 
+    const connectionPauseGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
     function getRoomBySocketId(socketId: string): RoomData | undefined {
         const code = socketToRoom.get(socketId);
         return code ? rooms.get(code) : undefined;
@@ -523,6 +554,8 @@ export function setupGameSocket(
     }
 
     function destroyRoom(roomCode: string): void {
+        const abandonedRoom = rooms.get(roomCode);
+        if (abandonedRoom?.connectionPause) clearConnectionPause(abandonedRoom, "abandoned");
         const indexedUsers = roomRegisteredUsersIndex.get(roomCode);
         if (indexedUsers) {
             for (const userId of indexedUsers) {
@@ -598,8 +631,9 @@ export function setupGameSocket(
         });
     }
 
-    function getConnectionContinuity(room: RoomData) {
-        const players = room.matchParticipants.length > 0
+    function getContinuityPlayers(room: RoomData): ConnectionContinuityPlayer[] {
+        const departed = new Set(room.departedPlayerIds ?? []);
+        return room.matchParticipants.length > 0
             ? room.matchParticipants.map((participant) => {
                 const current = room.oyuncular.find(
                     (player) => player.playerId === participant.playerId
@@ -608,7 +642,7 @@ export function setupGameSocket(
                     playerId: participant.playerId,
                     team: participant.teamAtStart,
                     online: current?.online === true,
-                    spectator: false,
+                    spectator: departed.has(participant.playerId),
                 };
             })
             : room.oyuncular.map((player) => ({
@@ -617,9 +651,10 @@ export function setupGameSocket(
                 online: player.online,
                 spectator: player.rol === "İzleyici",
             }));
-        return resolveConnectionContinuity({
-            active: room.oyunDurumu.oyunAktifMi,
-            players,
+    }
+
+    function getCriticalRolePlayerIds(room: RoomData) {
+        return {
             narratorPlayerId:
                 room.activeTransitionRoles?.narratorPlayerId ??
                 room.oyunDurumu.anlatici?.playerId ??
@@ -628,13 +663,41 @@ export function setupGameSocket(
                 room.activeTransitionRoles?.inspectorPlayerId ??
                 room.oyunDurumu.gozetmen?.playerId ??
                 null,
+        };
+    }
+
+    function getConnectionContinuity(room: RoomData) {
+        return resolveConnectionContinuity({
+            active: room.oyunDurumu.oyunAktifMi,
+            players: getContinuityPlayers(room),
+            ...getCriticalRolePlayerIds(room),
         });
     }
 
     function getPublicConnectionPause(room: RoomData) {
-        if (!room.connectionPause) return null;
+        const pause = room.connectionPause;
+        if (!pause) return null;
+        const window = getConnectionPauseResolutionWindow({
+            startedAt: pause.startedAt,
+            now: Date.now(),
+            graceMs: CONNECTION_PAUSE_GRACE_MS,
+        });
         return {
-            waitingForPlayers: room.connectionPause.missingPlayerIds.length > 0,
+            waitingForPlayers: pause.missingPlayerIds.length > 0,
+            missingPlayers: pause.missingPlayerIds.map((playerId) => {
+                const current = room.oyuncular.find((player) => player.playerId === playerId);
+                const participant = room.matchParticipants.find((entry) => entry.playerId === playerId);
+                return {
+                    playerId,
+                    ad: current?.ad ?? participant?.displayNameSnapshot ?? "Oyuncu",
+                    takim: participant?.teamAtStart ?? current?.takim ?? null,
+                };
+            }),
+            resolutionAvailableInSeconds: window.secondsRemaining,
+            canContinueWithoutMissing: evaluateContinueWithoutMissing({
+                players: getContinuityPlayers(room),
+                missingPlayerIds: pause.missingPlayerIds,
+            }).allowed,
         };
     }
 
@@ -654,12 +717,206 @@ export function setupGameSocket(
         const continuity = getConnectionContinuity(room);
         if (!room.connectionPause && continuity.canContinue) return false;
 
+        const now = Date.now();
+        const previous = room.connectionPause;
+        const missing = continuity.missingPlayerIds;
+        // A disconnect after everyone had returned is a new episode with its own grace period.
+        const isNewPause = !previous || (previous.missingPlayerIds.length === 0 && missing.length > 0);
+        if (previous && isNewPause) {
+            void recordConnectionPauseResolved({
+                occurredAt: new Date(now),
+                outcome: "resumed_after_reconnect",
+                durationSeconds: Math.round(Math.max(0, (previous.recoveredAt ?? now) - previous.startedAt) / 1000),
+            });
+        }
         room.connectionPause = {
-            startedAt: room.connectionPause?.startedAt ?? Date.now(),
-            missingPlayerIds: continuity.missingPlayerIds,
+            startedAt: isNewPause ? now : previous!.startedAt,
+            missingPlayerIds: missing,
+            recoveredAt:
+                missing.length > 0
+                    ? null
+                    : previous && previous.missingPlayerIds.length === 0
+                        ? previous.recoveredAt ?? now
+                        : now,
         };
         setRoomPaused(room, true);
+        if (isNewPause) {
+            void recordConnectionPauseStarted({
+                occurredAt: new Date(),
+                trigger: classifyConnectionPauseTrigger({
+                    missingPlayerIds: continuity.missingPlayerIds,
+                    ...getCriticalRolePlayerIds(room),
+                }),
+                missingCount: continuity.missingPlayerIds.length,
+            });
+        }
+        scheduleConnectionPauseGraceUpdate(room);
         return true;
+    }
+
+    /** Re-broadcasts once the grace period ends so clients enable the host decision. */
+    function scheduleConnectionPauseGraceUpdate(room: RoomData): void {
+        const pause = room.connectionPause;
+        if (!pause) return;
+        const roomCode = room.odaKodu;
+        const existing = connectionPauseGraceTimers.get(roomCode);
+        if (existing) clearTimeout(existing);
+        connectionPauseGraceTimers.delete(roomCode);
+        const window = getConnectionPauseResolutionWindow({
+            startedAt: pause.startedAt,
+            now: Date.now(),
+            graceMs: CONNECTION_PAUSE_GRACE_MS,
+        });
+        if (window.available) return;
+        const startedAt = pause.startedAt;
+        const timer = setTimeout(() => {
+            connectionPauseGraceTimers.delete(roomCode);
+            const current = getRoom(roomCode);
+            if (!current?.connectionPause || current.connectionPause.startedAt !== startedAt) return;
+            emitGamePauseState(current);
+        }, window.secondsRemaining * 1000 + 50);
+        timer.unref?.();
+        connectionPauseGraceTimers.set(roomCode, timer);
+    }
+
+    function clearConnectionPause(room: RoomData, outcome: ConnectionPauseOutcome | null): void {
+        const pause = room.connectionPause;
+        const timer = connectionPauseGraceTimers.get(room.odaKodu);
+        if (timer) {
+            clearTimeout(timer);
+            connectionPauseGraceTimers.delete(room.odaKodu);
+        }
+        if (!pause) return;
+        room.connectionPause = null;
+        if (outcome) {
+            const now = Date.now();
+            // A reconnect is measured until the players returned, not until someone pressed resume.
+            const endedAt = outcome === "resumed_after_reconnect" ? pause.recoveredAt ?? now : now;
+            void recordConnectionPauseResolved({
+                occurredAt: new Date(now),
+                outcome,
+                durationSeconds: Math.round(Math.max(0, endedAt - pause.startedAt) / 1000),
+            });
+        }
+    }
+
+    /** The host decides; if the host is gone, any online active participant may. */
+    function canResolveConnectionPause(room: RoomData, actor: PlayerData): boolean {
+        if (!actor.online) return false;
+        if (actor.playerId === room.creatorPlayerId) return true;
+        const host = room.oyuncular.find((player) => player.playerId === room.creatorPlayerId);
+        if (host?.online) return false;
+        return (
+            actor.rol !== "İzleyici" &&
+            !(room.departedPlayerIds ?? []).includes(actor.playerId) &&
+            room.matchParticipants.some((participant) => participant.playerId === actor.playerId)
+        );
+    }
+
+    function endMatchByHost(room: RoomData): void {
+        if (room.zamanlayici) {
+            clearInterval(room.zamanlayici);
+            room.zamanlayici = null;
+        }
+        clearConnectionPause(room, "ended_by_host");
+        // Closes the pause interval so the recorded duration excludes the wait.
+        setRoomPaused(room, false);
+        // The shown word was never resolved; do not count it in word analytics.
+        room.activeWordAnalytics = null;
+        room.oyunDurumu.oyunAktifMi = false;
+        room.oyunDurumu.gecisEkraninda = false;
+        room.activeTransition = null;
+        room.activeTransitionRoles = null;
+        room.oyunDurumu.bittiAt = Date.now();
+        room.matchEndReason = "host_ended";
+        persistRoom(room);
+        publishCurrentCapacity();
+
+        io.to(room.odaKodu).emit("oyunBitti", {
+            kazananTakim: resolveMatchWinner(room.oyunDurumu.skor),
+            skor: room.oyunDurumu.skor,
+            endReason: "host_ended",
+        });
+
+        const settlementRoom = getRoomMatchSnapshot(room.odaKodu);
+        if (settlementRoom) enqueueMatchSettlement(settlementRoom, "host_ended");
+    }
+
+    /** Re-picks narrator and inspector for the speaking team without counting a new round. */
+    function restartTransitionForSpeakingTeam(room: RoomData): void {
+        if (
+            room.oyunDurumu.anlatacakTakim === (room.oyunDurumu.startingTeam ?? "A") &&
+            !room.oyunDurumu.altinSkorAktif
+        ) {
+            room.oyunDurumu.mevcutTur -= 1;
+        }
+        room.activeTransition = null;
+        room.activeTransitionRoles = null;
+        void startNewRound(room.odaKodu);
+    }
+
+    function replaceMissingInspector(room: RoomData): void {
+        const narrator = room.oyunDurumu.anlatici;
+        if (!narrator) return;
+        const opponentTeam = narrator.takim === "A" ? "B" : "A";
+        const next = room.oyuncular.find(
+            (player) => player.takim === opponentTeam && player.online && player.rol !== "İzleyici"
+        );
+        room.oyunDurumu.gozetmen = next
+            ? { id: next.id, playerId: next.playerId, ad: next.ad, takim: opponentTeam }
+            : null;
+        persistRoom(room);
+        const narratorPlayer = room.oyuncular.find((player) => player.playerId === narrator.playerId);
+        void hydrateNarratorCardThemes(narratorPlayer?.userId ?? null).then((themes) => {
+            if (!room.oyunDurumu.oyunAktifMi || room.oyunDurumu.anlatici?.playerId !== narrator.playerId) return;
+            room.oyuncular.forEach((player) => {
+                if (!player.online) return;
+                const playerSocket = io.sockets.sockets.get(player.id);
+                if (!playerSocket) return;
+                emitTurnInfoForPlayer(
+                    playerSocket,
+                    player,
+                    narrator,
+                    room.oyunDurumu.gozetmen,
+                    room.oyunDurumu.aktifKart,
+                    themes
+                );
+            });
+        });
+    }
+
+    function continueWithoutMissing(room: RoomData, missingPlayerIds: string[]): void {
+        const missing = new Set(missingPlayerIds);
+        const { narratorPlayerId, inspectorPlayerId } = getCriticalRolePlayerIds(room);
+        room.departedPlayerIds = [...new Set([...(room.departedPlayerIds ?? []), ...missing])];
+        for (const player of room.oyuncular) {
+            if (!missing.has(player.playerId)) continue;
+            player.rol = "İzleyici";
+            player.takim = null;
+        }
+        clearConnectionPause(room, "continued_without_missing");
+        setRoomPaused(room, false);
+        persistRoom(room);
+        broadcastLobby(room);
+
+        const narratorLeft = narratorPlayerId !== null && missing.has(narratorPlayerId);
+        const inspectorLeft = inspectorPlayerId !== null && missing.has(inspectorPlayerId);
+        if (room.oyunDurumu.gecisEkraninda) {
+            if (narratorLeft || inspectorLeft) {
+                restartTransitionForSpeakingTeam(room);
+            } else {
+                emitGamePauseState(room);
+            }
+            return;
+        }
+        if (narratorLeft) {
+            // The turn ends as if time ran out; the other team speaks next.
+            consumeActiveWordAnalytics(room, "timeout");
+            void startNewRound(room.odaKodu);
+            return;
+        }
+        if (inspectorLeft) replaceMissingInspector(room);
+        startTimer(room.odaKodu);
     }
 
     function emitGamePauseState(room: RoomData): void {
@@ -870,7 +1127,7 @@ export function setupGameSocket(
                         persistRoom(currentRoom);
                         startTurn(roomCode, currentRoom, narrator, inspector, narratorCardThemes);
                     } else {
-                        startNewRound(roomCode);
+                        restartTransitionForSpeakingTeam(currentRoom);
                     }
                 }
             }
@@ -1229,7 +1486,7 @@ export function setupGameSocket(
         room.oyunDurumu.oyunAktifMi = false;
         room.activeTransition = null;
         room.activeTransitionRoles = null;
-        room.connectionPause = null;
+        clearConnectionPause(room, null);
         setRoomPaused(room, false);
         room.oyunDurumu.bittiAt = Date.now();
         room.matchEndReason = "completed";
@@ -1241,6 +1498,7 @@ export function setupGameSocket(
         io.to(room.odaKodu).emit("oyunBitti", {
             kazananTakim: finishDecision.winner,
             skor: room.oyunDurumu.skor,
+            endReason: "completed",
         });
 
         // Settle server-side so rewards never depend on the client staying connected.
@@ -1260,10 +1518,11 @@ export function setupGameSocket(
         room.oyunDurumu.toplamTur = room.ayarlar.deger || 0;
         room.activeTransition = null;
         room.activeTransitionRoles = null;
-        room.connectionPause = null;
+        clearConnectionPause(room, null);
         room.pauseStartedAt = null;
         room.pausedDurationMs = 0;
         room.matchEndReason = null;
+        room.departedPlayerIds = [];
         room.matchParticipants = [];
         room.activeWordAnalytics = null;
 
@@ -1516,6 +1775,7 @@ export function setupGameSocket(
                             pauseStartedAt: null,
                             pausedDurationMs: 0,
                             matchEndReason: null,
+                            departedPlayerIds: [],
                             matchParticipants: [],
                             activeWordAnalytics: null,
                             zamanlayici: null,
@@ -2050,10 +2310,11 @@ export function setupGameSocket(
                         bittiAt: null,
                     };
                     room.activeTransitionRoles = null;
-                    room.connectionPause = null;
+                    clearConnectionPause(room, null);
                     room.pauseStartedAt = null;
                     room.pausedDurationMs = 0;
                     room.matchEndReason = null;
+                    room.departedPlayerIds = [];
 
                     persistRoom(room);
                     publishCurrentCapacity();
@@ -2100,7 +2361,7 @@ export function setupGameSocket(
                         socket.emit("hata", "Eksik oyuncular donmeden oyun devam ettirilemez.");
                         return;
                     }
-                    room.connectionPause = null;
+                    clearConnectionPause(room, "resumed_after_reconnect");
                     setRoomPaused(room, false);
                 } else {
                     setRoomPaused(room, true);
@@ -2128,6 +2389,65 @@ export function setupGameSocket(
         for (const eventName of ROOM_GAME_CONTROL_EVENTS) {
             socket.on(eventName, gameControlHandler);
         }
+
+        // ── Connection pause resolution ──
+        socket.on(CONNECTION_PAUSE_RESOLVE_EVENT, async (rawPayload: unknown) => {
+            const parsed = z
+                .object({ action: z.enum(CONNECTION_PAUSE_RESOLVE_ACTIONS) })
+                .strict()
+                .safeParse(rawPayload);
+            if (!parsed.success) return;
+            if (!consumeSocketActionBurstLimit(socket.id, "connection-pause-resolve")) return;
+            const room = getRoomBySocketId(socket.id);
+            if (!room || !room.oyunDurumu.oyunAktifMi) return;
+            const lock = await runWithRoomActionLock(room.odaKodu, "connection-pause-resolve", 4_000, async () => {
+                // The room may have been destroyed while waiting for the lock; never resurrect it.
+                if (getRoom(room.odaKodu) !== room) return;
+                if (!room.oyunDurumu.oyunAktifMi || room.gameStartInProgress) return;
+                const actor = room.oyuncular.find((entry) => entry.id === socket.id);
+                const pause = room.connectionPause;
+                if (!actor || !pause) {
+                    socket.emit("hata", "Bekleyen bir bağlantı kararı yok.");
+                    return;
+                }
+                if (!canResolveConnectionPause(room, actor)) {
+                    socket.emit("hata", "Bu kararı yalnız yönetici verebilir.");
+                    return;
+                }
+                pause.missingPlayerIds = getConnectionContinuity(room).missingPlayerIds;
+                if (pause.missingPlayerIds.length === 0) {
+                    persistRoom(room);
+                    emitGamePauseState(room);
+                    socket.emit("hata", "Eksik oyuncular döndü; oyunu devam ettirebilirsin.");
+                    return;
+                }
+                const window = getConnectionPauseResolutionWindow({
+                    startedAt: pause.startedAt,
+                    now: Date.now(),
+                    graceMs: CONNECTION_PAUSE_GRACE_MS,
+                });
+                if (!window.available) {
+                    socket.emit("hata", `Oyunculara biraz daha süre tanıyın (${window.secondsRemaining} sn).`);
+                    return;
+                }
+                if (parsed.data.action === "end_match") {
+                    endMatchByHost(room);
+                    return;
+                }
+                const feasibility = evaluateContinueWithoutMissing({
+                    players: getContinuityPlayers(room),
+                    missingPlayerIds: pause.missingPlayerIds,
+                });
+                if (!feasibility.allowed) {
+                    socket.emit("hata", "Eksik oyuncular olmadan her takımda en az 2 oyuncu kalmıyor.");
+                    return;
+                }
+                continueWithoutMissing(room, pause.missingPlayerIds);
+            });
+            if (!lock.acquired) {
+                socket.emit("hata", "Bağlantı kararı zaten işleniyor. Lütfen bekleyin.");
+            }
+        });
 
         // ── Word Action ──
         socket.on(
@@ -2160,6 +2480,7 @@ export function setupGameSocket(
             const lock = await runWithRoomActionLock(room.odaKodu, "reset-game", 4_000, async () => {
                 const settings = await getSystemSettings();
                 if (room.gameStartInProgress) return;
+                if (room.connectionPause) clearConnectionPause(room, "reset_by_host");
                 resetGame(room, settings.capacity);
                 persistRoom(room);
             });

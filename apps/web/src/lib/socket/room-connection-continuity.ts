@@ -96,3 +96,61 @@ export function resolveAbandonedRoomTtlMs(input: {
 }): number {
     return input.matchActive ? input.abandonedMatchTtlMs : EMPTY_LOBBY_GRACE_MS;
 }
+
+export const CONNECTION_PAUSE_GRACE_MS = 60_000;
+
+/** How long the host must wait before resolving a connection pause. */
+export function getConnectionPauseResolutionWindow(input: {
+    startedAt: number;
+    now: number;
+    graceMs?: number;
+}): { available: boolean; secondsRemaining: number } {
+    const graceMs = input.graceMs ?? CONNECTION_PAUSE_GRACE_MS;
+    const elapsed = Math.max(0, input.now - input.startedAt);
+    const remainingMs = Math.max(0, graceMs - elapsed);
+    return {
+        available: remainingMs === 0,
+        secondsRemaining: Math.ceil(remainingMs / 1000),
+    };
+}
+
+/** Continuing without the missing players must leave two online players per team. */
+export function evaluateContinueWithoutMissing(input: {
+    players: ConnectionContinuityPlayer[];
+    missingPlayerIds: string[];
+}): { allowed: true } | { allowed: false; reason: "nothing_missing" | "team_below_minimum" } {
+    if (input.missingPlayerIds.length === 0) {
+        return { allowed: false, reason: "nothing_missing" };
+    }
+    const missing = new Set(input.missingPlayerIds);
+    for (const team of ["A", "B"] as const) {
+        const remaining = input.players.filter(
+            (player) =>
+                player.team === team &&
+                !player.spectator &&
+                player.online &&
+                !missing.has(player.playerId)
+        );
+        if (remaining.length < 2) {
+            return { allowed: false, reason: "team_below_minimum" };
+        }
+    }
+    return { allowed: true };
+}
+
+export type ConnectionPauseTrigger = "narrator" | "inspector" | "team_below_minimum";
+
+/** The most critical missing role names the pause for analytics. */
+export function classifyConnectionPauseTrigger(input: {
+    missingPlayerIds: string[];
+    narratorPlayerId: string | null;
+    inspectorPlayerId: string | null;
+}): ConnectionPauseTrigger {
+    if (input.narratorPlayerId && input.missingPlayerIds.includes(input.narratorPlayerId)) {
+        return "narrator";
+    }
+    if (input.inspectorPlayerId && input.missingPlayerIds.includes(input.inspectorPlayerId)) {
+        return "inspector";
+    }
+    return "team_below_minimum";
+}

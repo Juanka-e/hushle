@@ -18,7 +18,7 @@ import { useI18n } from "@/components/providers/i18n-provider";
 import { clearActiveRoomPresenceTab, writeActiveRoomPresence } from "@/lib/client/active-room-presence";
 import type { ResolvedCardFaceTheme } from "@/lib/cosmetics/card-face";
 import type { ResolvedCardBackTheme } from "@/lib/cosmetics/card-back";
-import { ROOM_ROLE_GUESSER } from "@/lib/game/room-display";
+import { ROOM_ROLE_GUESSER, ROOM_ROLE_SPECTATOR } from "@/lib/game/room-display";
 import { getCaptchaTokenForAction } from "@/lib/security/captcha-client";
 import {
     SOCKET_CLIENT_AUTH,
@@ -46,6 +46,7 @@ import { TransitionScreen } from "./_components/transition-screen";
 import { ActiveGame } from "./_components/active-game";
 import { GameOverScreen } from "./_components/game-over-screen";
 import { UsernamePrompt } from "./_components/username-prompt";
+import { canResolveConnectionPause } from "./_components/connection-pause-rules";
 
 interface SocketIdentityPayload {
     playerId: string;
@@ -497,7 +498,10 @@ export default function RoomPage() {
                                   ...prev,
                                   kalanSure: data.kalanSure,
                                   oyunDurduruldu: data.oyunDurduruldu,
-                                  connectionPause: data.connectionPause ?? prev.connectionPause,
+                                  connectionPause:
+                                      data.connectionPause === undefined
+                                          ? prev.connectionPause
+                                          : data.connectionPause,
                               }
                             : null
                     );
@@ -623,6 +627,16 @@ export default function RoomPage() {
     );
 
     const isHost = myPlayerId && creatorPlayerId ? myPlayerId === creatorPlayerId : false;
+    const hostPlayer = players.find((player) => player.playerId === creatorPlayerId) ?? null;
+    const canResolvePausedMatch = canResolveConnectionPause({
+        isHost: Boolean(isHost),
+        hostOnline: hostPlayer?.online === true,
+        selfIsSpectator:
+            !currentPlayer ||
+            currentPlayer.rol === ROOM_ROLE_SPECTATOR ||
+            (currentPlayer.takim !== "A" && currentPlayer.takim !== "B"),
+        selfOnline: isConnected && currentPlayer?.online === true,
+    });
 
     const handleIdentitySave = useCallback(async () => {
         const nextDisplayName = identityDraftName.trim();
@@ -804,6 +818,8 @@ export default function RoomPage() {
                     transition={transition}
                     isHost={Boolean(isHost)}
                     onPauseResume={handleTransitionControl}
+                    canResolveConnectionPause={canResolvePausedMatch}
+                    onEmit={emit}
                 />
             );
         }
@@ -819,6 +835,8 @@ export default function RoomPage() {
                     inspectorName={inspectorName}
                     isHost={isHost as boolean}
                     canResumePausedGame={Boolean(isHost) || myRole === "Anlatıcı"}
+                    canResolveConnectionPause={canResolvePausedMatch}
+                    onEmit={emit}
                     settings={settings}
                     cardFaceTheme={cardFaceTheme}
                     cardBackTheme={cardBackTheme}
@@ -1306,7 +1324,10 @@ export default function RoomPage() {
                             {renderGameContent()}
                         </div>
                     ) : (
-                        renderGameContent()
+                        // Short screens must scroll to the transition and pause controls instead of clipping them.
+                        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                            {renderGameContent()}
+                        </div>
                     )}
                 </main>
 
