@@ -24,6 +24,8 @@ const checks: ReadinessCheck[] = [
     { area: "server room membership", script: "test:room-membership" },
     { area: "room admin handoff", script: "test:room-admin-handoff" },
     { area: "room capacity", script: "test:room-capacity-controls" },
+    { area: "room game-start transition", script: "test:room-game-start" },
+    { area: "room connection continuity", script: "test:room-connection-continuity" },
     { area: "distributed coordination", script: "test:distributed-coordination" },
     { area: "realtime topology", script: "test:realtime-topology" },
     { area: "room display contract", script: "test:room-display" },

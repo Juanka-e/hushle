@@ -66,6 +66,16 @@ Hedef:
 Referans:
 - `docs/guides/web-real-device-smoke.md`
 
+## Ertelenen Rol Kurtarma Secenekleri
+
+Connection-aware pause/reconnect temel akisi once uygulanir. Gercek kullanim verisi
+gerektirirse ayri branchlerde su secenekler degerlendirilir:
+- yalniz mevcut turu sonlandirma
+- 5v5 icin yeni anlatici atama
+- otomatik gozetmen devri
+- takim lideri rol yonetimi
+- tekrarlanan kopmalar icin hafif telemetry ve operator incelemesi
+
 Fiziksel iOS/Android/laptop smoke harness'i tamamlandi. Gercek cihaz sonucu
 otomasyonla uretilemeyecegi icin release kaniti olarak manuel acik kalir:
 - `docs/guides/web-real-device-smoke.md`
