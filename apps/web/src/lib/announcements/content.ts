@@ -88,7 +88,7 @@ export const announcementBlocksSchema = z
 
                 return block.type === "divider";
             }),
-        "En az bir icerik blogu gerekli."
+        "En az bir içerik bloğu gerekli."
     );
 
 export type AnnouncementBlock = z.infer<typeof announcementBlockSchema>;
@@ -240,7 +240,7 @@ function legacyHtmlToAnnouncementBlocks(html: string): AnnouncementBlocks {
         return parsed.data;
     }
 
-    return [{ type: "paragraph", text: stripTags(sanitizedHtml) || "Icerik yok." }];
+    return [{ type: "paragraph", text: stripTags(sanitizedHtml) || "İçerik yok." }];
 }
 
 export function normalizeAnnouncementBlocks(

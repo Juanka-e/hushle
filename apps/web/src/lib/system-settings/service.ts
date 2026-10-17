@@ -4,8 +4,6 @@ import {
     type EmailProviderReadiness,
 } from "@hushle/platform-email";
 import { getOrSetJsonCache } from "@hushle/platform-cache";
-import { unlink } from "node:fs/promises";
-import path from "node:path";
 import {
     APPLICATION_CACHE_KEYS,
     invalidateStoreCatalogCache,
@@ -68,52 +66,6 @@ export async function clearSystemSettingsCache(): Promise<void> {
 
 function toInputJsonValue(value: unknown): Prisma.InputJsonValue {
     return value as Prisma.InputJsonValue;
-}
-
-function getBrandingManagedAssetValues(settings: SystemSettings): string[] {
-    return [
-        settings.branding.logoUrl,
-        settings.branding.faviconUrl,
-        settings.branding.ogImageUrl,
-    ]
-        .map((value) => value.trim())
-        .filter(Boolean);
-}
-
-function resolveManagedBrandingAssetPath(assetUrl: string): string | null {
-    if (!assetUrl.startsWith("/branding/")) {
-        return null;
-    }
-
-    const normalizedRelativePath = path.normalize(assetUrl.replace(/^\/+/, ""));
-    const publicRoot = path.resolve(process.cwd(), "public");
-    const assetPath = path.resolve(publicRoot, normalizedRelativePath);
-
-    if (!assetPath.startsWith(publicRoot)) {
-        return null;
-    }
-
-    return assetPath;
-}
-
-async function cleanupUnusedBrandingAssets(previous: SystemSettings, next: SystemSettings): Promise<void> {
-    const nextActiveAssetUrls = new Set(getBrandingManagedAssetValues(next));
-    const previousAssetUrls = new Set(getBrandingManagedAssetValues(previous));
-
-    const staleAssetPaths = [...previousAssetUrls]
-        .filter((assetUrl) => !nextActiveAssetUrls.has(assetUrl))
-        .map(resolveManagedBrandingAssetPath)
-        .filter((value): value is string => Boolean(value));
-
-    await Promise.all(
-        staleAssetPaths.map(async (staleAssetPath) => {
-            try {
-                await unlink(staleAssetPath);
-            } catch {
-                // Ignore missing or already-removed asset files.
-            }
-        })
-    );
 }
 
 function buildSettingsFromRows(
@@ -210,7 +162,6 @@ export async function updateSystemSettings(
     nextSettings: SystemSettings,
     updatedByUserId: number
 ): Promise<SystemSettings> {
-    const previousSettings = await getSystemSettings();
     const normalizedSettings = normalizeSystemSettings(nextSettings);
 
     await prisma.$transaction(
@@ -235,7 +186,6 @@ export async function updateSystemSettings(
         invalidateStoreCatalogCache(),
         invalidateMobileStorePolicyCache(),
     ]);
-    await cleanupUnusedBrandingAssets(previousSettings, normalizedSettings);
 
     return normalizedSettings;
 }

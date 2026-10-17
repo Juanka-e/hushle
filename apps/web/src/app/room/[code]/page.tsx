@@ -18,12 +18,20 @@ import { useI18n } from "@/components/providers/i18n-provider";
 import { clearActiveRoomPresenceTab, writeActiveRoomPresence } from "@/lib/client/active-room-presence";
 import type { ResolvedCardFaceTheme } from "@/lib/cosmetics/card-face";
 import type { ResolvedCardBackTheme } from "@/lib/cosmetics/card-back";
-import { ROOM_ROLE_GUESSER } from "@/lib/game/room-display";
+import { ROOM_ROLE_GUESSER, ROOM_ROLE_SPECTATOR } from "@/lib/game/room-display";
 import { getCaptchaTokenForAction } from "@/lib/security/captcha-client";
 import {
     SOCKET_CLIENT_AUTH,
     getSocketProtocolErrorMessage,
 } from "@/lib/socket/protocol-version";
+import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
+import {
+    isRoomNotFoundError,
+    readSocketPlayerError,
+    resolveApiErrorMessage,
+    resolvePlayerErrorMessage,
+} from "@/lib/errors/resolve-player-error";
+import { translate } from "@/lib/i18n/dictionaries";
 import { GameView } from "@/types/game";
 import type {
     Player,
@@ -46,6 +54,7 @@ import { TransitionScreen } from "./_components/transition-screen";
 import { ActiveGame } from "./_components/active-game";
 import { GameOverScreen } from "./_components/game-over-screen";
 import { UsernamePrompt } from "./_components/username-prompt";
+import { canResolveConnectionPause } from "./_components/connection-pause-rules";
 
 interface SocketIdentityPayload {
     playerId: string;
@@ -86,7 +95,12 @@ export default function RoomPage() {
     const roomCode = params.code as string;
     const { data: session } = useSession();
     const branding = useBranding();
-    const { t } = useI18n();
+    const { locale, t } = useI18n();
+    // The socket effect outlives language switches; read the current locale when an error arrives.
+    const localeRef = useRef(locale);
+    useEffect(() => {
+        localeRef.current = locale;
+    }, [locale]);
     const activeRoomPresenceKey = session?.user?.id ? `tabu_active_room_presence:${session.user.id}` : null;
     const roomPresenceTabIdRef = useRef("");
 
@@ -337,10 +351,10 @@ export default function RoomPage() {
     }, [currentVisibleName]);
 
     useEffect(() => {
-        if (currentVisibleName.trim().length > 0) {
+        if (isRoomClientReady && currentVisibleName.trim().length > 0) {
             window.localStorage.setItem("tabu_username", currentVisibleName);
         }
-    }, [currentVisibleName]);
+    }, [currentVisibleName, isRoomClientReady]);
 
     useEffect(() => {
         if (view !== GameView.LOBBY) {
@@ -422,8 +436,8 @@ export default function RoomPage() {
                 socket.on("connect_error", (error) => {
                     setIsConnected(false);
                     setEntryError(
-                        getSocketProtocolErrorMessage(error) ??
-                            "Sunucuya bağlanılamadı. Lütfen tekrar deneyin."
+                        getSocketProtocolErrorMessage(error, localeRef.current) ??
+                            translate(localeRef.current, "home.connectionFailed")
                     );
                 });
 
@@ -486,13 +500,21 @@ export default function RoomPage() {
                     setCardBackTheme(data.cardBackTheme);
                 });
 
-                socket.on("turGecisDurumGuncelle", (data: { oyunDurduruldu: boolean; kalanSure: number }) => {
+                socket.on("turGecisDurumGuncelle", (data: {
+                    oyunDurduruldu: boolean;
+                    kalanSure: number;
+                    connectionPause?: TransitionData["connectionPause"];
+                }) => {
                     setTransition((prev) =>
                         prev
                             ? {
                                   ...prev,
                                   kalanSure: data.kalanSure,
                                   oyunDurduruldu: data.oyunDurduruldu,
+                                  connectionPause:
+                                      data.connectionPause === undefined
+                                          ? prev.connectionPause
+                                          : data.connectionPause,
                               }
                             : null
                     );
@@ -541,12 +563,12 @@ export default function RoomPage() {
                                 return;
                             }
 
-                            const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+                            const payload = (await response.json().catch(() => null)) as { code?: string } | null;
                             const shouldRetry =
                                 attempt < 2 &&
                                 (response.status === 404 ||
                                     (response.status === 409 &&
-                                        payload?.error === "Mac henuz tamamlanmadi."));
+                                        payload?.code === PlayerErrorCode.MATCH_NOT_FINISHED));
 
                             if (shouldRetry) {
                                 window.setTimeout(() => {
@@ -585,17 +607,17 @@ export default function RoomPage() {
                     router.push("/");
                 });
 
-                socket.on("hata", (msg: string) => {
-                    console.error("Socket error:", msg);
-                    setEntryError(msg);
-                    const normalizedMessage = msg.toLocaleLowerCase("tr-TR");
-                    if (normalizedMessage.includes("bulunamad") || normalizedMessage.includes("found")) {
+                socket.on("hata", (msg: unknown, meta?: unknown) => {
+                    const socketError = readSocketPlayerError(msg, meta);
+                    console.error("Socket error:", socketError.code ?? "", msg);
+                    setEntryError(resolvePlayerErrorMessage(localeRef.current, socketError));
+                    if (isRoomNotFoundError(socketError)) {
                         router.push("/");
                     }
                 });
             } catch {
                 if (isMounted) {
-                    setEntryError("Guvenlik dogrulamasi baslatilamadi. Lutfen tekrar deneyin.");
+                    setEntryError(translate(localeRef.current, "home.securityFailed"));
                 }
             }
         }
@@ -618,17 +640,27 @@ export default function RoomPage() {
     );
 
     const isHost = myPlayerId && creatorPlayerId ? myPlayerId === creatorPlayerId : false;
+    const hostPlayer = players.find((player) => player.playerId === creatorPlayerId) ?? null;
+    const canResolvePausedMatch = canResolveConnectionPause({
+        isHost: Boolean(isHost),
+        hostOnline: hostPlayer?.online === true,
+        selfIsSpectator:
+            !currentPlayer ||
+            currentPlayer.rol === ROOM_ROLE_SPECTATOR ||
+            (currentPlayer.takim !== "A" && currentPlayer.takim !== "B"),
+        selfOnline: isConnected && currentPlayer?.online === true,
+    });
 
     const handleIdentitySave = useCallback(async () => {
         const nextDisplayName = identityDraftName.trim();
 
         if (!isAuthenticatedRoomUser && !nextDisplayName) {
-            setIdentityError("Gecerli bir gorunen ad gir.");
+            setIdentityError(t("errors.INVALID_DISPLAY_NAME"));
             return;
         }
 
         if (!canEditIdentity) {
-            setIdentityError("Mac basladiktan sonra gorunen ad degistirilemez.");
+            setIdentityError(t("errors.DISPLAY_NAME_LOCKED"));
             return;
         }
 
@@ -652,10 +684,10 @@ export default function RoomPage() {
                 });
 
                 if (!response.ok) {
-                    const payload = (await response.json().catch(() => null)) as {
-                        error?: string;
-                    } | null;
-                    setIdentityError(payload?.error || "Gorunen ad guncellenemedi.");
+                    const payload: unknown = await response.json().catch(() => null);
+                    setIdentityError(
+                        resolveApiErrorMessage(locale, payload, t("room.displayNameUpdateFailed"))
+                    );
                     return;
                 }
 
@@ -689,9 +721,15 @@ export default function RoomPage() {
                 socketRef.current?.emit(
                     "gorunen_ad_guncelle",
                     { displayName: persistedDisplayName },
-                    (response: { ok: boolean; error?: string; displayName?: string }) => {
+                    (response: { ok: boolean; error?: string; code?: string; displayName?: string }) => {
                         if (!response.ok) {
-                            setEntryError(response.error || "Lobi gorunen adi guncellenemedi.");
+                            setEntryError(
+                                resolveApiErrorMessage(
+                                    locale,
+                                    response,
+                                    t("room.lobbyDisplayNameUpdateFailed")
+                                )
+                            );
                             return;
                         }
 
@@ -716,13 +754,14 @@ export default function RoomPage() {
 
             const socket = socketRef.current;
             if (!socket) {
-                setIdentityError("Baglanti bulunamadi.");
+                setIdentityError(t("room.connectionMissing"));
                 return;
             }
 
             const result = await new Promise<{
                 ok: boolean;
                 error?: string;
+                code?: string;
                 displayName?: string;
             }>((resolve) => {
                 socket.emit(
@@ -731,13 +770,16 @@ export default function RoomPage() {
                     (response: {
                         ok: boolean;
                         error?: string;
+                        code?: string;
                         displayName?: string;
                     }) => resolve(response)
                 );
             });
 
             if (!result.ok) {
-                setIdentityError(result.error || "Gorunen ad guncellenemedi.");
+                setIdentityError(
+                    resolveApiErrorMessage(locale, result, t("room.displayNameUpdateFailed"))
+                );
                 return;
             }
 
@@ -758,7 +800,7 @@ export default function RoomPage() {
             setIdentityDraftName(confirmedDisplayName);
             setShowIdentityEditor(false);
         } catch {
-            setIdentityError("Gorunen ad guncellenemedi.");
+            setIdentityError(t("room.displayNameUpdateFailed"));
         } finally {
             setIdentitySaving(false);
         }
@@ -767,8 +809,10 @@ export default function RoomPage() {
         currentVisibleName,
         identityDraftName,
         isAuthenticatedRoomUser,
+        locale,
         myPlayerId,
         session?.user?.name,
+        t,
     ]);
 
     const handleStartGame = useCallback(() => {
@@ -799,6 +843,8 @@ export default function RoomPage() {
                     transition={transition}
                     isHost={Boolean(isHost)}
                     onPauseResume={handleTransitionControl}
+                    canResolveConnectionPause={canResolvePausedMatch}
+                    onEmit={emit}
                 />
             );
         }
@@ -813,6 +859,9 @@ export default function RoomPage() {
                     narratorName={narratorName}
                     inspectorName={inspectorName}
                     isHost={isHost as boolean}
+                    canResumePausedGame={Boolean(isHost) || myRole === "Anlatıcı"}
+                    canResolveConnectionPause={canResolvePausedMatch}
+                    onEmit={emit}
                     settings={settings}
                     cardFaceTheme={cardFaceTheme}
                     cardBackTheme={cardBackTheme}
@@ -828,6 +877,12 @@ export default function RoomPage() {
                 <GameOverScreen
                     gameOverData={gameOverData}
                     onReturnToLobby={() => emit(ROOM_RESET_GAME_EVENT)}
+                    // Only server-issued guest seats that played the match can be moved to an account.
+                    guestClaimRoomCode={
+                        myPlayerId.startsWith("guest:") && currentPlayer?.takim && currentPlayer.rol !== "İzleyici"
+                            ? normalizedRoomCode
+                            : null
+                    }
                 />
             );
         }
@@ -1032,7 +1087,7 @@ export default function RoomPage() {
                             : undefined
                     }
                     onMoveNarrator={isHost && view === GameView.LOBBY ? (playerId, direction) => emit("narrator_order", { playerId, direction }) : undefined}
-                    onKickPlayer={isHost ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
+                    onKickPlayer={isHost && view === GameView.LOBBY ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
                     onTransferHost={isHost ? (playerId) => emit("yoneticiligiDevret", { targetPlayerId: playerId }) : undefined}
                 />
 
@@ -1282,7 +1337,7 @@ export default function RoomPage() {
                             {!isConnected ? (
                                 <div className="inline-flex w-fit items-center gap-2 rounded-full border border-red-200 bg-red-100 px-3 py-1.5 text-xs font-medium text-red-600 dark:border-red-800/30 dark:bg-red-900/20 dark:text-red-400">
                                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                                    Bağlantı kesildi
+                                    {t("room.disconnected")}
                                 </div>
                             ) : null}
 
@@ -1300,7 +1355,10 @@ export default function RoomPage() {
                             {renderGameContent()}
                         </div>
                     ) : (
-                        renderGameContent()
+                        // Short screens must scroll to the transition and pause controls instead of clipping them.
+                        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                            {renderGameContent()}
+                        </div>
                     )}
                 </main>
 
@@ -1319,7 +1377,7 @@ export default function RoomPage() {
                             : undefined
                     }
                     onMoveNarrator={isHost && view === GameView.LOBBY ? (playerId, direction) => emit("narrator_order", { playerId, direction }) : undefined}
-                    onKickPlayer={isHost ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
+                    onKickPlayer={isHost && view === GameView.LOBBY ? (playerId) => emit("oyuncuyuAt", { targetPlayerId: playerId }) : undefined}
                     onTransferHost={isHost ? (playerId) => emit("yoneticiligiDevret", { targetPlayerId: playerId }) : undefined}
                 />
 

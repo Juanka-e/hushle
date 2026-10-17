@@ -155,8 +155,8 @@ function connectPlayer(options: {
             finish();
         });
         socket.on("connect_error", (error) => fail(error));
-        socket.on("hata", (message: string) =>
-            fail(new Error(String(message)))
+        socket.on("hata", (message: string, meta?: { code?: string }) =>
+            fail(Object.assign(new Error(String(message)), { code: meta?.code }))
         );
     });
 }
@@ -182,16 +182,18 @@ function waitForLobby(
     });
 }
 
-function emitStartAndWaitForError(socket: Socket): Promise<string> {
+function emitStartAndWaitForError(
+    socket: Socket
+): Promise<{ message: string; code?: string }> {
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
             socket.off("hata", handleError);
             reject(new Error("Start rule response timed out"));
         }, timeoutMs);
-        const handleError = (message: string) => {
+        const handleError = (message: string, meta?: { code?: string }) => {
             clearTimeout(timeout);
             socket.off("hata", handleError);
-            resolve(String(message));
+            resolve({ message: String(message), code: meta?.code });
         };
         socket.on("hata", handleError);
         socket.emit("oyun_baslat", {
@@ -250,8 +252,9 @@ async function run(): Promise<void> {
         assert.equal(threePlayerLobby.startReadiness.minimumPlayers, 4);
         assert.equal(threePlayerLobby.startReadiness.ready, false);
 
-        const blockedMessage = await emitStartAndWaitForError(host.socket);
-        assert.match(blockedMessage, /en az 4 aktif oyuncu/i);
+        const blocked = await emitStartAndWaitForError(host.socket);
+        assert.equal(blocked.code, "NOT_ENOUGH_PLAYERS");
+        assert.match(blocked.message, /en az 4 aktif oyuncu/i);
 
         const guestC = await connectPlayer({
             name: "RegisteredRuleGuestC",
@@ -267,8 +270,9 @@ async function run(): Promise<void> {
         assert.equal(fourPlayerLobby.startReadiness.teamAPlayers, 2);
         assert.equal(fourPlayerLobby.startReadiness.teamBPlayers, 2);
 
-        const categoryMessage = await emitStartAndWaitForError(host.socket);
-        assert.match(categoryMessage, /kategori seçin/i);
+        const categoryError = await emitStartAndWaitForError(host.socket);
+        assert.equal(categoryError.code, "NO_CATEGORY_SELECTED");
+        assert.match(categoryError.message, /kategori seçin/i);
 
         console.log(
             JSON.stringify({

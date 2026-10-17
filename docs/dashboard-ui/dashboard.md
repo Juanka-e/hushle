@@ -58,6 +58,7 @@ Dashboard, oyun ekranının üzerinde açılan bir **glassmorphism overlay panel
 - `POST /api/store/purchase` → Satın alma
 - `POST /api/user/equip` → Kozmetik kuşanma
 - `POST /api/game/match/finalize` → Maç sonu ödül
+- `POST /api/game/match/guest-claims` → Misafir maçlarını hesaba geçirme (`guestToken`; kayıtta `/api/auth/register` da kabul eder)
 
 ### Admin API Katmanı ✅ (8 Mart 2026)
 - `GET /api/admin/shop-items` → Tüm kozmetikler (pasifler dahil, satış sayısı)

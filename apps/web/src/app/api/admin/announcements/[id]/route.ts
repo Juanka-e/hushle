@@ -52,7 +52,7 @@ export async function PUT(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla duyuru guncelleme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla duyuru güncelleme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -159,14 +159,14 @@ export async function PUT(
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: "Gecersiz veri.", details: error.issues },
+                { error: "Geçersiz veri.", details: error.issues },
                 { status: 400 }
             );
         }
 
         console.error("Failed to update announcement:", error);
         return NextResponse.json(
-            { error: "Duyuru guncellenemedi." },
+            { error: "Duyuru güncellenemedi." },
             { status: 500 }
         );
     }
@@ -189,7 +189,7 @@ export async function DELETE(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla duyuru silme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla duyuru silme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

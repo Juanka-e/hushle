@@ -155,6 +155,9 @@ async function run(): Promise<void> {
     ]);
     assert.equal(guestPair.allowed, false);
     assert.equal(guestPair.minimumPlayers, 4);
+    assert.equal(guestPair.errorCode, "NOT_ENOUGH_PLAYERS");
+    assert.deepEqual(guestPair.errorParams, { minimum: 4 });
+    assert.equal(guestPair.message, "Oyunu başlatmak için en az 4 aktif oyuncu gerekir.");
 
     const registeredThree = resolveRoomStartDecision([
         player("registered", "A"),
@@ -183,6 +186,8 @@ async function run(): Promise<void> {
     ]);
     assert.equal(unbalancedFour.allowed, false);
     assert.match(unbalancedFour.message ?? "", /en az 2 aktif oyuncu/i);
+    assert.equal(unbalancedFour.errorCode, "TEAM_TOO_SMALL");
+    assert.deepEqual(unbalancedFour.errorParams, { minimum: 2 });
 
     assert.equal(
         resolveRoomStartDecision([

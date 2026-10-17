@@ -44,6 +44,10 @@ import type { CoinGrantRedeemResult } from "@/types/coin-grants";
 import { dispatchWalletUpdated } from "@/lib/wallet-events";
 import { dispatchNotificationsUpdated } from "@/lib/notification-events";
 import { useI18n } from "@/components/providers/i18n-provider";
+import {
+    resolveApiErrorMessage,
+    resolvePlayerErrorMessage,
+} from "@/lib/errors/resolve-player-error";
 import type { AppLocale } from "@/lib/i18n/config";
 
 type ShopCategory = "all" | StoreItemType;
@@ -366,7 +370,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             });
             const payload = (await response.json()) as { coinBalance?: number; finalPriceCoin?: number; error?: string };
             if (!response.ok) {
-                toast.error(payload.error || t("shop.purchaseFailed"));
+                toast.error(resolveApiErrorMessage(locale, payload, t("shop.purchaseFailed")));
                 return;
             }
 
@@ -401,7 +405,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             });
             const payload = (await response.json()) as { awardedItems?: Array<{ id: number }>; coinBalance?: number; finalPriceCoin?: number; error?: string };
             if (!response.ok) {
-                toast.error(payload.error || t("shop.bundlePurchaseFailed"));
+                toast.error(resolveApiErrorMessage(locale, payload, t("shop.bundlePurchaseFailed")));
                 return;
             }
 
@@ -438,17 +442,24 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             const payload = (await response.json()) as CouponCatalogPreviewResponse | { error?: string };
             if (!response.ok || !("valid" in payload)) {
                 setActiveCouponPreview(null);
-                toast.error(("error" in payload && payload.error) ? payload.error : t("shop.couponInvalid"));
+                toast.error(resolveApiErrorMessage(locale, payload, t("shop.couponInvalid")));
                 return;
             }
             if (!payload.valid || !payload.coupon) {
                 setActiveCouponPreview(null);
-                toast.error(payload.reason || t("shop.couponNotApplicable"));
+                toast.error(
+                    resolvePlayerErrorMessage(
+                        locale,
+                        { message: payload.reason, code: payload.code },
+                        t("shop.couponNotApplicable")
+                    )
+                );
                 return;
             }
 
             setActiveCouponPreview({
                 valid: payload.valid,
+                code: payload.code,
                 reason: payload.reason,
                 coupon: payload.coupon,
                 items: payload.items,
@@ -478,7 +489,7 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
             });
             const payload = (await response.json()) as CoinGrantRedeemResult | { error?: string };
             if (!response.ok || !("ok" in payload) || !payload.ok) {
-                toast.error(("error" in payload && payload.error) ? payload.error : t("shop.coinCodeFailed"));
+                toast.error(resolveApiErrorMessage(locale, payload, t("shop.coinCodeFailed")));
                 return;
             }
 

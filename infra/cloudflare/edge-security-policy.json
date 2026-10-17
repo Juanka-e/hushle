@@ -36,6 +36,13 @@
       "forbiddenEdgeControls": ["browser-challenge", "referer-check", "origin-check", "session-check", "blanket-datacenter-asn-block"]
     },
     {
+      "id": "payment-provider-return",
+      "paths": ["/api/payments/callback/iyzico"],
+      "applicationControls": ["callback-mode-gate", "order-id-binding", "bounded-form-body", "token-and-order-redis-rate-limit", "server-side-provider-retrieve", "proof-only-no-fulfillment", "no-store-redirect"],
+      "edgeControls": ["ddos", "managed-waf", "rate-limit-block-only"],
+      "forbiddenEdgeControls": ["browser-challenge", "managed-challenge", "rate-limit-challenge", "referer-check", "origin-check", "session-check", "blanket-datacenter-asn-block"]
+    },
+    {
       "id": "email-provider-webhook",
       "paths": ["/api/email/webhooks/ses"],
       "applicationControls": ["sns-signature", "topic-allowlist", "event-deduplication", "body-size-limit", "redis-rate-limit"],
@@ -49,7 +56,7 @@
       "status": "observe",
       "actionAfterObservation": "managed-challenge",
       "scope": "browser-navigation-only",
-      "excludedRouteClasses": ["websocket", "payment-webhook", "email-provider-webhook"]
+      "excludedRouteClasses": ["websocket", "payment-webhook", "payment-provider-return", "email-provider-webhook"]
     },
     {
       "id": "empty-or-bad-referer",
@@ -60,7 +67,7 @@
       "id": "datacenter-network",
       "status": "observe",
       "actionAfterObservation": "managed-challenge-sensitive-browser-entry-only",
-      "excludedRouteClasses": ["websocket", "payment-webhook", "email-provider-webhook"]
+      "excludedRouteClasses": ["websocket", "payment-webhook", "payment-provider-return", "email-provider-webhook"]
     }
   ]
 }

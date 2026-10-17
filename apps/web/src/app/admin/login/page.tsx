@@ -38,7 +38,7 @@ export default function AdminLoginPage() {
             });
 
             if (result?.error) {
-                setError("Kullanici adi veya sifre hatali.");
+                setError("Kullanıcı adı veya şifre hatalı.");
                 setLoading(false);
                 return;
             }
@@ -53,7 +53,7 @@ export default function AdminLoginPage() {
             router.push(callbackUrl);
             router.refresh();
         } catch {
-            setError("Guvenlik dogrulamasi baslatilamadi.");
+            setError("Güvenlik doğrulaması başlatılamadı.");
         } finally {
             setLoading(false);
         }
@@ -66,16 +66,16 @@ export default function AdminLoginPage() {
                     <div className="mx-auto w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
                         <Shield className="h-6 w-6 text-primary" />
                     </div>
-                    <CardTitle className="text-xl">Admin Girisi</CardTitle>
+                    <CardTitle className="text-xl">Admin Girişi</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleLogin} className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="username">Kullanici Adi</Label>
+                            <Label htmlFor="username">Kullanıcı Adı</Label>
                             <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="password">Sifre</Label>
+                            <Label htmlFor="password">Şifre</Label>
                             <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                         </div>
                         {error && <p className="text-sm text-destructive text-center">{error}</p>}
@@ -86,7 +86,7 @@ export default function AdminLoginPage() {
                             onFocus={() => prewarmCaptchaForAction("login")}
                             onPointerEnter={() => prewarmCaptchaForAction("login")}
                         >
-                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Giris Yap"}
+                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Giriş Yap"}
                         </Button>
                     </form>
                 </CardContent>

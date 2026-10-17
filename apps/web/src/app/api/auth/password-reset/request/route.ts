@@ -15,14 +15,16 @@ import {
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { normalizeEmail } from "@/lib/users/email";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
+import { PlayerNoticeCode, playerNotice } from "@/lib/errors/player-notice";
 
 const requestSchema = z.object({
     identifier: z.string().trim().min(1).max(191),
     captchaToken: z.string().trim().min(1).max(2048).optional().nullable(),
 });
 
-const GENERIC_MESSAGE =
-    "Bilgiler bir hesapla eşleşiyorsa parola sıfırlama bağlantısı gönderilecek.";
+/** Same answer for every outcome (rate limit, unknown account, mail failure) so accounts cannot be enumerated. */
+const GENERIC_NOTICE = playerNotice(PlayerNoticeCode.PASSWORD_RESET_REQUESTED);
 
 function identifierKey(identifier: string): string {
     return createHash("sha256")
@@ -33,7 +35,7 @@ function identifierKey(identifier: string): string {
 
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
-        return NextResponse.json({ error: "Geçersiz istek." }, { status: 403 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
     }
 
     try {
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
         const limit = ipLimit.allowed ? identifierLimit : ipLimit;
         if (!ipLimit.allowed || !identifierLimit.allowed) {
             return NextResponse.json(
-                { message: GENERIC_MESSAGE },
+                { ...GENERIC_NOTICE },
                 {
                     status: 202,
                     headers: buildRateLimitHeaders(limit),
@@ -73,7 +75,7 @@ export async function POST(request: Request) {
         });
         if (!captchaResult.ok) {
             return NextResponse.json(
-                { error: "Güvenlik doğrulaması başarısız." },
+                playerError(PlayerErrorCode.CAPTCHA_FAILED),
                 { status: 403, headers: buildRateLimitHeaders(limit) }
             );
         }
@@ -101,19 +103,19 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json(
-            { message: GENERIC_MESSAGE },
+            { ...GENERIC_NOTICE },
             { status: 202, headers: buildRateLimitHeaders(limit) }
         );
     } catch (error) {
         if (error instanceof z.ZodError || error instanceof SyntaxError) {
             return NextResponse.json(
-                { error: "Geçerli bir kullanıcı adı veya e-posta gir." },
+                playerError(PlayerErrorCode.RESET_IDENTIFIER_INVALID),
                 { status: 400 }
             );
         }
         console.error("Password reset request failed", error);
         return NextResponse.json(
-            { message: GENERIC_MESSAGE },
+            { ...GENERIC_NOTICE },
             { status: 202 }
         );
     }

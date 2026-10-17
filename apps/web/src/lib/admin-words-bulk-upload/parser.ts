@@ -55,7 +55,7 @@ export function splitBulkWordUploadLines(
 ): { error: string } | { rows: BulkWordUploadLine[] } {
     const lines = text.split("\n").filter((line) => line.trim());
     if (lines.length === 0) {
-        return { error: "CSV dosyasi bos." };
+        return { error: "CSV dosyası boş." };
     }
 
     const firstLine = lines[0].toLocaleLowerCase(
@@ -66,7 +66,7 @@ export function splitBulkWordUploadLines(
         : 0;
     if (lines.length - startIndex > MAX_BULK_WORD_UPLOAD_ROWS) {
         return {
-            error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satiri icerebilir.`,
+            error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satırı içerebilir.`,
         };
     }
 
@@ -88,8 +88,8 @@ export function parseBulkWordUploadRow(
     if (cols.length < minimumColumns) {
         return {
             error: mode === "csv_categories"
-                ? `Satir ${rowNumber}: En az 5 sutun gerekli (kelime, zorluk, kategori, alt_kategori, yasakli1).`
-                : `Satir ${rowNumber}: En az 3 sutun gerekli (kelime, zorluk, yasakli1).`,
+                ? `Satır ${rowNumber}: En az 5 sütun gerekli (kelime, zorluk, kategori, alt_kategori, yasakli1).`
+                : `Satır ${rowNumber}: En az 3 sütun gerekli (kelime, zorluk, yasakli1).`,
         };
     }
 
@@ -117,27 +117,27 @@ function findBulkWordFieldError(
     tabooWords: string[]
 ): string | null {
     if (!wordText) {
-        return `Satir ${rowNumber}: Kelime bos.`;
+        return `Satır ${rowNumber}: Kelime boş.`;
     }
 
     if (wordText.length > MAX_WORD_FIELD_LENGTH) {
-        return `Satir ${rowNumber}: Kelime en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`;
+        return `Satır ${rowNumber}: Kelime en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`;
     }
 
     if (Number.isNaN(difficulty) || difficulty < 1 || difficulty > 3) {
-        return `Satir ${rowNumber}: Zorluk 1-3 arasinda olmali.`;
+        return `Satır ${rowNumber}: Zorluk 1-3 arasında olmalı.`;
     }
 
     if (tabooWords.length === 0) {
-        return `Satir ${rowNumber}: En az 1 yasakli kelime gerekli.`;
+        return `Satır ${rowNumber}: En az 1 yasaklı kelime gerekli.`;
     }
 
     if (tabooWords.length > MAX_BULK_TABOO_WORDS_PER_ROW) {
-        return `Satir ${rowNumber}: En fazla ${MAX_BULK_TABOO_WORDS_PER_ROW} yasakli kelime eklenebilir.`;
+        return `Satır ${rowNumber}: En fazla ${MAX_BULK_TABOO_WORDS_PER_ROW} yasaklı kelime eklenebilir.`;
     }
 
     if (tabooWords.some((tabooWord) => tabooWord.length > MAX_WORD_FIELD_LENGTH)) {
-        return `Satir ${rowNumber}: Yasakli kelimeler en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`;
+        return `Satır ${rowNumber}: Yasaklı kelimeler en fazla ${MAX_WORD_FIELD_LENGTH} karakter olabilir.`;
     }
 
     return null;

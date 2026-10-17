@@ -27,7 +27,7 @@ export async function PATCH(
 
     const params = paramsSchema.safeParse(await context.params);
     if (!params.success) {
-        return NextResponse.json({ error: "Gecersiz destek talebi." }, { status: 422 });
+        return NextResponse.json({ error: "Geçersiz destek talebi." }, { status: 422 });
     }
 
     const rateLimit = consumeRequestRateLimit({
@@ -38,7 +38,7 @@ export async function PATCH(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla destek guncelleme denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla destek güncelleme denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -66,10 +66,10 @@ export async function PATCH(
     } catch (error) {
         if (error instanceof SupportDeskWorkflowError) {
             const messages: Record<string, string> = {
-                ticket_not_found: "Destek talebi bulunamadi.",
-                forbidden: "Bu talep icin yetkin yok.",
-                ticket_closed: "Kapali talep bu islem icin uygun degil.",
-                invalid_assignee: "Secilen admin atanamaz.",
+                ticket_not_found: "Destek talebi bulunamadı.",
+                forbidden: "Bu talep için yetkin yok.",
+                ticket_closed: "Kapalı talep bu işlem için uygun değil.",
+                invalid_assignee: "Seçilen admin atanamaz.",
             };
             const status = error.code === "ticket_not_found" ? 404 : 409;
             return NextResponse.json({ error: messages[error.code] }, { status });
@@ -77,13 +77,13 @@ export async function PATCH(
 
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: error.issues[0]?.message || "Gecersiz destek guncellemesi." },
+                { error: error.issues[0]?.message || "Geçersiz destek güncellemesi." },
                 { status: 422 }
             );
         }
 
         console.error("Failed to update support ticket:", error);
-        return NextResponse.json({ error: "Destek talebi guncellenemedi." }, { status: 500 });
+        return NextResponse.json({ error: "Destek talebi güncellenemedi." }, { status: 500 });
     }
 }
 

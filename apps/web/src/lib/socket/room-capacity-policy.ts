@@ -1,4 +1,6 @@
 import type { CapacitySettings } from "@/types/system-settings";
+import { getPlayerErrorMessage } from "@/lib/errors/player-error";
+import { PlayerErrorCode, type PlayerErrorParams } from "@/lib/errors/player-error-codes";
 
 export const ROOM_HARD_MAX_PLAYERS = 20;
 export const TEAM_HARD_MAX_PLAYERS = 10;
@@ -30,6 +32,9 @@ export interface RoomStartDecision {
     registeredPlayers: number;
     teamAPlayers: number;
     teamBPlayers: number;
+    errorCode?: typeof PlayerErrorCode.NOT_ENOUGH_PLAYERS | typeof PlayerErrorCode.TEAM_TOO_SMALL;
+    errorParams?: PlayerErrorParams;
+    /** Turkish text of `errorCode`, kept for server-side logs and existing callers. */
     message?: string;
 }
 
@@ -85,6 +90,7 @@ export function resolveRoomStartDecision(
     ).length;
 
     if (activePlayers.length < minimumPlayers) {
+        const errorParams = { minimum: minimumPlayers };
         return {
             allowed: false,
             minimumPlayers,
@@ -92,7 +98,9 @@ export function resolveRoomStartDecision(
             registeredPlayers,
             teamAPlayers,
             teamBPlayers,
-            message: "Oyunu başlatmak için en az 4 aktif oyuncu gerekir.",
+            errorCode: PlayerErrorCode.NOT_ENOUGH_PLAYERS,
+            errorParams,
+            message: getPlayerErrorMessage(PlayerErrorCode.NOT_ENOUGH_PLAYERS, errorParams),
         };
     }
 
@@ -100,6 +108,7 @@ export function resolveRoomStartDecision(
         teamAPlayers < TEAM_MINIMUM_PLAYERS ||
         teamBPlayers < TEAM_MINIMUM_PLAYERS
     ) {
+        const errorParams = { minimum: TEAM_MINIMUM_PLAYERS };
         return {
             allowed: false,
             minimumPlayers,
@@ -107,7 +116,9 @@ export function resolveRoomStartDecision(
             registeredPlayers,
             teamAPlayers,
             teamBPlayers,
-            message: "Oyunu başlatmak için her takımda en az 2 aktif oyuncu bulunmalı.",
+            errorCode: PlayerErrorCode.TEAM_TOO_SMALL,
+            errorParams,
+            message: getPlayerErrorMessage(PlayerErrorCode.TEAM_TOO_SMALL, errorParams),
         };
     }
 

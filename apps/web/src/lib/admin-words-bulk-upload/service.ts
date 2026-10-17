@@ -54,7 +54,7 @@ export async function resolveFixedCategoryIds(
     });
 
     if (categories.length !== uniqueCategoryIds.length) {
-        return { error: "Secilen kategori veya alt kategori bulunamadi." };
+        return { error: "Seçilen kategori veya alt kategori bulunamadı." };
     }
 
     if (subcategoryIdValue) {
@@ -63,7 +63,7 @@ export async function resolveFixedCategoryIds(
         const subcategory = categories.find((category) => category.id === subcategoryId);
 
         if (!subcategory || subcategory.parentId !== parentCategoryId) {
-            return { error: "Alt kategori secimi ust kategori ile eslesmiyor." };
+            return { error: "Alt kategori seçimi üst kategori ile eşleşmiyor." };
         }
 
         return subcategoryId ? [subcategoryId] : [];
@@ -109,12 +109,12 @@ export function extractCsvCategoryIds(
     const subcategoryName = cols[3] ?? "";
 
     if (!categoryName) {
-        return { error: `Satir ${rowIndex}: CSV modunda kategori zorunlu.` };
+        return { error: `Satır ${rowIndex}: CSV modunda kategori zorunlu.` };
     }
 
     const rootCategory = categoryIndex.byRootName.get(normalizeLabel(categoryName, locale));
     if (!rootCategory) {
-        return { error: `Satir ${rowIndex}: "${categoryName}" kategorisi bulunamadi.` };
+        return { error: `Satır ${rowIndex}: "${categoryName}" kategorisi bulunamadı.` };
     }
 
     if (!subcategoryName) {
@@ -126,7 +126,7 @@ export function extractCsvCategoryIds(
     );
     if (!subcategory) {
         return {
-            error: `Satir ${rowIndex}: "${subcategoryName}" alt kategorisi "${categoryName}" altinda bulunamadi.`,
+            error: `Satır ${rowIndex}: "${subcategoryName}" alt kategorisi "${categoryName}" altında bulunamadı.`,
         };
     }
 
@@ -208,7 +208,7 @@ export async function processBulkWordUpload(options: {
         });
         if (existing) {
             results.skipped += 1;
-            results.skippedRows.push(`Satir ${rowNumber}: "${wordText}" zaten mevcut, atlandi.`);
+            results.skippedRows.push(`Satır ${rowNumber}: "${wordText}" zaten mevcut, atlandı.`);
             continue;
         }
 
@@ -233,7 +233,7 @@ export async function processBulkWordUpload(options: {
             });
             results.success += 1;
         } catch {
-            results.errors.push(`Satir ${rowNumber}: Veritabani hatasi.`);
+            results.errors.push(`Satır ${rowNumber}: Veritabanı hatası.`);
         }
     }
 

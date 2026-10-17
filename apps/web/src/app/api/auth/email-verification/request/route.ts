@@ -12,14 +12,16 @@ import {
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { isTrustedStateChangeRequest } from "@/lib/security/request-origin";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
+import { PlayerNoticeCode, playerNotice } from "@/lib/errors/player-notice";
 
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
-        return NextResponse.json({ error: "Geçersiz istek." }, { status: 403 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
     }
     const user = await getSessionUser();
     if (!user) {
-        return NextResponse.json({ error: "Giriş gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const ip = getRequestIp(request);
@@ -40,10 +42,7 @@ export async function POST(request: Request) {
     const limit = shortLimit.allowed ? dailyLimit : shortLimit;
     if (!shortLimit.allowed || !dailyLimit.allowed) {
         return NextResponse.json(
-            {
-                error:
-                    "Çok fazla doğrulama isteği gönderdin. Daha sonra tekrar dene.",
-            },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             {
                 status: 429,
                 headers: buildRateLimitHeaders(limit),
@@ -57,16 +56,13 @@ export async function POST(request: Request) {
         !isEmailVerificationRestrictionActive(user)
     ) {
         return NextResponse.json(
-            { error: "E-posta doğrulaması şu anda kapalı." },
+            playerError(PlayerErrorCode.EMAIL_VERIFICATION_DISABLED),
             { status: 409 }
         );
     }
     if (!getEmailProviderReadiness().configured) {
         return NextResponse.json(
-            {
-                error:
-                    "E-posta servisi şu anda hazır değil. Lütfen daha sonra tekrar dene.",
-            },
+            playerError(PlayerErrorCode.EMAIL_SERVICE_UNAVAILABLE),
             { status: 503 }
         );
     }
@@ -78,12 +74,12 @@ export async function POST(request: Request) {
     if (result === "already_verified") {
         return NextResponse.json({
             status: "already_verified",
-            message: "E-posta adresin zaten doğrulanmış.",
+            ...playerNotice(PlayerNoticeCode.EMAIL_ALREADY_VERIFIED),
         });
     }
     if (result === "email_missing") {
         return NextResponse.json(
-            { error: "Hesabında doğrulanacak bir e-posta adresi yok." },
+            playerError(PlayerErrorCode.NO_EMAIL_TO_VERIFY),
             { status: 409 }
         );
     }
@@ -91,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
         {
             status: "queued",
-            message: "Doğrulama bağlantısı gönderim kuyruğuna alındı.",
+            ...playerNotice(PlayerNoticeCode.VERIFICATION_EMAIL_QUEUED),
         },
         { status: 202, headers: buildRateLimitHeaders(limit) }
     );

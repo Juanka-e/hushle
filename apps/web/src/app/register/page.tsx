@@ -16,8 +16,15 @@ import {
     PASSWORD_MIN_LENGTH,
 } from "@hushle/auth-policy";
 import { toast } from "sonner";
+import { announceGuestClaim } from "@/components/game/guest-claim-finalizer";
+import {
+    clearPendingGuestClaim,
+    readPendingGuestClaim,
+} from "@/lib/client/guest-claim-storage";
+import type { GuestClaimSummary } from "@/lib/match-settlement/guest-claim-rules";
 import { useBranding } from "@/components/providers/branding-provider";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
 import { LanguageSwitcher } from "@/components/i18n/language-switcher";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,6 +76,8 @@ export default function RegisterPage() {
 
         try {
             const { token } = await getCaptchaTokenForAction("register");
+            // Set by "keep this match" on the game-over screen of a guest.
+            const guestToken = readPendingGuestClaim();
             const res = await fetch("/api/auth/register", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -77,16 +86,21 @@ export default function RegisterPage() {
                     email,
                     password,
                     captchaToken: token,
+                    ...(guestToken ? { guestToken } : {}),
                 }),
             });
 
             const data = (await res.json()) as {
                 error?: string;
                 verificationRequired?: boolean;
+                guestClaim?: GuestClaimSummary;
             };
+            const guestClaim = res.ok ? data.guestClaim : undefined;
+            // Without an answer the copy stays and the claim is retried after sign-in.
+            if (guestClaim) clearPendingGuestClaim();
 
             if (!res.ok) {
-                setError(data.error || t("auth.registerFailed"));
+                setError(resolveApiErrorMessage(locale, data, t("auth.registerFailed")));
             } else {
                 if (data.verificationRequired) {
                     toast.success(
@@ -98,6 +112,8 @@ export default function RegisterPage() {
                     router.push("/login");
                 }
             }
+            // Announced last so it stacks above the sign-up toast.
+            if (guestClaim) announceGuestClaim(guestClaim, t);
         } catch {
             setError(t("auth.genericError"));
         } finally {

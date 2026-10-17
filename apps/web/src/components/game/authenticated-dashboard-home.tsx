@@ -38,6 +38,10 @@ import {
   SOCKET_CLIENT_AUTH,
   getSocketProtocolErrorMessage,
 } from "@/lib/socket/protocol-version";
+import {
+  readSocketPlayerError,
+  resolvePlayerErrorMessage,
+} from "@/lib/errors/resolve-player-error";
 import type { PendingAdminHandoffState } from "@/types/game";
 
 interface SocketIdentityPayload {
@@ -68,7 +72,7 @@ export function AuthenticatedDashboardHome({
   const router = useRouter();
   const { data: session } = useSession();
   const branding = useBranding();
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const sessionUsername = session?.user?.name || "";
 
   async function getServerActiveRoomContext(): Promise<ActiveRoomContext | null> {
@@ -208,15 +212,15 @@ export function AuthenticatedDashboardHome({
         router.push(`/room/${data.odaKodu}`);
       });
 
-      socket.on("hata", (message: string) => {
-        setError(message);
+      socket.on("hata", (message: unknown, meta?: unknown) => {
+        setError(resolvePlayerErrorMessage(locale, readSocketPlayerError(message, meta)));
         setIsConnecting(false);
         socket.disconnect();
       });
 
       socket.on("connect_error", (error) => {
         setError(
-          getSocketProtocolErrorMessage(error) ??
+          getSocketProtocolErrorMessage(error, locale) ??
             t("home.connectionFailed")
         );
         setIsConnecting(false);

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla kozmetik siralama denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla kozmetik sıralama denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -70,14 +70,14 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: "Gecersiz siralama verisi.", details: error.issues },
+                { error: "Geçersiz sıralama verisi.", details: error.issues },
                 { status: 400 }
             );
         }
 
         console.error("Failed to reorder shop items:", error);
         return NextResponse.json(
-            { error: "Kozmetik siralamasi guncellenemedi." },
+            { error: "Kozmetik sıralaması güncellenemedi." },
             { status: 500 }
         );
     }

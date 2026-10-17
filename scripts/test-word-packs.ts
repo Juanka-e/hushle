@@ -425,7 +425,7 @@ function checkLocale(locale: GameContentLocale, cards: PackCard[], readme: strin
 
 function runSelfChecks() {
     // Parser contract shared with processBulkWordUpload.
-    assert.deepEqual(splitBulkWordUploadLines(" \n\r\n"), { error: "CSV dosyasi bos." });
+    assert.deepEqual(splitBulkWordUploadLines(" \n\r\n"), { error: "CSV dosyası boş." });
     const split = splitBulkWordUploadLines("KELİME,zorluk\r\n\r\nElma,1,Meyve,,Kırmızı\r\nArmut,2,Meyve,,Sarı\n", "tr");
     assert.ok("rows" in split);
     assert.deepEqual(split.rows.map((row) => row.rowNumber), [2, 3]);
@@ -438,17 +438,17 @@ function runSelfChecks() {
     assert.ok("rows" in splitBulkWordUploadLines("word,difficulty\nApple,1,Fruit,,Red", "en"));
     assert.deepEqual(
         splitBulkWordUploadLines(Array.from({ length: MAX_BULK_WORD_UPLOAD_ROWS + 1 }, () => "a,1,b").join("\n")),
-        { error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satiri icerebilir.` }
+        { error: `CSV en fazla ${MAX_BULK_WORD_UPLOAD_ROWS} veri satırı içerebilir.` }
     );
     const missingTaboo = parseBulkWordUploadRow({ rowNumber: 7, line: "Elma,1,Meyve,," }, "csv_categories");
     assert.ok(!("error" in missingTaboo));
-    assert.equal(missingTaboo.fieldError, "Satir 7: En az 1 yasakli kelime gerekli.");
+    assert.equal(missingTaboo.fieldError, "Satır 7: En az 1 yasaklı kelime gerekli.");
     const badDifficulty = parseBulkWordUploadRow({ rowNumber: 3, line: "Elma,4,Meyve,,Kırmızı" }, "csv_categories");
     assert.ok(!("error" in badDifficulty));
-    assert.equal(badDifficulty.fieldError, "Satir 3: Zorluk 1-3 arasinda olmali.");
+    assert.equal(badDifficulty.fieldError, "Satır 3: Zorluk 1-3 arasında olmalı.");
     assert.deepEqual(
         parseBulkWordUploadRow({ rowNumber: 4, line: "Elma,1,Meyve,Kırmızı" }, "csv_categories"),
-        { error: "Satir 4: En az 5 sutun gerekli (kelime, zorluk, kategori, alt_kategori, yasakli1)." }
+        { error: "Satır 4: En az 5 sütun gerekli (kelime, zorluk, kategori, alt_kategori, yasakli1)." }
     );
     const fixedRow = parseBulkWordUploadRow({ rowNumber: 2, line: " Elma , 2 , Kırmızı ,, Meyve " }, "fixed_categories");
     assert.ok(!("error" in fixedRow));
@@ -459,7 +459,7 @@ function runSelfChecks() {
         "fixed_categories"
     );
     assert.ok(!("error" in tooManyTaboo));
-    assert.equal(tooManyTaboo.fieldError, "Satir 5: En fazla 12 yasakli kelime eklenebilir.");
+    assert.equal(tooManyTaboo.fieldError, "Satır 5: En fazla 12 yasaklı kelime eklenebilir.");
 
     // Root and stem detection.
     const related: Array<[string, string, GameContentLocale]> = [

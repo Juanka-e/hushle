@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla audit istegi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla audit isteği. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (!parsedQuery.success) {
-        return NextResponse.json({ error: "Gecersiz audit filtresi." }, { status: 422 });
+        return NextResponse.json({ error: "Geçersiz audit filtresi." }, { status: 422 });
     }
 
     const data = await getAdminAuditLogs(parsedQuery.data);

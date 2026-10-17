@@ -8,6 +8,8 @@ import {
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import { isTrustedStateChangeRequest } from "@/lib/security/request-origin";
+import { processGuestClaimsForUser } from "@/lib/match-settlement/guest-claim";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 const confirmSchema = z.object({
     token: z.string().trim().min(40).max(160),
@@ -15,7 +17,7 @@ const confirmSchema = z.object({
 
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
-        return NextResponse.json({ error: "Geçersiz istek." }, { status: 403 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
     }
     const rateLimit = await consumeDistributedRequestRateLimit({
         bucket: "email-verification-confirm",
@@ -25,10 +27,7 @@ export async function POST(request: Request) {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            {
-                error:
-                    "Çok fazla doğrulama denemesi yapıldı. Lütfen daha sonra tekrar deneyin.",
-            },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             {
                 status: 429,
                 headers: buildRateLimitHeaders(rateLimit),
@@ -43,10 +42,7 @@ export async function POST(request: Request) {
         });
         if (!result.ok) {
             return NextResponse.json(
-                {
-                    error:
-                        "Doğrulama bağlantısı geçersiz, süresi dolmuş veya daha önce kullanılmış.",
-                },
+                playerError(PlayerErrorCode.VERIFICATION_LINK_INVALID),
                 {
                     status: 400,
                     headers: buildRateLimitHeaders(rateLimit),
@@ -69,6 +65,12 @@ export async function POST(request: Request) {
         } catch (error) {
             console.error("Email verification audit could not be written", error);
         }
+        // Guest matches claimed at signup were waiting for this; the worker retries failures.
+        try {
+            await processGuestClaimsForUser(result.userId);
+        } catch (error) {
+            console.error("Guest match claims could not be settled after verification", error);
+        }
         return NextResponse.json(
             { ok: true },
             { headers: buildRateLimitHeaders(rateLimit) }
@@ -76,7 +78,7 @@ export async function POST(request: Request) {
     } catch (error) {
         if (error instanceof z.ZodError || error instanceof SyntaxError) {
             return NextResponse.json(
-                { error: "Geçersiz doğrulama isteği." },
+                playerError(PlayerErrorCode.INVALID_REQUEST),
                 {
                     status: 400,
                     headers: buildRateLimitHeaders(rateLimit),
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
             );
         }
         return NextResponse.json(
-            { error: "E-posta doğrulanamadı." },
+            playerError(PlayerErrorCode.EMAIL_VERIFICATION_FAILED),
             {
                 status: 500,
                 headers: buildRateLimitHeaders(rateLimit),

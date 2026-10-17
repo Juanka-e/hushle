@@ -4,17 +4,20 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleAlert, LoaderCircle } from "lucide-react";
+import { useI18n } from "@/components/providers/i18n-provider";
+import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
 
 type State = "verifying" | "success" | "error";
 
 export function VerifyEmailChangeClient() {
+    const { locale, t } = useI18n();
     const token = useSearchParams().get("token") ?? "";
     const attempted = useRef(false);
     const [state, setState] = useState<State>(
         token ? "verifying" : "error"
     );
     const [message, setMessage] = useState(
-        token ? "Yeni adres doğrulanıyor..." : "Doğrulama bağlantısı eksik."
+        token ? t("auth.verifyingNewEmail") : t("auth.verificationLinkMissing")
     );
 
     useEffect(() => {
@@ -27,28 +30,22 @@ export function VerifyEmailChangeClient() {
             body: JSON.stringify({ token }),
         })
             .then(async (response) => {
-                const payload = (await response.json().catch(() => null)) as {
-                    error?: string;
-                } | null;
+                const payload: unknown = await response.json().catch(() => null);
                 if (!response.ok) {
-                    throw new Error(
-                        payload?.error || "Bağlantı kullanılamadı."
+                    setState("error");
+                    setMessage(
+                        resolveApiErrorMessage(locale, payload, t("auth.linkUnavailable"))
                     );
+                    return;
                 }
                 setState("success");
-                setMessage(
-                    "E-posta adresin değiştirildi. Güvenlik için açık oturumların kapatıldı."
-                );
+                setMessage(t("auth.emailChanged"));
             })
-            .catch((error: unknown) => {
+            .catch(() => {
                 setState("error");
-                setMessage(
-                    error instanceof Error
-                        ? error.message
-                        : "Bağlantı kullanılamadı."
-                );
+                setMessage(t("auth.linkUnavailable"));
             });
-    }, [token]);
+    }, [locale, t, token]);
 
     const Icon =
         state === "success"
@@ -66,10 +63,10 @@ export function VerifyEmailChangeClient() {
                 />
                 <h1 className="mt-6 text-3xl font-black">
                     {state === "success"
-                        ? "E-posta değiştirildi"
+                        ? t("auth.emailChangedTitle")
                         : state === "error"
-                          ? "Bağlantı kullanılamadı"
-                          : "Adres doğrulanıyor"}
+                          ? t("auth.linkUnavailable")
+                          : t("auth.verifyingAddress")}
                 </h1>
                 <p className="mt-4 text-sm leading-7 text-slate-300">
                     {message}
@@ -78,7 +75,7 @@ export function VerifyEmailChangeClient() {
                     href="/login"
                     className="mt-8 inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-300 px-6 text-sm font-black text-[#082322] hover:bg-teal-200"
                 >
-                    Giriş ekranına git
+                    {t("auth.goLogin")}
                 </Link>
             </section>
         </main>

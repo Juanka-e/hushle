@@ -1,9 +1,25 @@
 # Kalan Isler
 
-> Son guncelleme: 14 August 2026
+> Son guncelleme: 6 October 2026
 > Durum: aktif uygulanabilir backlog
 
 ## Su Anki Oncelik Sirasi
+
+2026-10-06 veri guvenligi kapanislari: kalici kozmetik/branding storage,
+immutable upload, eski dosyalari silmeden migration, MySQL + gorsel checksum'li
+backup ve izole restore, basarili CI'ye bagli deploy, app healthcheck, IP ingress
+guven zinciri, finalize wallet lock ve Redis rate-limit uygulandi. Lint/i18n
+regresyonlari duzeltildi. Detay ve operator komutlari:
+[`persistent-assets-and-data-backups.md`](../deploy/persistent-assets-and-data-backups.md).
+
+2026-10-12: mac sonucu ve odul artik istemciden bagimsiz, sunucu tarafinda
+`match_settlements` outbox'i ile yaziliyor (claim, geri cekilmeli tekrar, dead letter,
+30 gun temizlik). Misafir katilimcilar ileride hesap sahiplenmesi icin anlik
+goruntude tutuluyor. Tasarim: `docs/superpowers/specs/2026-10-12-durable-match-settlement-design.md`.
+
+Henuz kapanmayan release gate'leri: dependency advisory/runtime ayrimi, atomik
+release/rollback, gercek R2/S3 acceptance ve backup cron/alarm kurulumu. Bunlar
+yedekleme altyapisi var diye tamamlandi sayilmaz.
 
 2026-09-07 planlama notu: dahili sesli sohbet ertelendi. IP gizliligi,
 P2P/TURN/SFU maliyetleri ve yeniden degerlendirme kosullari; ilk takim flip'i,
@@ -65,6 +81,20 @@ Hedef:
 
 Referans:
 - `docs/guides/web-real-device-smoke.md`
+
+## Rol Kurtarma
+
+2026-10-13: baglanti duraklatmasindan 60 sn sonra yonetici (yonetici yoksa mactaki
+aktif bir oyuncu) "Onsuz devam et" veya "Maci bitir" secebilir. Anlatici ayrildiysa
+tur biter (gecis ekraninda ayni takim yeni anlaticiyla devam eder), gozetmen
+ayrildiysa yenisi atanir; maci bitirmek `host_ended` olarak coin vermeden kaydeder.
+Onsuz devam yalniz her takimda en az 2 cevrimici oyuncu kaliyorsa sunulur.
+Duraklatma tetikleyicisi ve cozum sekli Admin > Lab'de 7/30 gunluk gorunur.
+Spec: `docs/superpowers/specs/2026-10-13-connection-pause-resolution-design.md`.
+
+Hala ertelenen (Lab verisi gerektirirse):
+- takim lideri rol yonetimi
+- yonetici beklemeden otomatik karar
 
 Fiziksel iOS/Android/laptop smoke harness'i tamamlandi. Gercek cihaz sonucu
 otomasyonla uretilemeyecegi icin release kaniti olarak manuel acik kalir:

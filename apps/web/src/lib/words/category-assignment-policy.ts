@@ -32,7 +32,7 @@ export async function validateWordCategorySelection(
     });
 
     if (categories.length !== normalizedCategoryIds.length) {
-        throw new Error("Secilen kategorilerden biri bulunamadi.");
+        throw new Error("Seçilen kategorilerden biri bulunamadı.");
     }
 
     if (locale && categories.some((category) => category.locale !== locale)) {
@@ -57,7 +57,7 @@ export async function validateWordCategorySelection(
 
     if (invalidPairs.length > 0) {
         throw new Error(
-            `Bir kelimeyi hem ana kategoriye hem alt kategorisine birlikte baglayamazsin: ${invalidPairs.join(", ")}. Alt kategori secildiyse yalniz alt kategoriyi kullan.`
+            `Bir kelimeyi hem ana kategoriye hem alt kategorisine birlikte bağlayamazsın: ${invalidPairs.join(", ")}. Alt kategori seçildiyse yalnız alt kategoriyi kullan.`
         );
     }
 

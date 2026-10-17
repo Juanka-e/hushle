@@ -55,7 +55,7 @@ export async function POST(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla moderasyon islemi denemesi. Lutfen biraz bekleyin." },
+            { error: "Çok fazla moderasyon işlemi denemesi. Lütfen biraz bekleyin." },
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -63,7 +63,7 @@ export async function POST(
     const params = await context.params;
     const parsedParams = routeParamsSchema.safeParse(params);
     if (!parsedParams.success) {
-        return NextResponse.json({ error: "Gecersiz kullanici." }, { status: 422 });
+        return NextResponse.json({ error: "Geçersiz kullanıcı." }, { status: 422 });
     }
 
     try {
@@ -75,7 +75,7 @@ export async function POST(
 
         if (targetUserId === adminSession.id) {
             return NextResponse.json(
-                { error: "Kendi hesabiniza moderasyon islemi uygulayamazsiniz." },
+                { error: "Kendi hesabınıza moderasyon işlemi uygulayamazsınız." },
                 { status: 403 }
             );
         }
@@ -91,26 +91,26 @@ export async function POST(
         });
 
         if (!targetUser) {
-            return NextResponse.json({ error: "Kullanici bulunamadi." }, { status: 404 });
+            return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 404 });
         }
 
         if (targetUser.role === "admin") {
             return NextResponse.json(
-                { error: "Admin hesaplari bu panelden moderasyona kapali." },
+                { error: "Admin hesapları bu panelden moderasyona kapalı." },
                 { status: 403 }
             );
         }
 
         if (action.actionType === "reactivate" && !targetUser.isSuspended) {
             return NextResponse.json(
-                { error: "Kullanici zaten aktif durumda." },
+                { error: "Kullanıcı zaten aktif durumda." },
                 { status: 409 }
             );
         }
 
         if (action.actionType === "suspend" && targetUser.isSuspended) {
             return NextResponse.json(
-                { error: "Kullanici zaten askiya alinmis durumda." },
+                { error: "Kullanıcı zaten askıya alınmış durumda." },
                 { status: 409 }
             );
         }
@@ -185,14 +185,14 @@ export async function POST(
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: "Gecersiz moderasyon verisi.", details: error.issues },
+                { error: "Geçersiz moderasyon verisi.", details: error.issues },
                 { status: 400 }
             );
         }
 
         console.error("Failed to apply moderation action:", error);
         return NextResponse.json(
-            { error: "Moderasyon islemi uygulanamadi." },
+            { error: "Moderasyon işlemi uygulanamadı." },
             { status: 500 }
         );
     }

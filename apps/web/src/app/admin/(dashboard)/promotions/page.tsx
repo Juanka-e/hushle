@@ -1136,7 +1136,7 @@ export default function PromotionsPage() {
                 body: JSON.stringify(payload),
             });
             if (!response.ok) {
-                const errorPayload = (await response.json().catch(() => ({ error: "Indirim kaydedilemedi." }))) as { error?: string };
+                const errorPayload = (await response.json().catch(() => ({ error: "İndirim kaydedilemedi." }))) as { error?: string };
                 toast.error(errorPayload.error || "İndirim kaydedilemedi.");
                 return;
             }

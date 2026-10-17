@@ -82,9 +82,9 @@ test.describe("admin promotions operations", () => {
         page,
     }) => {
         await page.goto("/admin/login");
-        await page.getByLabel("Kullanici Adi").fill(username);
-        await page.getByLabel("Sifre").fill(password);
-        await page.getByRole("button", { name: "Giris Yap" }).click();
+        await page.getByLabel("Kullanıcı Adı").fill(username);
+        await page.getByLabel("Şifre").fill(password);
+        await page.getByRole("button", { name: "Giriş Yap" }).click();
         await page.waitForURL(/\/admin(?:\/)?$/);
 
         const promotionResponses = Promise.all(
