@@ -130,6 +130,19 @@ test.describe("guest match claim", () => {
         });
     }
 
+    /**
+     * Rejects with `describe()` when `promise` is still pending after `ms`. Socket events
+     * have no built-in timeout, so a lost one would otherwise hang until the test timeout
+     * with no hint of where the match stopped.
+     */
+    function within<T>(promise: Promise<T>, ms: number, describe: () => string): Promise<T> {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const expired = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error(describe())), ms);
+        });
+        return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
+    }
+
     /** 2v2 with the browser guest in seat two; plays to the score target and waits for game over. */
     async function playMatch(
         browser: Browser,
@@ -140,6 +153,16 @@ test.describe("guest match claim", () => {
         const host = await socketGuest(`Host${tag}${suffix}`);
         const roomCode = host.roomCode;
         roomCodes.push(roomCode);
+        // Kept for failure messages: a refused start or a stalled score explains a missing event.
+        const hostErrors: string[] = [];
+        let lastScore = "none";
+        host.socket.on("hata", (message: unknown, meta?: { code?: string }) => {
+            hostErrors.push(meta?.code ?? String(message));
+        });
+        host.socket.on("oyunDurumuGuncelle", (state: { skor?: { A: number; B: number } }) => {
+            if (state.skor) lastScore = `A ${state.skor.A} - B ${state.skor.B}`;
+        });
+        const context = () => `room ${roomCode}, score ${lastScore}, host errors: ${hostErrors.join(", ") || "none"}`;
         const playerName = `Misafir${tag}${suffix}`;
         const joined = lobbyIncludes(host.socket, playerName);
         const player = await browserGuest(browser, playerName, roomCode, viewport);
@@ -160,14 +183,17 @@ test.describe("guest match claim", () => {
             seciliZorluklar: [1],
             ayarlar: { sure: 60, mod: "skor", deger: 10 },
         });
-        const narrator = (await roles).find(([, role]) => role === "Anlatıcı")?.[0] ?? null;
+        // The start transition alone takes about ten seconds.
+        const turnRoles = await within(roles, 30_000, () => `first turn roles never arrived (${context()})`);
+        const narrator = turnRoles.find(([, role]) => role === "Anlatıcı")?.[0] ?? null;
         await duringMatch?.(roomCode, host.socket);
         let over = false;
         void gameOver.then(() => {
             over = true;
         });
         // The server ignores narrator actions closer than 200 ms apart.
-        for (let attempt = 0; attempt < 40 && !over; attempt += 1) {
+        let attempts = 0;
+        for (; attempts < 40 && !over; attempts += 1) {
             if (narrator) {
                 narrator.emit("oyunVerisi", { eylem: "dogru" });
             } else {
@@ -175,7 +201,11 @@ test.describe("guest match claim", () => {
             }
             await player.waitForTimeout(300);
         }
-        await gameOver;
+        await within(
+            gameOver,
+            30_000,
+            () => `game over never arrived after ${attempts} correct answers by the ${narrator ? "socket" : "browser"} narrator (${context()})`
+        );
         return { player, roomCode, host: host.socket };
     }
 
