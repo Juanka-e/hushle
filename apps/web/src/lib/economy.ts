@@ -20,6 +20,8 @@ import {
     getStoreLiveopsState,
 } from "@/lib/system-settings/economy";
 import { getSystemSettings } from "@/lib/system-settings/service";
+import { getPlayerErrorMessage } from "@/lib/errors/player-error";
+import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import {
     applyWalletLedgerMutation,
     WalletLedgerInsufficientBalanceError,
@@ -639,6 +641,11 @@ export async function getStoreCatalog(
     });
 }
 
+/** Rejected coupon preview: the code for clients, the Turkish text for older ones. */
+function couponPreviewRejection(code: PlayerErrorCode): { valid: false; code: PlayerErrorCode; reason: string } {
+    return { valid: false, code, reason: getPlayerErrorMessage(code) };
+}
+
 export async function previewCouponForTarget(
     userId: number,
     targetKind: "shop_item" | "bundle",
@@ -652,8 +659,7 @@ export async function previewCouponForTarget(
     const normalizedCode = normalizeCouponCode(couponCode);
     if (!normalizedCode) {
         return {
-            valid: false,
-            reason: "Kupon kodu bos olamaz.",
+            ...couponPreviewRejection(PlayerErrorCode.COUPON_CODE_EMPTY),
             targetKind,
             targetId,
             pricing: null,
@@ -663,8 +669,7 @@ export async function previewCouponForTarget(
 
     if (!settings.economy.couponsEnabled) {
         return {
-            valid: false,
-            reason: "Kupon kullanimi su anda gecici olarak kapali.",
+            ...couponPreviewRejection(PlayerErrorCode.COUPONS_DISABLED),
             targetKind,
             targetId,
             pricing: null,
@@ -674,8 +679,7 @@ export async function previewCouponForTarget(
 
     if (targetKind === "bundle" && !settings.economy.bundlesEnabled) {
         return {
-            valid: false,
-            reason: "Bundle satislari su anda gecici olarak kapali.",
+            ...couponPreviewRejection(PlayerErrorCode.BUNDLES_DISABLED),
             targetKind,
             targetId,
             pricing: null,
@@ -750,8 +754,7 @@ export async function previewCouponForTarget(
 
     if (basePriceCoin === undefined || basePriceCoin === null || !isActiveTarget) {
         return {
-            valid: false,
-            reason: "Hedef urun bulunamadi.",
+            ...couponPreviewRejection(PlayerErrorCode.COUPON_TARGET_NOT_FOUND),
             targetKind,
             targetId,
             pricing: null,
@@ -771,8 +774,7 @@ export async function previewCouponForTarget(
 
     if (!couponResult.ok) {
         return {
-            valid: false,
-            reason: couponResult.reason,
+            ...couponPreviewRejection(couponResult.code),
             targetKind,
             targetId,
             pricing: basePricing,
@@ -782,6 +784,7 @@ export async function previewCouponForTarget(
 
     return {
         valid: true,
+        code: null,
         reason: null,
         targetKind,
         targetId,
@@ -904,8 +907,7 @@ export async function previewCouponForCatalog(
     const normalizedCode = normalizeCouponCode(couponCode);
     if (!normalizedCode) {
         return {
-            valid: false,
-            reason: "Kupon kodu boş olamaz.",
+            ...couponPreviewRejection(PlayerErrorCode.COUPON_CODE_EMPTY),
             coupon: null,
             items: [],
             bundles: [],
@@ -914,8 +916,7 @@ export async function previewCouponForCatalog(
 
     if (!settings.economy.couponsEnabled) {
         return {
-            valid: false,
-            reason: "Kupon kullanımı şu anda geçici olarak kapalı.",
+            ...couponPreviewRejection(PlayerErrorCode.COUPONS_DISABLED),
             coupon: null,
             items: [],
             bundles: [],
@@ -981,8 +982,7 @@ export async function previewCouponForCatalog(
 
     if (!coupon) {
         return {
-            valid: false,
-            reason: "Kupon doğrulanamadı.",
+            ...couponPreviewRejection(PlayerErrorCode.COUPON_VALIDATION_FAILED),
             coupon: null,
             items: [],
             bundles: [],
@@ -1017,8 +1017,7 @@ export async function previewCouponForCatalog(
 
     if (previewItems.length === 0 && previewBundles.length === 0) {
         return {
-            valid: false,
-            reason: "Bu kupon mağazada geçerli bir ürün ya da paket bulamadı.",
+            ...couponPreviewRejection(PlayerErrorCode.COUPON_NO_MATCHING_OFFER),
             coupon: null,
             items: [],
             bundles: [],
@@ -1027,6 +1026,7 @@ export async function previewCouponForCatalog(
 
     return {
         valid: true,
+        code: null,
         reason: null,
         coupon: {
             code: coupon.code,

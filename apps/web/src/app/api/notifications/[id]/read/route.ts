@@ -11,6 +11,7 @@ import {
     consumeRequestRateLimit,
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +21,12 @@ export async function PATCH(
 ) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const params = notificationParamsSchema.safeParse(await context.params);
     if (!params.success) {
-        return NextResponse.json({ error: "Gecersiz bildirim." }, { status: 422 });
+        return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 422 });
     }
 
     const rateLimit = consumeRequestRateLimit({
@@ -36,7 +37,7 @@ export async function PATCH(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla istek gonderildi. Lutfen biraz bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
@@ -45,7 +46,7 @@ export async function PATCH(
         const updated = await markNotificationReadForUser(params.data.id, sessionUser.id);
 
         if (!updated) {
-            return NextResponse.json({ error: "Bildirim bulunamadi." }, { status: 404 });
+            return NextResponse.json(playerError(PlayerErrorCode.NOTIFICATION_NOT_FOUND), { status: 404 });
         }
 
         return NextResponse.json(
@@ -55,14 +56,14 @@ export async function PATCH(
     } catch (error) {
         if (error instanceof z.ZodError) {
             return NextResponse.json(
-                { error: error.issues[0]?.message || "Gecersiz bildirim." },
+                playerError(PlayerErrorCode.INVALID_REQUEST),
                 { status: 422 }
             );
         }
 
         console.error("Failed to mark notification as read:", error);
         return NextResponse.json(
-            { error: "Bildirim guncellenemedi." },
+            playerError(PlayerErrorCode.NOTIFICATION_UPDATE_FAILED),
             { status: 500 }
         );
     }
@@ -74,12 +75,12 @@ export async function DELETE(
 ) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const params = notificationParamsSchema.safeParse(await context.params);
     if (!params.success) {
-        return NextResponse.json({ error: "Gecersiz bildirim." }, { status: 422 });
+        return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 422 });
     }
 
     const rateLimit = consumeRequestRateLimit({
@@ -90,14 +91,14 @@ export async function DELETE(
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Cok fazla istek gonderildi. Lutfen biraz bekleyin." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }
 
     const result = await archiveNotificationForUser(params.data.id, sessionUser.id);
     if (!result.updated) {
-        return NextResponse.json({ error: "Bildirim bulunamadi." }, { status: 404 });
+        return NextResponse.json(playerError(PlayerErrorCode.NOTIFICATION_NOT_FOUND), { status: 404 });
     }
 
     return NextResponse.json(result, { headers: buildRateLimitHeaders(rateLimit) });

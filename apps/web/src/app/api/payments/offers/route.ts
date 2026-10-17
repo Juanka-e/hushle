@@ -18,11 +18,12 @@ import {
     getPublicPaymentOrigin,
 } from "@/lib/payments/iyzico-owner-surface";
 import { getPaymentCheckoutAccess } from "@/lib/payments/checkout-control";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export async function GET() {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giriş gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
 
     const rateLimit = await consumeDistributedRequestRateLimit({
@@ -33,7 +34,7 @@ export async function GET() {
     });
     if (!rateLimit.allowed) {
         return NextResponse.json(
-            { error: "Çok sık yenileme yaptın. Biraz bekleyip tekrar dene." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(rateLimit) }
         );
     }

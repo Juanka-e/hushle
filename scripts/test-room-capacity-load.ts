@@ -113,8 +113,8 @@ function connectGuest(options: {
             finish();
         });
         socket.on("connect_error", (error) => fail(error));
-        socket.on("hata", (message: string) =>
-            fail(new Error(String(message)))
+        socket.on("hata", (message: string, meta?: { code?: string }) =>
+            fail(Object.assign(new Error(String(message)), { code: meta?.code }))
         );
     });
 }
@@ -197,10 +197,12 @@ async function run(): Promise<void> {
             concurrentCandidates - expectedRoomMax
         );
         for (const rejection of rejected) {
-            assert.match(
-                String(rejection.reason),
-                /oda dolu|takım da dolu|takim da dolu/i
+            const reason = rejection.reason as Error & { code?: string };
+            assert.ok(
+                reason.code === "ROOM_FULL" || reason.code === "TEAMS_FULL",
+                `unexpected rejection ${reason.code}: ${reason.message}`
             );
+            assert.match(reason.message, /oda dolu|takım da dolu/i);
         }
 
         const observedFullLobby = joined.find(
@@ -265,7 +267,9 @@ async function run(): Promise<void> {
 
         await assert.rejects(
             connectGuest({ name: "LoadOverflow", roomCode }),
-            /oda dolu|takım da dolu|takim da dolu/i
+            (error: Error & { code?: string }) =>
+                (error.code === "ROOM_FULL" || error.code === "TEAMS_FULL") &&
+                /oda dolu|takım da dolu/i.test(error.message)
         );
 
         console.log(

@@ -32,6 +32,10 @@ import {
     SOCKET_CLIENT_AUTH,
     getSocketProtocolErrorMessage,
 } from "@/lib/socket/protocol-version";
+import {
+    readSocketPlayerError,
+    resolvePlayerErrorMessage,
+} from "@/lib/errors/resolve-player-error";
 
 interface SocketIdentityPayload {
     playerId: string;
@@ -48,7 +52,7 @@ export default function HomePage() {
     const router = useRouter();
     const { status } = useSession();
     const branding = useBranding();
-    const { t } = useI18n();
+    const { locale, t } = useI18n();
 
     useEffect(() => {
         if (status === "authenticated") {
@@ -117,15 +121,17 @@ export default function HomePage() {
                 router.push(`/room/${data.odaKodu}`);
             });
 
-            socket.on("hata", (message: string) => {
-                setError(message);
+            socket.on("hata", (message: unknown, meta?: unknown) => {
+                setError(
+                    resolvePlayerErrorMessage(locale, readSocketPlayerError(message, meta))
+                );
                 setIsConnecting(false);
                 socket.disconnect();
             });
 
             socket.on("connect_error", (error) => {
                 setError(
-                    getSocketProtocolErrorMessage(error) ??
+                    getSocketProtocolErrorMessage(error, locale) ??
                         t("home.connectionFailed")
                 );
                 setIsConnecting(false);

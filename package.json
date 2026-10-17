@@ -165,6 +165,7 @@
     "test:room-display": "tsx scripts/test-room-display.ts",
     "test:room-socket-security": "tsx scripts/test-room-socket-security.ts",
     "test:socket-protocol-version": "tsx scripts/test-socket-protocol-version.ts",
+    "test:player-error-codes": "tsx scripts/test-player-error-codes.ts",
     "test:release-compatibility": "tsx scripts/test-release-compatibility-contract.ts",
     "test:frame-theme": "tsx scripts/test-frame-theme.ts",
     "test:template-config": "tsx scripts/test-template-config.ts",

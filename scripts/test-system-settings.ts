@@ -6,6 +6,7 @@ import {
 } from "../apps/web/src/lib/system-settings/schema";
 import {
     evaluateRoomRequestPolicy,
+    getFeatureDisabledErrorCode,
     getFeatureDisabledMessage,
     isRegistrationAvailable,
     isStoreAvailable,
@@ -16,7 +17,10 @@ const defaults = normalizeSystemSettings({});
 assert.deepEqual(defaults, DEFAULT_SYSTEM_SETTINGS);
 assert.equal(isRegistrationAvailable(defaults), true);
 assert.equal(isStoreAvailable(defaults), true);
-assert.equal(getFeatureDisabledMessage("store"), "Magaza su anda kullanima kapali.");
+assert.equal(getFeatureDisabledMessage("store"), "Mağaza şu anda kullanıma kapalı.");
+assert.equal(getFeatureDisabledMessage("register"), "Kayıtlar şu anda kapalı.");
+assert.equal(getFeatureDisabledErrorCode("store"), "STORE_DISABLED");
+assert.equal(getFeatureDisabledErrorCode("register"), "REGISTRATION_DISABLED");
 
 const invalidTeamCapacity = systemSettingsWriteSchema.safeParse({
     ...defaults,
@@ -73,7 +77,9 @@ const guestDenied = evaluateRoomRequestPolicy({
     isReconnect: false,
 });
 assert.equal(guestDenied.allowed, false);
-assert.equal(guestDenied.message, "Misafir girisi su anda kapali.");
+assert.equal(guestDenied.code, "GUEST_PLAY_DISABLED");
+assert.equal(guestDenied.message, "Misafir girişi şu anda kapalı.");
+assert.equal(guestDenied.customMessage, undefined);
 
 const maintenanceDenied = evaluateRoomRequestPolicy({
     settings: maintenanceSettings,
@@ -83,7 +89,30 @@ const maintenanceDenied = evaluateRoomRequestPolicy({
     isReconnect: false,
 });
 assert.equal(maintenanceDenied.allowed, false);
+assert.equal(maintenanceDenied.code, "MAINTENANCE_MODE");
 assert.equal(maintenanceDenied.message, "Bakim var.");
+assert.equal(maintenanceDenied.customMessage, "Bakim var.");
+
+const maintenanceWithoutNotice = evaluateRoomRequestPolicy({
+    settings: normalizeSystemSettings({
+        platform: {
+            maintenanceEnabled: true,
+            maintenanceMessage: "   ",
+            motdEnabled: false,
+            motdText: "",
+        },
+    }),
+    isAuthenticated: true,
+    isAdmin: false,
+    isCreateRequest: true,
+    isReconnect: false,
+});
+assert.equal(maintenanceWithoutNotice.code, "MAINTENANCE_MODE");
+assert.equal(
+    maintenanceWithoutNotice.message,
+    "Sunucu bakım modunda. Lütfen daha sonra tekrar deneyin."
+);
+assert.equal(maintenanceWithoutNotice.customMessage, undefined);
 
 const reconnectAllowed = evaluateRoomRequestPolicy({
     settings: maintenanceSettings,

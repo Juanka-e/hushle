@@ -25,6 +25,8 @@ import {
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { getSessionUser } from "@/lib/session";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
+import { getCheckoutProviderErrorCode } from "@/lib/payments/checkout-player-errors";
 
 const MAX_BODY_BYTES = 8 * 1024;
 const checkoutRequestSchema = z.object({
@@ -78,7 +80,7 @@ function getBoundedRequestId(request: Request): string | null {
 
 function unavailable() {
     return NextResponse.json(
-        { error: "Ödeme altyapısı şu anda kullanıma hazır değil.", code: "CHECKOUT_UNAVAILABLE" },
+        playerError(PlayerErrorCode.CHECKOUT_UNAVAILABLE),
         { status: 503, headers: { "Retry-After": "60", "Cache-Control": "no-store" } }
     );
 }
@@ -87,7 +89,7 @@ export async function POST(request: Request) {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
         return NextResponse.json(
-            { error: "Giriş gerekli." },
+            playerError(PlayerErrorCode.AUTH_REQUIRED),
             { status: 401, headers: { "Cache-Control": "no-store" } }
         );
     }
@@ -95,7 +97,7 @@ export async function POST(request: Request) {
     if (capabilityError) return capabilityError;
     if (!sessionUser.email || !sessionUser.emailVerifiedAt) {
         return NextResponse.json(
-            { error: "Ödeme için doğrulanmış bir e-posta adresi gerekli.", code: "VERIFIED_EMAIL_REQUIRED" },
+            playerError(PlayerErrorCode.VERIFIED_EMAIL_REQUIRED),
             { status: 403 }
         );
     }
@@ -126,7 +128,7 @@ export async function POST(request: Request) {
     const limit = userLimit.allowed ? ipLimit : userLimit;
     if (!userLimit.allowed || !ipLimit.allowed) {
         return NextResponse.json(
-            { error: "Çok fazla ödeme başlatma denemesi yaptın. Biraz bekleyip tekrar dene." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(limit) }
         );
     }
@@ -135,7 +137,7 @@ export async function POST(request: Request) {
     try {
         body = checkoutRequestSchema.parse(await readBoundedJson(request));
     } catch {
-        return NextResponse.json({ error: "Geçersiz ödeme isteği." }, { status: 422 });
+        return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 422 });
     }
     if (
         body.legalAcceptance.checkoutTermsVersion !== legal.checkoutTermsVersion
@@ -143,13 +145,13 @@ export async function POST(request: Request) {
         || body.legalAcceptance.distanceSalesNoticeVersion !== legal.distanceSalesNoticeVersion
     ) {
         return NextResponse.json(
-            { error: "Ödeme metinleri güncellendi. Lütfen metinleri yeniden incele.", code: "LEGAL_VERSION_MISMATCH" },
+            playerError(PlayerErrorCode.LEGAL_VERSION_MISMATCH),
             { status: 409 }
         );
     }
 
     const offer = await getActivePaymentOffer(body.offerCode);
-    if (!offer) return NextResponse.json({ error: "Ödeme teklifi bulunamadı." }, { status: 404 });
+    if (!offer) return NextResponse.json(playerError(PlayerErrorCode.OFFER_NOT_FOUND), { status: 404 });
     try {
         normalizePaymentGrantSnapshot({
             productKind: offer.productKind,
@@ -158,7 +160,7 @@ export async function POST(request: Request) {
         });
     } catch {
         return NextResponse.json(
-            { error: "Bu teklif şu anda teslimata hazır değil.", code: "INVALID_GRANT_SNAPSHOT" },
+            playerError(PlayerErrorCode.INVALID_GRANT_SNAPSHOT),
             { status: 409 }
         );
     }
@@ -217,7 +219,7 @@ export async function POST(request: Request) {
     } catch (error) {
         if (error instanceof PaymentOrderConflictError) {
             return NextResponse.json(
-                { error: "Bu ödeme isteği farklı bir sipariş için daha önce kullanıldı.", code: "IDEMPOTENCY_CONFLICT" },
+                playerError(PlayerErrorCode.IDEMPOTENCY_CONFLICT),
                 { status: 409 }
             );
         }
@@ -225,15 +227,10 @@ export async function POST(request: Request) {
             const retryable = error.retryable || error.code === "checkout_in_progress";
             const status = error.code === "checkout_in_progress" || error.code === "checkout_uncertain" ? 409 : 502;
             return NextResponse.json(
-                {
-                    error: error.code === "checkout_in_progress"
-                        ? "Ödeme hazırlanıyor. Lütfen kısa süre sonra tekrar dene."
-                        : "Ödeme sağlayıcısı işlemi tamamlayamadı. Sipariş durumu güvenle korunuyor.",
-                    code: error.code.toUpperCase(),
-                },
+                playerError(getCheckoutProviderErrorCode(error.code)),
                 { status, headers: retryable ? { "Retry-After": "5" } : undefined }
             );
         }
-        return NextResponse.json({ error: "Ödeme başlatılamadı.", code: "CHECKOUT_FAILED" }, { status: 500 });
+        return NextResponse.json(playerError(PlayerErrorCode.CHECKOUT_FAILED), { status: 500 });
     }
 }

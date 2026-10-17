@@ -1,3 +1,5 @@
+import type { PlayerErrorCode } from "@/lib/errors/player-error-codes";
+
 export const STORE_ITEM_TYPES = ["avatar", "frame", "card_back", "card_face"] as const;
 export const STORE_ITEM_RARITIES = ["common", "rare", "epic", "legendary"] as const;
 export const INVENTORY_ITEM_SOURCES = ["purchase", "grant", "migration"] as const;
@@ -259,6 +261,8 @@ export interface CouponPreviewView {
 
 export interface CouponPreviewResponse {
     valid: boolean;
+    /** Player error code when the coupon is rejected; `reason` is its Turkish text. */
+    code: PlayerErrorCode | null;
     reason: string | null;
     targetKind: "shop_item" | "bundle";
     targetId: number;
@@ -273,6 +277,8 @@ export interface CouponCatalogPreviewEntry {
 
 export interface CouponCatalogPreviewResponse {
     valid: boolean;
+    /** Player error code when the coupon is rejected; `reason` is its Turkish text. */
+    code: PlayerErrorCode | null;
     reason: string | null;
     coupon: CouponPreviewView | null;
     items: CouponCatalogPreviewEntry[];

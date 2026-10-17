@@ -22,6 +22,7 @@ import {
     normalizeEmail,
     sanitizeEmail,
 } from "@/lib/users/email";
+import { PlayerErrorCode, playerError, playerErrorFromValidation } from "@/lib/errors/player-error";
 
 const requestSchema = z.object({
     newEmail: z.email("Geçerli bir e-posta adresi gir.").max(191),
@@ -30,11 +31,11 @@ const requestSchema = z.object({
 
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
-        return NextResponse.json({ error: "Geçersiz istek." }, { status: 403 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
     }
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giriş gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
     const limit = await consumeDistributedRequestRateLimit({
         bucket: "email-change-request",
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     });
     if (!limit.allowed) {
         return NextResponse.json(
-            { error: "Çok fazla e-posta değişikliği denemesi yapıldı." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(limit) }
         );
     }
@@ -55,13 +56,13 @@ export async function POST(request: Request) {
         const normalizedNewEmail = normalizeEmail(newEmail);
         if (!isEmailWithinLimit(newEmail)) {
             return NextResponse.json(
-                { error: "E-posta adresi çok uzun." },
+                playerError(PlayerErrorCode.EMAIL_TOO_LONG),
                 { status: 400 }
             );
         }
         if (!getEmailProviderReadiness().configured) {
             return NextResponse.json(
-                { error: "E-posta servisi şu anda hazır değil." },
+                playerError(PlayerErrorCode.EMAIL_SERVICE_UNAVAILABLE),
                 { status: 503 }
             );
         }
@@ -79,13 +80,13 @@ export async function POST(request: Request) {
             !(await bcryptjs.compare(input.currentPassword, user.password))
         ) {
             return NextResponse.json(
-                { error: "Mevcut parola doğrulanamadı." },
+                playerError(PlayerErrorCode.CURRENT_PASSWORD_INVALID),
                 { status: 403, headers: buildRateLimitHeaders(limit) }
             );
         }
         if (areEmailsEqual(user.email, newEmail)) {
             return NextResponse.json(
-                { error: "Yeni adres mevcut e-posta adresinle aynı." },
+                playerError(PlayerErrorCode.EMAIL_UNCHANGED),
                 { status: 409 }
             );
         }
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
         });
         if (owner) {
             return NextResponse.json(
-                { error: "Bu adres değişiklik için kullanılamıyor." },
+                playerError(PlayerErrorCode.EMAIL_UNAVAILABLE),
                 { status: 409 }
             );
         }
@@ -135,12 +136,9 @@ export async function POST(request: Request) {
     } catch (error) {
         if (error instanceof z.ZodError || error instanceof SyntaxError) {
             return NextResponse.json(
-                {
-                    error:
-                        error instanceof z.ZodError
-                            ? error.issues[0]?.message
-                            : "Geçersiz istek.",
-                },
+                error instanceof z.ZodError
+                    ? playerErrorFromValidation(error, { newEmail: PlayerErrorCode.INVALID_EMAIL })
+                    : playerError(PlayerErrorCode.INVALID_REQUEST),
                 { status: 400 }
             );
         }
@@ -149,13 +147,13 @@ export async function POST(request: Request) {
             error.code === "P2002"
         ) {
             return NextResponse.json(
-                { error: "Bu adres değişiklik için kullanılamıyor." },
+                playerError(PlayerErrorCode.EMAIL_UNAVAILABLE),
                 { status: 409 }
             );
         }
         console.error("Email change request failed", error);
         return NextResponse.json(
-            { error: "E-posta değişikliği başlatılamadı." },
+            playerError(PlayerErrorCode.EMAIL_CHANGE_FAILED),
             { status: 500 }
         );
     }

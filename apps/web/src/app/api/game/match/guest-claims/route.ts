@@ -8,6 +8,7 @@ import {
   consumeDistributedRequestRateLimit,
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 const claimSchema = z.object({
   guestToken: z.string().trim().min(20).max(512),
@@ -20,7 +21,7 @@ const claimSchema = z.object({
 export async function POST(req: Request) {
   const sessionUser = await getSessionUser();
   if (!sessionUser) {
-    return NextResponse.json({ error: "Giris gerekli." }, { status: 401 });
+    return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
   }
 
   const rateLimit = await consumeDistributedRequestRateLimit({
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
   });
   if (!rateLimit.allowed) {
     return NextResponse.json(
-      { error: "Cok fazla deneme yaptin. Biraz bekleyip tekrar dene.", code: "RATE_LIMITED" },
+      playerError(PlayerErrorCode.RATE_LIMITED),
       { status: 429, headers: buildRateLimitHeaders(rateLimit) }
     );
   }
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     guestToken = claimSchema.parse(await req.json()).guestToken;
   } catch {
     return NextResponse.json(
-      { error: "Gecersiz istek.", code: "GUEST_CLAIM_INVALID" },
+      playerError(PlayerErrorCode.GUEST_CLAIM_INVALID),
       { status: 400 }
     );
   }
@@ -65,16 +66,13 @@ export async function POST(req: Request) {
 
     if (summary.status === "invalid_token") {
       return NextResponse.json(
-        { error: "Misafir oturumunun suresi dolmus.", code: "GUEST_CLAIM_INVALID" },
+        playerError(PlayerErrorCode.GUEST_CLAIM_INVALID),
         { status: 400 }
       );
     }
     if (summary.status === "linked_elsewhere") {
       return NextResponse.json(
-        {
-          error: "Bu misafir maclari baska bir hesaba aktarilmis.",
-          code: "GUEST_CLAIM_LINKED_ELSEWHERE",
-        },
+        playerError(PlayerErrorCode.GUEST_CLAIM_LINKED_ELSEWHERE),
         { status: 409 }
       );
     }
@@ -82,7 +80,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Guest match claim failed", error);
     return NextResponse.json(
-      { error: "Maclar su anda aktarilamadi. Lutfen tekrar dene." },
+      playerError(PlayerErrorCode.GUEST_CLAIM_FAILED),
       { status: 500 }
     );
   }

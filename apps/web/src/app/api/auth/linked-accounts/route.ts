@@ -12,11 +12,12 @@ import {
     getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 
 export async function GET() {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giriş gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
     const accounts = await prisma.oAuthAccount.findMany({
         where: { userId: sessionUser.id },
@@ -45,11 +46,11 @@ export async function GET() {
 
 export async function DELETE(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
-        return NextResponse.json({ error: "Geçersiz istek." }, { status: 403 });
+        return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
     }
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
-        return NextResponse.json({ error: "Giriş gerekli." }, { status: 401 });
+        return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
     const limit = await consumeDistributedRequestRateLimit({
         bucket: "oauth-account-unlink",
@@ -59,7 +60,7 @@ export async function DELETE(request: Request) {
     });
     if (!limit.allowed) {
         return NextResponse.json(
-            { error: "Çok fazla hesap bağlantısı isteği yapıldı." },
+            playerError(PlayerErrorCode.RATE_LIMITED),
             { status: 429, headers: buildRateLimitHeaders(limit) }
         );
     }
@@ -69,7 +70,7 @@ export async function DELETE(request: Request) {
         | null;
     const provider = payload?.provider?.trim().toLowerCase() ?? "";
     if (!isKnownOAuthProvider(provider)) {
-        return NextResponse.json({ error: "Geçersiz sağlayıcı." }, { status: 400 });
+        return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 400 });
     }
 
     const outcome = await prisma.$transaction(async (tx) => {
@@ -96,16 +97,13 @@ export async function DELETE(request: Request) {
 
     if (outcome === "last_method") {
         return NextResponse.json(
-            {
-                error:
-                    "Bu hesap tek giriş yöntemin. Önce parola oluşturmalısın.",
-            },
+            playerError(PlayerErrorCode.LAST_LOGIN_METHOD),
             { status: 409, headers: buildRateLimitHeaders(limit) }
         );
     }
     if (outcome !== "deleted") {
         return NextResponse.json(
-            { error: "Bağlı hesap bulunamadı." },
+            playerError(PlayerErrorCode.LINKED_ACCOUNT_NOT_FOUND),
             { status: 404, headers: buildRateLimitHeaders(limit) }
         );
     }
