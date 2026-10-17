@@ -26,6 +26,7 @@ import {
     shouldShowGuessPanel,
 } from "@/lib/game/room-display";
 import { useI18n } from "@/components/providers/i18n-provider";
+import { ConnectionPausePanel } from "./connection-pause-panel";
 import type { CardData, GameState } from "@/types/game";
 
 interface ActiveGameProps {
@@ -37,6 +38,8 @@ interface ActiveGameProps {
     inspectorName: string;
     isHost: boolean;
     canResumePausedGame: boolean;
+    canResolveConnectionPause?: boolean;
+    onEmit?: (event: string, data?: unknown) => void;
     settings: { sure: number; mod: "tur" | "skor"; deger: number };
     cardFaceTheme: ResolvedCardFaceTheme | null;
     cardBackTheme: ResolvedCardBackTheme | null;
@@ -55,6 +58,8 @@ export function ActiveGame({
     inspectorName,
     isHost,
     canResumePausedGame,
+    canResolveConnectionPause = false,
+    onEmit,
     settings,
     cardFaceTheme,
     cardBackTheme,
@@ -252,7 +257,7 @@ export function ActiveGame({
 
             {gameState?.oyunDurduruldu && (
                 <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-sm dark:bg-slate-900/60">
-                    <div className="max-w-sm space-y-4 px-6 text-center">
+                    <div className="w-full max-w-md space-y-4 px-6 text-center">
                         <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gray-400 text-white shadow-2xl dark:bg-slate-600">
                             <Pause size={32} />
                         </div>
@@ -272,6 +277,13 @@ export function ActiveGame({
                                 </p>
                             )}
                         </div>
+                        {gameState.connectionPause?.waitingForPlayers ? (
+                            <ConnectionPausePanel
+                                connectionPause={gameState.connectionPause}
+                                canResolve={canResolveConnectionPause}
+                                onEmit={onEmit}
+                            />
+                        ) : null}
                         {canResumePausedGame &&
                             (!gameState.connectionPause ||
                                 !gameState.connectionPause.waitingForPlayers) && (
