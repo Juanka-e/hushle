@@ -46,37 +46,43 @@ gerekiyorsa kapat.
 
 Karar: ana akisa dokunmadan forward-fix tercih edilebilir.
 
-## 3. Bugunku Rollback Siniri
+## 3. Rollback Siniri
 
-Mevcut workflow eski release'i otomatik saklamaz ve tek komutla atomik rollback
-sunmaz. Kaynak arsivi mevcut deploy klasorunun ustune acilir. Bu nedenle:
+Sunucu bir onceki release'in image'larini ve compose kaydini saklar.
+`bash scripts/ops/deploy.sh rollback` (veya Deploy Production workflow'unda
+`action: rollback`) yeniden build etmeden ve migration calistirmadan ona doner.
+Ayrintilar: [release-process.md](./release-process.md) bolum 8. Kurallar:
 
-1. "bir onceki release arsivi zaten vardir" varsayimi yapma.
-2. Deploy oncesi rollback adayi SHA'yi release kaydina yaz.
-3. Eski SHA icin yeniden uretilmis ve incelenmis release arsivi olmadan rastgele
-   dosya kopyalama yapma.
+1. Yalniz bir onceki release'e donulur. `deploy.sh status` `previous` gostermiyorsa
+   ya da image'i `missing` ise rollback yoktur.
+2. DB'de onceki release'in bilmedigi bir migration varsa rollback reddedilir.
+   Sema geri donusu release-process.md 8.5'e gore yapilir.
+3. Eski SHA'ya donmek icin rastgele dosya kopyalama yapma; yalniz rollback ya da
+   release gate'ten gecen redeploy kullan.
 4. Kalici `.env.production`, `nginx/ssl`, MySQL ve Redis volume'larini kaynak
    rollback ile degistirme.
 5. `docker compose down -v`, volume silme, `git reset --hard` veya production
    DB'ye destructive `db push` kullanma.
-
-Otomatik release directory ve tested rollback scripti eklenene kadar rollback
-manuel, operator kontrollu bir islemdir.
+6. Deploy saglik kontrolunden gecemezse script zaten calisan release'e doner;
+   bu durumda ayrica rollback gerekmez, nedeni incelenir.
 
 ## 4. Uygulama Rollback Sirasi
-
-Onceden hazirlanmis, dogrulanmis onceki release arsivi varsa:
 
 1. Incident ve hedef rollback SHA kaydini ac.
 2. Gerekliyse yeni oda admission'ini kapat.
 3. Guncel DB backup ve checksum al.
-4. Onceki source arsivinin SHA/provenance bilgisini dogrula.
-5. Persistent secret ve volume'lara dokunmadan source'u geri yukle.
-6. `docker compose config --quiet` ile config'i dogrula.
-7. `scripts/ops/deploy.sh` ile stack'i yeniden kur.
-8. Health ve ana smoke zincirini calistir.
-9. Admission'i ancak smoke basariliysa yeniden ac.
+4. `bash scripts/ops/deploy.sh status` ile `current` ve `previous`'u kaydet;
+   `previous` hedef SHA olmalidir.
+5. Actions'ta Deploy Production -> Run workflow -> `main` -> `action: rollback`
+   calistir ve `production` onayini ver (ya da sunucuda
+   `bash scripts/ops/deploy.sh rollback`).
+6. Sema reddi gelirse dur; release-process.md 8.5'e gec.
+7. Script saglik kontrolunu kendisi yapar. Ardindan health ve ana smoke
+   zincirini calistir.
+8. Admission'i ancak smoke basariliysa yeniden ac.
 
+Onceki release yoksa (ilk deploy, art arda ikinci rollback, image silinmis) ve
+eski SHA release gate'ten gecmiyorsa kontrollu forward-fix yapilir.
 Onceki arsiv yoksa kontrollu forward-fix, bilinmeyen bir source snapshot'ina
 donmekten daha guvenlidir.
 

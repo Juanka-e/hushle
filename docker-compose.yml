@@ -51,6 +51,7 @@ services:
 
   jobs:
     profiles: ["jobs"]
+    image: hushle-jobs:${HUSHLE_RELEASE:-current}
     build:
       context: .
       dockerfile: Dockerfile
@@ -139,6 +140,7 @@ services:
 
   migrate:
     profiles: ["migration"]
+    image: hushle-migrate:${HUSHLE_RELEASE:-current}
     build:
       context: .
       dockerfile: Dockerfile
@@ -155,6 +157,7 @@ services:
       - hushle-net
 
   app:
+    image: hushle-app:${HUSHLE_RELEASE:-current}
     build:
       context: .
       dockerfile: Dockerfile
