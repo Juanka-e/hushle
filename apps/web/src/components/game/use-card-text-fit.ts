@@ -61,13 +61,23 @@ export function useCardTextFit(
 
         refit();
 
+        // Refit on the next frame, not inside the observer callback: changing the
+        // font size there resizes the observed element again in the same frame,
+        // which browsers report as a "ResizeObserver loop" error.
+        let frame = 0;
         const observer =
             typeof ResizeObserver === "undefined"
                 ? null
                 : new ResizeObserver(() => {
-                    if (element.clientWidth !== fittedWidth) {
-                        refit();
+                    if (frame !== 0) {
+                        return;
                     }
+                    frame = requestAnimationFrame(() => {
+                        frame = 0;
+                        if (element.clientWidth !== fittedWidth) {
+                            refit();
+                        }
+                    });
                 });
         observer?.observe(element);
 
@@ -79,6 +89,9 @@ export function useCardTextFit(
         return () => {
             active = false;
             observer?.disconnect();
+            if (frame !== 0) {
+                cancelAnimationFrame(frame);
+            }
             fonts?.removeEventListener?.("loadingdone", refit);
         };
     }, [ref, text, config]);

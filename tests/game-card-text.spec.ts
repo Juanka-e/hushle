@@ -169,6 +169,10 @@ for (const uiLocale of uiLocales) {
 }
 
 test("card text refits when the card width changes", async ({ page }) => {
+    // Refitting inside the resize observer callback resizes the observed element
+    // again; WebKit reports that as a "ResizeObserver loop" page error.
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
     const word = page.locator("[data-testid='card-fixture-en-electromagnetic'] [data-testid='game-card-word']");
     const fitSize = async () => Number(await word.getAttribute("data-fit-size"));
     const isClipped = () =>
@@ -188,4 +192,15 @@ test("card text refits when the card width changes", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect.poll(fitSize).toBe(desktopSize);
     expect(await isClipped()).toBe(false);
+
+    // Window drags and rotations resize many times in a row.
+    for (const width of [390, 1024, 360, 768, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(
+            () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        );
+    }
+    await expect.poll(fitSize).toBe(desktopSize);
+    expect(await isClipped()).toBe(false);
+    expect(pageErrors).toEqual([]);
 });

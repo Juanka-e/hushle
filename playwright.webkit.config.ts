@@ -37,6 +37,14 @@ export default defineConfig({
         browserName: "webkit",
       },
     },
+    {
+      name: "webkit-desktop-card-text",
+      testMatch: "game-card-text.spec.ts",
+      use: {
+        ...devices["Desktop Safari"],
+        browserName: "webkit",
+      },
+    },
   ],
   webServer: process.env.SMOKE_BASE_URL
     ? undefined
