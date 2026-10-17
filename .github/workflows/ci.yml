@@ -133,8 +133,11 @@ jobs:
           WORD_POOL_INTEGRATION_TEST: "true"
 
       - name: Test wallet ledger concurrency
-        run: npm run test:wallet-ledger-integration
+        run: |
+          npm run test:wallet-ledger-integration
+          npm run test:wallet-first-open-integration
         env:
+          WALLET_FIRST_OPEN_INTEGRATION_TEST: "true"
           WALLET_LEDGER_INTEGRATION_TEST: "true"
 
       - name: Test server-side match settlement

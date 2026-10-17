@@ -68,4 +68,22 @@ assert.doesNotMatch(
     "admin response must not expose internal idempotency keys or metadata"
 );
 
+const walletPackage = read("packages/platform-wallet/src/index.ts");
+assert.match(
+    walletPackage,
+    /INSERT INTO wallets[\s\S]*ON DUPLICATE KEY UPDATE user_id = user_id/,
+    "wallet creation must queue concurrent first opens on an exclusive duplicate-key lock"
+);
+for (const path of [
+    "packages/platform-wallet/src/index.ts",
+    "apps/web/src/lib/economy.ts",
+    "apps/web/src/lib/coin-grants/service.ts",
+]) {
+    assert.doesNotMatch(
+        read(path),
+        /wallet\.(upsert|create|update)\s*\(/,
+        `${path} must open wallets with ensureWallet and write balances with a plain UPDATE`
+    );
+}
+
 console.log("test:wallet-ledger-foundation ok");
