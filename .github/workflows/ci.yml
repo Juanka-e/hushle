@@ -44,6 +44,7 @@ jobs:
         run: |
           npm run test:persistent-assets
           npm run test:data-backup
+          npm run test:offsite-backups
 
       - name: Test mobile API foundation
         run: npm run test:mobile-api
@@ -234,3 +235,38 @@ jobs:
         run: npm run test:web-launch-readiness
         env:
           WEB_LAUNCH_DB_E2E: "true"
+
+  # ─── 3. Offsite Backup E2E ────────────────────────────────────────
+  # Runs the production backup scripts against MinIO and a real MySQL server.
+  # MinIO is started by the scenario inside the same Compose project as the
+  # ops backup-cli container, which reaches it at http://minio:9000.
+  remote-backup-e2e:
+    name: Remote Backup E2E (MinIO)
+    runs-on: ubuntu-latest
+    needs: lint-typecheck
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Back up, upload, list, download and restore through MinIO
+        run: bash scripts/test-remote-backup-e2e.sh --run
+        env:
+          E2E_MYSQL_HOST: host.docker.internal
+          E2E_MYSQL_PORT: "3306"
+          E2E_MYSQL_ADMIN_PASSWORD: root

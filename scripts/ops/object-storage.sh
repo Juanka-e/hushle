@@ -15,6 +15,7 @@ Usage:
   object-storage.sh upload <local-file> <remote-key>
   object-storage.sh download <remote-key> <local-file>
   object-storage.sh size <remote-key>
+  object-storage.sh list <remote-prefix>
 EOF
   exit 1
 }
@@ -58,7 +59,7 @@ aws_cli() {
     --env-file "$ENV_FILE" \
     -f "$OPS_COMPOSE_FILE" \
     --profile ops \
-    run --rm --no-deps backup-cli \
+    run --rm -T --no-deps backup-cli \
     "${global_args[@]}" "$@"
 }
 
@@ -119,6 +120,21 @@ case "$COMMAND" in
   size)
     [[ $# -eq 2 ]] || usage
     aws_cli s3api head-object --bucket "$BACKUP_S3_BUCKET" --key "$2" --query ContentLength --output text
+    ;;
+  list)
+    [[ $# -eq 2 ]] || usage
+    # One "key<TAB>size<TAB>last-modified" line per object; the CLI follows pagination.
+    LISTING="$(
+      aws_cli s3api list-objects-v2 \
+        --bucket "$BACKUP_S3_BUCKET" \
+        --prefix "$2" \
+        --query 'Contents[].[Key,Size,LastModified]' \
+        --output text
+    )"
+    LISTING="${LISTING//$'\r'/}"
+    if [[ -n "$LISTING" && "$LISTING" != "None" ]]; then
+      printf '%s\n' "$LISTING"
+    fi
     ;;
   *)
     usage
