@@ -2,6 +2,12 @@
 
 Son guncelleme: 3 July 2026
 
+## Guncel Koleksiyon Raporu
+
+[4 Ekim 2026 kod ve gorsel uyum raporu](../dashboard-ui/card-collections-and-profile-review.md):
+full-art renderer/geometri farklari, 2-3 renkli koleksiyon, set sahipligi,
+magaza performansi ve rozet/profil yol haritasi. Bunlar henuz implementasyon degil.
+
 ## Amac
 
 Bu rehberin amaci, Hushle icin kart on/arka tasarimlarini:

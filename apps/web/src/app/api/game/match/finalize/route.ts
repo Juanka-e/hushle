@@ -12,7 +12,7 @@ import { resolveRepeatedGroupReward } from "@/lib/economy/reward-repeated-group"
 import { resolveMatchRewardSafetyCeiling } from "@/lib/economy/reward-safety-ceiling";
 import {
   buildRateLimitHeaders,
-  consumeRequestRateLimit,
+  consumeDistributedRequestRateLimit,
   getRequestIp,
 } from "@/lib/security/request-rate-limit";
 import { writeAuditLog } from "@/lib/security/audit-log";
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
   if (capabilityError) return capabilityError;
 
   try {
-    const rateLimit = consumeRequestRateLimit({
+    const rateLimit = await consumeDistributedRequestRateLimit({
       bucket: "match-finalize",
       key: `user:${sessionUser.id}:${getRequestIp(req)}`,
       windowMs: 60_000,
@@ -194,6 +194,8 @@ export async function POST(req: Request) {
     await ensureUserCore(sessionUser.id);
 
     const result = await prisma.$transaction(async (tx) => {
+      // Serialize rewards for this wallet before reading rolling-window aggregates.
+      await tx.$queryRaw`SELECT user_id FROM wallets WHERE user_id = ${sessionUser.id} FOR UPDATE`;
       const repeatedGroup = await resolveRepeatedGroupReward(tx, {
         userId: sessionUser.id,
         lineupKey: evaluation.lineupKey,
