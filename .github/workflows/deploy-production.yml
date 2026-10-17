@@ -9,6 +9,21 @@ on:
     types: [completed]
     branches:
       - main
+  # Manual runs are accepted only from main (see the job conditions), so the
+  # release gate and this workflow are the reviewed versions.
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "redeploy: deploy a commit that already passed CI on main. rollback: switch the server back to its previous release."
+        type: choice
+        options:
+          - redeploy
+          - rollback
+        default: redeploy
+      sha:
+        description: "Full 40-character commit SHA to redeploy (ignored for rollback)"
+        type: string
+        required: false
 
 concurrency:
   group: production-deploy
@@ -17,17 +32,25 @@ concurrency:
 jobs:
   deploy:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/main' &&
+        inputs.action == 'redeploy')
     name: Deploy to Ubuntu 24.04
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      actions: read
     env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.sha }}
 
     steps:
       - name: Reject superseded release
+        if: github.event_name == 'workflow_run'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -41,7 +64,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event.workflow_run.head_sha }}
+          # Manual runs check out main first: the gate below must not come from
+          # the commit it judges.
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
+
+      - name: Require a commit that passed CI on main
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/ops/release-gate.sh "$RELEASE_SHA"
+          git checkout --quiet --detach "$RELEASE_SHA"
 
       - name: Create release archive
         run: |
@@ -86,4 +120,31 @@ jobs:
             scripts/ops/run-payment-job.sh \
             scripts/ops/install-payment-schedulers.sh
           ./scripts/ops/deploy.sh
+          EOF
+
+  rollback:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.action == 'rollback'
+    name: Roll back to the previous release
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Prepare SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s' '${{ secrets.PROD_SSH_PRIVATE_KEY }}' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p '${{ secrets.PROD_PORT }}' '${{ secrets.PROD_HOST }}' >> ~/.ssh/known_hosts
+
+      # The server keeps the previous release's images; nothing is built or migrated.
+      - name: Roll back on server
+        run: |
+          ssh -p '${{ secrets.PROD_PORT }}' '${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}' <<'EOF'
+          set -euo pipefail
+          cd '${{ secrets.PROD_DEPLOY_PATH }}'
+          bash scripts/ops/deploy.sh rollback
+          bash scripts/ops/deploy.sh status
           EOF
