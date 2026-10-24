@@ -20,16 +20,7 @@
 # dropped at the end. Other containers and databases are never touched.
 set -euo pipefail
 
-if [[ "${REMOTE_BACKUP_E2E:-false}" != "true" && "${1:-}" != "--run" ]]; then
-  echo "Skipped. Set REMOTE_BACKUP_E2E=true or pass --run."
-  exit 0
-fi
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-: "${E2E_MYSQL_ADMIN_PASSWORD:?Set E2E_MYSQL_ADMIN_PASSWORD to the root password of the test MySQL server}"
-export E2E_MYSQL_ADMIN_PASSWORD
-export E2E_MYSQL_SERVER_HOST="${E2E_MYSQL_HOST:-host.docker.internal}"
-export E2E_MYSQL_SERVER_PORT="${E2E_MYSQL_PORT:-3306}"
 # The upstream minio/minio image is no longer published; this is a maintained
 # community build of the same server, pinned by digest.
 export E2E_MINIO_IMAGE_REF="${E2E_MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372}"
@@ -37,6 +28,30 @@ export E2E_MYSQL_CLIENT_IMAGE_REF="${E2E_MYSQL_CLIENT_IMAGE:-mysql:8.4}"
 NODE_IMAGE="node:20-alpine"
 AWS_CLI_IMAGE="$(sed -n 's/.*BACKUP_AWS_CLI_IMAGE:-\([^}]*\)}.*/\1/p' "$REPO_ROOT/docker-compose.ops.yml")"
 [[ -n "$AWS_CLI_IMAGE" ]] || { echo "Could not read the pinned AWS CLI image from docker-compose.ops.yml" >&2; exit 1; }
+
+# CI loads exactly these images from its cache (scripts/ci/docker-image-cache.sh)
+# before the scenario, so the run itself does not pull anonymously.
+if [[ "${1:-}" == "--print-images" ]]; then
+  printf '%s\n' "$E2E_MINIO_IMAGE_REF" "$E2E_MYSQL_CLIENT_IMAGE_REF" "$NODE_IMAGE" "$AWS_CLI_IMAGE"
+  exit 0
+fi
+
+# Preloaded images come from archives, which keep tags but not registry
+# digests: use the tag of the digest-pinned MinIO image (the cache pulled it by
+# digest).
+if [[ "${E2E_IMAGES_PRELOADED:-false}" == "true" ]]; then
+  E2E_MINIO_IMAGE_REF="${E2E_MINIO_IMAGE_REF%@*}"
+fi
+
+if [[ "${REMOTE_BACKUP_E2E:-false}" != "true" && "${1:-}" != "--run" ]]; then
+  echo "Skipped. Set REMOTE_BACKUP_E2E=true or pass --run."
+  exit 0
+fi
+
+: "${E2E_MYSQL_ADMIN_PASSWORD:?Set E2E_MYSQL_ADMIN_PASSWORD to the root password of the test MySQL server}"
+export E2E_MYSQL_ADMIN_PASSWORD
+export E2E_MYSQL_SERVER_HOST="${E2E_MYSQL_HOST:-host.docker.internal}"
+export E2E_MYSQL_SERVER_PORT="${E2E_MYSQL_PORT:-3306}"
 
 export E2E_SRC_DB="${E2E_SOURCE_DATABASE:-tabu_backup_src}"
 RESTORE_DB="${E2E_RESTORE_DATABASE:-tabu_backup_restore}"

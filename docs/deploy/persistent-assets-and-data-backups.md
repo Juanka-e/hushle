@@ -281,8 +281,14 @@ Kapsamı (38 kontrol):
 - Yerel snapshot'tan restore.
 - DB-only yedekte `RETENTION_DAYS`, uzak `mysql-restore.sh` ve restore smoke.
 
-CI'da `Remote Backup E2E (MinIO)` job'u bunu MySQL 8.4 servis container'ıyla
-çalıştırır. Linux'ta:
+CI'da `Remote Backup E2E (MinIO)` job'u bunu bir MySQL 8.4 container'ıyla
+çalıştırır. Paylaşılan runner'larda Docker Hub ve `public.ecr.aws`'ten anonim
+imaj çekimi IP başına sınıra takıldığı için senaryonun bütün imajları (MySQL
+dahil) Actions önbelleğinden yüklenir. Liste `--print-images` ile alınır;
+eksik imaj bir kez çekilip `scripts/ci/docker-image-cache.sh` ile önbelleğe
+yazılır. `public.ecr.aws`'ten çekilemeyen aws-cli imajı, AWS'nin Docker Hub'daki
+aynı digest'li kopyasından alınır (`DOCKER_IMAGE_MIRRORS`); `docker-compose.ops.yml`
+içindeki sürüm yükseltilirken bu digest de güncellenmelidir. Linux'ta:
 
 ```bash
 E2E_MYSQL_HOST=host.docker.internal E2E_MYSQL_PORT=3306 E2E_MYSQL_ADMIN_PASSWORD=... \

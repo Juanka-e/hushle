@@ -16,3 +16,4 @@ scripts/ops/deploy.sh text eol=lf
 scripts/ops/lib/release.sh text eol=lf
 scripts/ops/release-gate.sh text eol=lf
 scripts/test-deploy-rollback.sh text eol=lf
+scripts/ci/docker-image-cache.sh text eol=lf
