@@ -27,6 +27,7 @@ import type {
     ModerationActionType,
 } from "@/types/moderation";
 import type { WalletAdjustmentType } from "@/types/admin-user-operations";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 type StatusFilter = "all" | "active" | "suspended";
 type ActionMode = ModerationActionType;
@@ -166,7 +167,12 @@ export default function AdminUsersPage() {
     const [walletSaving, setWalletSaving] = useState(false);
     const [trustProxyEnabled, setTrustProxyEnabled] = useState(false);
 
-    useEffect(() => {
+    // Adjusted during render instead of in effects: the URL filters (on load and on each
+    // navigation), then page one whenever the search or status changes.
+    const urlKey = searchParams.toString();
+    const [syncedUrlKey, setSyncedUrlKey] = useState<string | null>(null);
+    if (syncedUrlKey !== urlKey) {
+        setSyncedUrlKey(urlKey);
         const nextSearch = (searchParams.get("search") ?? "").trim();
         const nextStatus = searchParams.get("status");
 
@@ -179,7 +185,13 @@ export default function AdminUsersPage() {
             setStatus("all");
         }
         setPage(1);
-    }, [searchParams]);
+    }
+    const filterKey = `${debouncedSearch}|${status}`;
+    const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+    if (pageFilterKey !== filterKey) {
+        setPageFilterKey(filterKey);
+        setPage(1);
+    }
 
     useEffect(() => {
         const timeout = setTimeout(() => {
@@ -189,46 +201,52 @@ export default function AdminUsersPage() {
         return () => clearTimeout(timeout);
     }, [search]);
 
+    const requestUsers = useCallback(async () => {
+        const params = new URLSearchParams({
+            page: String(page),
+            limit: "12",
+            status,
+        });
+        if (debouncedSearch) {
+            params.set("search", debouncedSearch);
+        }
+
+        const response = await fetch(`/api/admin/users?${params.toString()}`, {
+            cache: "no-store",
+        });
+        if (!response.ok) {
+            throw new Error("Users could not be loaded.");
+        }
+        return (await response.json()) as AdminUserListResponse;
+    }, [debouncedSearch, page, status]);
+    const userHandlers = useMemo(
+        () => ({
+            apply: (payload: AdminUserListResponse) => {
+                setUsers(payload.users);
+                setPage(payload.page);
+                setPages(payload.pages);
+                setTotal(payload.total);
+                setTrustProxyEnabled(payload.trustProxyEnabled);
+            },
+            fail: () => toast.error("Kullanıcı listesi yüklenemedi."),
+            settle: () => setLoading(false),
+        }),
+        []
+    );
     const loadUsers = useCallback(async () => {
         setLoading(true);
-        try {
-            const params = new URLSearchParams({
-                page: String(page),
-                limit: "12",
-                status,
-            });
-            if (debouncedSearch) {
-                params.set("search", debouncedSearch);
-            }
+        await runRequest(requestUsers, userHandlers);
+    }, [requestUsers, userHandlers]);
 
-            const response = await fetch(`/api/admin/users?${params.toString()}`, {
-                cache: "no-store",
-            });
-            if (!response.ok) {
-                toast.error("Kullanıcı listesi yüklenemedi.");
-                return;
-            }
+    // A new page, search or status shows the loading state from the render it changes in.
+    const usersKey = `${page}|${filterKey}`;
+    const [loadingUsersKey, setLoadingUsersKey] = useState(usersKey);
+    if (loadingUsersKey !== usersKey) {
+        setLoadingUsersKey(usersKey);
+        setLoading(true);
+    }
 
-            const payload = (await response.json()) as AdminUserListResponse;
-            setUsers(payload.users);
-            setPage(payload.page);
-            setPages(payload.pages);
-            setTotal(payload.total);
-            setTrustProxyEnabled(payload.trustProxyEnabled);
-        } catch {
-            toast.error("Kullanıcı listesi yüklenemedi.");
-        } finally {
-            setLoading(false);
-        }
-    }, [debouncedSearch, page, status]);
-
-    useEffect(() => {
-        void loadUsers();
-    }, [loadUsers]);
-
-    useEffect(() => {
-        setPage(1);
-    }, [debouncedSearch, status]);
+    useEffect(() => startRequest(requestUsers, userHandlers), [requestUsers, userHandlers]);
 
     const counts = useMemo(() => {
         const suspendedCount = users.filter((user) => user.isSuspended).length;

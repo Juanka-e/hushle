@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
+import { useHydrated } from "@/hooks/use-hydrated";
 import {
     Settings,
     Trophy,
@@ -87,8 +88,11 @@ export function Lobby({
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
     const [tempSelectedCategories, setTempSelectedCategories] = useState<number[]>(selectedCategories);
     const [tempSelectedDifficulties, setTempSelectedDifficulties] = useState<number[]>(selectedDifficulties);
-    const [mounted, setMounted] = useState(false);
-    const [handoffRemainingSeconds, setHandoffRemainingSeconds] = useState<number | null>(null);
+    const mounted = useHydrated();
+    const [handoffTick, setHandoffTick] = useState<{
+        handoff: PendingAdminHandoffState;
+        now: number;
+    } | null>(null);
     const [showStartRequirement, setShowStartRequirement] = useState(false);
     const startBlockedReason = useMemo(() => {
         if (!startReadiness.ready) {
@@ -107,10 +111,6 @@ export function Lobby({
         startReadiness.ready,
         t,
     ]);
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
 
     useEffect(() => {
         if (!showStartRequirement) return;
@@ -145,24 +145,22 @@ export function Lobby({
         window.localStorage.setItem(`tabu_room_hide_url:${roomCode}`, hideUrl ? "true" : "false");
     }, [hideUrl, hideUrlReady, mounted, roomCode]);
 
+    // The countdown is derived from timer ticks; a tick for an older handoff never shows.
     useEffect(() => {
-        if (!pendingAdminHandoff) {
-            setHandoffRemainingSeconds(null);
-            return;
-        }
+        if (!pendingAdminHandoff) return;
 
-        const updateRemaining = () => {
-            const seconds = Math.max(
-                0,
-                Math.ceil((pendingAdminHandoff.deadlineAt - Date.now()) / 1000)
-            );
-            setHandoffRemainingSeconds(seconds);
+        const tick = () => setHandoffTick({ handoff: pendingAdminHandoff, now: Date.now() });
+        const firstTickId = window.setTimeout(tick, 0);
+        const intervalId = window.setInterval(tick, 1000);
+        return () => {
+            window.clearTimeout(firstTickId);
+            window.clearInterval(intervalId);
         };
-
-        updateRemaining();
-        const intervalId = window.setInterval(updateRemaining, 1000);
-        return () => window.clearInterval(intervalId);
     }, [pendingAdminHandoff]);
+    const handoffRemainingSeconds =
+        pendingAdminHandoff && handoffTick?.handoff === pendingAdminHandoff
+            ? Math.max(0, Math.ceil((pendingAdminHandoff.deadlineAt - handoffTick.now) / 1000))
+            : null;
 
     const copyRoomLink = () => {
         const link = `${window.location.origin}/room/${roomCode}`;

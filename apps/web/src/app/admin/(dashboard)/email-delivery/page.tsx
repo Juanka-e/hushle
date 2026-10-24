@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MailWarning, RefreshCw, RotateCcw, Search, ShieldBan } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
@@ -8,6 +8,7 @@ import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminEmptyState, AdminTableShell } from "@/components/admin/admin-table-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { runRequest, startRequest } from "@/lib/run-request";
 import type {
     AdminEmailDeliveryItem,
     AdminEmailDeliveryResponse,
@@ -43,30 +44,43 @@ export default function AdminEmailDeliveryPage() {
     const [search, setSearch] = useState("");
     const [retryingId, setRetryingId] = useState<string | null>(null);
 
+    const fetchQueue = useCallback(async () => {
+        const params = new URLSearchParams({ page: String(page), limit: "20", status });
+        if (search) params.set("search", search);
+        const response = await fetch(`/api/admin/email-delivery?${params}`, { cache: "no-store" });
+        const payload = (await response.json().catch(() => null)) as
+            | AdminEmailDeliveryResponse
+            | { error?: string }
+            | null;
+        if (!response.ok || !payload || !("items" in payload)) {
+            throw new Error(payload && "error" in payload ? payload.error : undefined);
+        }
+        return payload;
+    }, [page, search, status]);
+    const queueHandlers = useMemo(
+        () => ({
+            apply: setData,
+            fail: (error: unknown) =>
+                toast.error(error instanceof Error && error.message ? error.message : "E-posta kuyruğu yüklenemedi."),
+            settle: () => setLoading(false),
+        }),
+        []
+    );
+
+    // A new page, status or search shows the loading state from the render it changes in.
+    const queueKey = `${page}|${status}|${search}`;
+    const [loadingKey, setLoadingKey] = useState(queueKey);
+    if (loadingKey !== queueKey) {
+        setLoadingKey(queueKey);
+        setLoading(true);
+    }
+
+    useEffect(() => startRequest(fetchQueue, queueHandlers), [fetchQueue, queueHandlers]);
+
     const load = useCallback(async () => {
         setLoading(true);
-        try {
-            const params = new URLSearchParams({ page: String(page), limit: "20", status });
-            if (search) params.set("search", search);
-            const response = await fetch(`/api/admin/email-delivery?${params}`, { cache: "no-store" });
-            const payload = (await response.json().catch(() => null)) as
-                | AdminEmailDeliveryResponse
-                | { error?: string }
-                | null;
-            if (!response.ok || !payload || !("items" in payload)) {
-                throw new Error(payload && "error" in payload ? payload.error : undefined);
-            }
-            setData(payload);
-        } catch (error) {
-            toast.error(error instanceof Error && error.message ? error.message : "E-posta kuyruğu yüklenemedi.");
-        } finally {
-            setLoading(false);
-        }
-    }, [page, search, status]);
-
-    useEffect(() => {
-        void load();
-    }, [load]);
+        await runRequest(fetchQueue, queueHandlers);
+    }, [fetchQueue, queueHandlers]);
 
     async function retry(item: AdminEmailDeliveryItem) {
         setRetryingId(item.id);

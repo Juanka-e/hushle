@@ -41,6 +41,7 @@ import {
     GAME_CONTENT_LOCALE_DEFINITIONS,
     type GameContentLocale,
 } from "@hushle/domain-game";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 interface Category {
     id: number;
@@ -286,6 +287,20 @@ function SortableCategory({
     );
 }
 
+/** A rejected categories request (as opposed to a network error). */
+class CategoryListError extends Error {}
+
+async function requestCategories(locale: GameContentLocale): Promise<Category[]> {
+    const response = await fetch(`/api/admin/categories?locale=${locale}`, { cache: "no-store" });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+        throw new CategoryListError(
+            (payload as { error?: string } | null)?.error ?? "Kategori listesi yüklenemedi."
+        );
+    }
+    return (payload ?? []) as Category[];
+}
+
 export default function AdminCategoriesPage() {
     const [categories, setCategories] = useState<Category[]>([]);
     const [selectedLocale, setSelectedLocale] = useState<GameContentLocale>(
@@ -328,34 +343,50 @@ export default function AdminCategoriesPage() {
         })
     );
 
+    const categoryHandlers = useMemo(
+        () => ({
+            apply: (nextCategories: Category[]) => {
+                setCategories(nextCategories);
+                setExpanded(new Set(nextCategories.map((category) => category.id)));
+                setPageError("");
+            },
+            fail: (error: unknown) =>
+                setPageError(
+                    error instanceof CategoryListError
+                        ? error.message
+                        : "Kategori listesi yüklenirken ağ hatası oluştu."
+                ),
+        }),
+        []
+    );
+
+    // A new locale shows the loading state from the render it is picked in.
+    const [loadingLocale, setLoadingLocale] = useState(selectedLocale);
+    if (loadingLocale !== selectedLocale) {
+        setLoadingLocale(selectedLocale);
+        setLoading(true);
+    }
+
+    useEffect(
+        () =>
+            startRequest(() => requestCategories(selectedLocale), {
+                ...categoryHandlers,
+                settle: () => setLoading(false),
+            }),
+        [categoryHandlers, selectedLocale]
+    );
+
     const fetchCategories = useCallback(async (showLoading = true) => {
-        if (showLoading) {
-            setLoading(true);
+        if (!showLoading) {
+            await runRequest(() => requestCategories(selectedLocale), categoryHandlers);
+            return;
         }
-        try {
-            const response = await fetch(`/api/admin/categories?locale=${selectedLocale}`, { cache: "no-store" });
-            const payload = await response.json().catch(() => null);
-            if (!response.ok) {
-                setPageError((payload as { error?: string } | null)?.error ?? "Kategori listesi yüklenemedi.");
-                return;
-            }
-
-            const nextCategories = (payload ?? []) as Category[];
-            setCategories(nextCategories);
-            setExpanded(new Set(nextCategories.map((category) => category.id)));
-            setPageError("");
-        } catch {
-            setPageError("Kategori listesi yüklenirken ağ hatası oluştu.");
-        } finally {
-            if (showLoading) {
-                setLoading(false);
-            }
-        }
-    }, [selectedLocale]);
-
-    useEffect(() => {
-        void fetchCategories();
-    }, [fetchCategories]);
+        setLoading(true);
+        await runRequest(() => requestCategories(selectedLocale), {
+            ...categoryHandlers,
+            settle: () => setLoading(false),
+        });
+    }, [categoryHandlers, selectedLocale]);
 
     const rootCategoryOptions = useMemo(
         () => categories.map((category) => ({ id: category.id, name: category.name })),

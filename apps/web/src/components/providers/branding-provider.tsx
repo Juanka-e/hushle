@@ -82,10 +82,12 @@ export function BrandingProvider({
     children: React.ReactNode;
 }) {
     const [currentBranding, setCurrentBranding] = useState(branding);
-
-    useEffect(() => {
+    // A new server value replaces any live update; adjusted during render, not in an effect.
+    const [brandingProp, setBrandingProp] = useState(branding);
+    if (brandingProp !== branding) {
+        setBrandingProp(branding);
         setCurrentBranding(branding);
-    }, [branding]);
+    }
 
     useEffect(() => {
         const handleBrandingUpdated = (event: Event) => {

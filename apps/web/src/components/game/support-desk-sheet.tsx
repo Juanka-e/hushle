@@ -42,6 +42,15 @@ interface SupportDeskSheetProps {
     initialTicketId?: number | null;
 }
 
+/** The player's tickets; rejects when they cannot be loaded. */
+async function fetchSupportTickets(): Promise<SupportDeskResponse> {
+    const response = await fetch("/api/support/tickets", { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error("Support tickets could not be loaded.");
+    }
+    return (await response.json()) as SupportDeskResponse;
+}
+
 export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: SupportDeskSheetProps) {
     const { locale, t } = useI18n();
     const categoryLabels: Record<SupportTicketCategory, string> = {
@@ -67,56 +76,72 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
         [selectedTicketId, tickets]
     );
 
-    const loadTickets = useCallback(
-        async (options?: { silent?: boolean }) => {
-            if (!options?.silent) {
-                setLoading(true);
-            }
-
-            try {
-                const response = await fetch("/api/support/tickets", { cache: "no-store" });
-                if (!response.ok) {
-                    if (!options?.silent) {
-                        toast.error(t("support.loadFailed"));
-                    }
-                    return;
-                }
-
-                const payload = (await response.json()) as SupportDeskResponse;
-                setTickets(payload.tickets);
-                setSelectedTicketId((current) => current ?? payload.tickets[0]?.id ?? null);
-            } catch {
-                if (!options?.silent) {
-                    toast.error(t("support.loadFailed"));
-                }
-            } finally {
-                if (!options?.silent) {
-                    setLoading(false);
-                }
-            }
-        },
-        [t]
-    );
-
-    useEffect(() => {
+    // Adjusted during render instead of in effects: opening the sheet (or a new locale while
+    // open) shows the loading state, closing resets the composer, and opening on a ticket (or
+    // a new initial ticket while open) focuses it.
+    const loadingKey = isOpen ? locale : null;
+    const [shownLoadingKey, setShownLoadingKey] = useState<string | null>(null);
+    if (shownLoadingKey !== loadingKey) {
+        setShownLoadingKey(loadingKey);
+        if (loadingKey !== null) setLoading(true);
+    }
+    const [sheetOpen, setSheetOpen] = useState(isOpen);
+    if (sheetOpen !== isOpen) {
+        setSheetOpen(isOpen);
         if (!isOpen) {
-            return;
+            setComposeMode(false);
+            setReplyBody("");
         }
-        void loadTickets();
-    }, [isOpen, loadTickets]);
+    }
+    const focusTicketId = isOpen && initialTicketId ? initialTicketId : null;
+    const [focusedTicketId, setFocusedTicketId] = useState<number | null>(null);
+    if (focusedTicketId !== focusTicketId) {
+        setFocusedTicketId(focusTicketId);
+        if (focusTicketId !== null) {
+            setComposeMode(false);
+            setSelectedTicketId(focusTicketId);
+        }
+    }
+
+    const applyTickets = useCallback((payload: SupportDeskResponse) => {
+        setTickets(payload.tickets);
+        setSelectedTicketId((current) => current ?? payload.tickets[0]?.id ?? null);
+    }, []);
 
     useEffect(() => {
         if (!isOpen) {
             return;
         }
 
-        const intervalId = window.setInterval(() => {
-            void loadTickets({ silent: true });
-        }, 10_000);
+        let ignore = false;
+        fetchSupportTickets()
+            .then((payload) => {
+                if (!ignore) applyTickets(payload);
+            })
+            .catch(() => {
+                if (!ignore) toast.error(t("support.loadFailed"));
+            })
+            .finally(() => {
+                if (!ignore) setLoading(false);
+            });
+        return () => {
+            ignore = true;
+        };
+    }, [applyTickets, isOpen, t]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+
+        const refreshSilently = () => {
+            fetchSupportTickets().then(applyTickets).catch(() => undefined);
+        };
+        const intervalId = window.setInterval(refreshSilently, 10_000);
 
         const visibilityHandler = () => {
             if (document.visibilityState === "visible") {
-                void loadTickets({ silent: true });
+                refreshSilently();
             }
         };
 
@@ -128,12 +153,10 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
             window.removeEventListener("focus", visibilityHandler);
             document.removeEventListener("visibilitychange", visibilityHandler);
         };
-    }, [isOpen, loadTickets]);
+    }, [applyTickets, isOpen]);
 
     useEffect(() => {
         if (!isOpen) {
-            setComposeMode(false);
-            setReplyBody("");
             return;
         }
 
@@ -146,15 +169,6 @@ export function SupportDeskSheet({ isOpen, onClose, initialTicketId = null }: Su
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
     }, [isOpen, onClose]);
-
-    useEffect(() => {
-        if (!isOpen || !initialTicketId) {
-            return;
-        }
-
-        setComposeMode(false);
-        setSelectedTicketId(initialTicketId);
-    }, [initialTicketId, isOpen]);
 
     const submitTicket = async () => {
         setSaving(true);

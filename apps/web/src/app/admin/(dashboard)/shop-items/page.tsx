@@ -37,6 +37,7 @@ import {
     serializeCosmeticAuthoringPreset,
 } from "@/lib/cosmetics/authoring-presets";
 import { CURRENT_COSMETIC_RENDER_SPEC_VERSION } from "@/lib/cosmetics/render-spec-version";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 type ItemType = "avatar" | "frame" | "card_back" | "card_face";
 type Rarity = "common" | "rare" | "epic" | "legendary";
@@ -290,6 +291,14 @@ function buildPromotionsHref(itemCode: string, section: "bundles" | "discounts" 
     return `/admin/promotions?q=${encodeURIComponent(itemCode)}#${section}`;
 }
 
+async function requestShopItems(): Promise<ShopItem[]> {
+    const response = await fetch("/api/admin/shop-items", { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error("Shop items could not be loaded.");
+    }
+    return (await response.json()) as ShopItem[];
+}
+
 export default function ShopItemsPage() {
     const [items, setItems] = useState<ShopItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -308,26 +317,15 @@ export default function ShopItemsPage() {
     const [bulkSaving, setBulkSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
 
+    // A failed load keeps the previous list (no fail handler).
+    const itemHandlers = useMemo(() => ({ apply: setItems, settle: () => setLoading(false) }), []);
+
+    useEffect(() => startRequest(requestShopItems, itemHandlers), [itemHandlers]);
+
     const loadItems = useCallback(async () => {
         setLoading(true);
-        try {
-            const response = await fetch("/api/admin/shop-items", { cache: "no-store" });
-            if (!response.ok) {
-                return;
-            }
-
-            const payload = (await response.json()) as ShopItem[];
-            setItems(payload);
-        } catch {
-            // Keep previous list on failure.
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        void loadItems();
-    }, [loadItems]);
+        await runRequest(requestShopItems, itemHandlers);
+    }, [itemHandlers]);
 
     const filteredItems = useMemo(() => {
         return items.filter((item) => {
@@ -385,10 +383,14 @@ export default function ShopItemsPage() {
         toggleOne,
     } = useAdminSelection(visibleItemIds);
 
-    useEffect(() => {
+    // A new filter or search starts from page one with nothing selected (adjusted during render).
+    const filterKey = JSON.stringify([filterActive, filterAvailability, filterFeatured, filterRarity, filterType, search]);
+    const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+    if (pageFilterKey !== filterKey) {
+        setPageFilterKey(filterKey);
         setPage(1);
         clearSelection();
-    }, [clearSelection, filterActive, filterAvailability, filterFeatured, filterRarity, filterType, search]);
+    }
 
     const handleReorder = async (
         updates: Array<{ id: number; sortOrder: number }>

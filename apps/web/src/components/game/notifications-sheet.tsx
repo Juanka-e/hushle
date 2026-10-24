@@ -73,63 +73,72 @@ export function NotificationsSheet({
         };
     }, [isOpen]);
 
-    const loadNotifications = useCallback(
-        async (options?: { silent?: boolean }) => {
-            if (!options?.silent) {
-                setLoading(true);
-            }
+    // Opening the sheet, or a new filter or locale while open, shows the loading state from
+    // that render on; results are applied in the request's callbacks.
+    const requestKey = isOpen ? `${filter}:${locale}` : null;
+    const [loadingKey, setLoadingKey] = useState<string | null>(null);
+    if (loadingKey !== requestKey) {
+        setLoadingKey(requestKey);
+        if (requestKey !== null) setLoading(true);
+    }
 
-            try {
-                const params = new URLSearchParams({
-                    limit: "30",
-                    filter,
-                });
-                const response = await fetch(`/api/notifications?${params.toString()}`, {
-                    cache: "no-store",
-                });
+    /** The list for the current filter; rejects when it cannot be loaded. */
+    const fetchNotifications = useCallback(async () => {
+        const params = new URLSearchParams({
+            limit: "30",
+            filter,
+        });
+        const response = await fetch(`/api/notifications?${params.toString()}`, {
+            cache: "no-store",
+        });
+        if (!response.ok) {
+            throw new Error("Notifications could not be loaded.");
+        }
+        return (await response.json()) as NotificationListResponse;
+    }, [filter]);
 
-                if (!response.ok) {
-                    if (!options?.silent) {
-                        toast.error(t("notifications.loadFailed"));
-                    }
-                    return;
-                }
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
 
-                const payload = (await response.json()) as NotificationListResponse;
+        // A response for an older filter or locale is dropped.
+        let ignore = false;
+        fetchNotifications()
+            .then((payload) => {
+                if (ignore) return;
                 setNotifications(payload.notifications);
                 onUnreadCountChange(payload.unreadCount);
-            } catch {
-                if (!options?.silent) {
-                    toast.error(t("notifications.loadFailed"));
-                }
-            } finally {
-                if (!options?.silent) {
-                    setLoading(false);
-                }
-            }
-        },
-        [filter, onUnreadCountChange, t]
-    );
-
-    useEffect(() => {
-        if (!isOpen) {
-            return;
-        }
-        void loadNotifications();
-    }, [isOpen, loadNotifications]);
+            })
+            .catch(() => {
+                if (!ignore) toast.error(t("notifications.loadFailed"));
+            })
+            .finally(() => {
+                if (!ignore) setLoading(false);
+            });
+        return () => {
+            ignore = true;
+        };
+    }, [fetchNotifications, isOpen, onUnreadCountChange, t]);
 
     useEffect(() => {
         if (!isOpen) {
             return;
         }
 
-        const intervalId = window.setInterval(() => {
-            void loadNotifications({ silent: true });
-        }, 20_000);
+        const refreshSilently = () => {
+            fetchNotifications()
+                .then((payload) => {
+                    setNotifications(payload.notifications);
+                    onUnreadCountChange(payload.unreadCount);
+                })
+                .catch(() => undefined);
+        };
+        const intervalId = window.setInterval(refreshSilently, 20_000);
 
         const visibilityHandler = () => {
             if (document.visibilityState === "visible") {
-                void loadNotifications({ silent: true });
+                refreshSilently();
             }
         };
 
@@ -141,7 +150,7 @@ export function NotificationsSheet({
             window.removeEventListener("focus", visibilityHandler);
             document.removeEventListener("visibilitychange", visibilityHandler);
         };
-    }, [isOpen, loadNotifications]);
+    }, [fetchNotifications, isOpen, onUnreadCountChange]);
 
     const markRead = useCallback(
         async (notification: NotificationView) => {
