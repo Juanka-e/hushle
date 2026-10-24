@@ -1,10 +1,16 @@
+// The client is generated into platform-db, the only package that imports it. The "cjs"
+// format avoids import.meta, so Playwright's CommonJS transform can load it too; tsx and
+// Next.js load the same files as ES modules.
 generator client {
-  provider = "prisma-client-js"
+  provider            = "prisma-client"
+  output              = "../packages/platform-db/src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
 }
 
+// The connection URL lives in prisma.config.ts (Migrate) and platform-db (the client adapter).
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
 }
 
 enum ShopItemType {

@@ -37,13 +37,13 @@ if (process.env.PRISMA_BASELINE_CONFIRM !== REQUIRED_CONFIRMATION) {
 }
 
 console.log("Checking the existing database against prisma/schema.prisma...");
+// Since Prisma 7 the database side of the diff is DATABASE_URL, read through prisma.config.ts.
 const driftStatus = runPrisma(
   [
     "migrate",
     "diff",
-    "--from-schema-datasource",
-    "prisma/schema.prisma",
-    "--to-schema-datamodel",
+    "--from-config-datasource",
+    "--to-schema",
     "prisma/schema.prisma",
     "--exit-code",
   ],

@@ -3,7 +3,8 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseEnvFile, validateProductionEnvironment } from "./lib/production-preflight.mjs";
+import { DATABASE_URL_PARAMETERS, parseEnvFile, validateProductionEnvironment } from "./lib/production-preflight.mjs";
+import { SUPPORTED_DATABASE_URL_PARAMETERS } from "../packages/platform-db/src/connection";
 import {
     IYZICO_ACCEPTANCE_EVIDENCE_SCHEMA,
     IYZICO_REQUIRED_ACCEPTANCE_CHECKS,
@@ -151,6 +152,17 @@ function validEnvironment(): Record<string, string> {
 
 const valid = validateProductionEnvironment(validEnvironment());
 assert.deepEqual(valid.errors, []);
+
+// The preflight refuses the DATABASE_URL parameters the driver adapter would refuse at runtime.
+assert.deepEqual(DATABASE_URL_PARAMETERS, [...SUPPORTED_DATABASE_URL_PARAMETERS]);
+const tunedPool = validEnvironment();
+tunedPool.DATABASE_URL = `${tunedPool.DATABASE_URL}?connection_limit=15&connect_timeout=3&pool_timeout=20&socket_timeout=60`;
+assert.deepEqual(validateProductionEnvironment(tunedPool).errors, []);
+const tlsParameter = validEnvironment();
+tlsParameter.DATABASE_URL = `${tlsParameter.DATABASE_URL}?sslaccept=strict`;
+assert.deepEqual(validateProductionEnvironment(tlsParameter).errors, [
+    "DATABASE_URL parameter sslaccept is not supported by the MariaDB driver adapter.",
+]);
 
 const unsafe = validEnvironment();
 unsafe.AUTH_SECRET = "replace_with_secret";

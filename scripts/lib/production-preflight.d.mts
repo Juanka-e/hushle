@@ -4,6 +4,7 @@ export interface PreflightResult {
     checks: string[];
 }
 
+export const DATABASE_URL_PARAMETERS: string[];
 export function parseEnvFile(path: string): Record<string, string>;
 export function validateProductionEnvironment(
     env: Record<string, string>

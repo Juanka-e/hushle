@@ -32,6 +32,7 @@
 # ─── Prisma ───────────────────────────────────────────────────────
 # Generated client — regenerated from schema on each machine
 /src/generated/prisma
+/packages/platform-db/src/generated/
 /prisma/*.db
 /prisma/*.db-journal
 

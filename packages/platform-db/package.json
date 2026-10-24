@@ -10,7 +10,8 @@
     }
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3"
+    "@prisma/adapter-mariadb": "^7.10.1",
+    "@prisma/client": "^7.10.1"
   },
   "engines": {
     "node": ">=20"

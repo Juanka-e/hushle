@@ -1,4 +1,4 @@
-import { Prisma, prisma } from "@hushle/platform-db";
+import { Prisma, isRetryableWriteConflict, prisma } from "@hushle/platform-db";
 import { getOrSetJsonCache } from "@hushle/platform-cache";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -195,7 +195,7 @@ export async function updatePaymentCheckoutControl(input: {
             updated = await write();
             break;
         } catch (error) {
-            if (!isRetryablePaymentControlTransactionError(error) || attempt === 2) throw error;
+            if (!isRetryableWriteConflict(error) || attempt === 2) throw error;
             await delay((attempt + 1) * 15);
         }
     }
@@ -204,13 +204,6 @@ export async function updatePaymentCheckoutControl(input: {
     const state = await getPaymentCheckoutControl({ fresh: true });
     if (state.control.revision !== updated.revision) throw new PaymentCheckoutControlConflictError();
     return state;
-}
-
-function isRetryablePaymentControlTransactionError(error: unknown): boolean {
-    if (!error || typeof error !== "object") return false;
-    const candidate = error as { code?: unknown; meta?: { code?: unknown } };
-    return candidate.code === "P2034"
-        || (candidate.code === "P2010" && String(candidate.meta?.code ?? "") === "1213");
 }
 
 export function isPaymentCheckoutExpansion(

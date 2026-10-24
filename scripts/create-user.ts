@@ -1,8 +1,8 @@
 
-import { PrismaClient } from "@hushle/platform-db";
+import { createPrismaClient } from "@hushle/platform-db";
 import bcryptjs from "bcryptjs";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main() {
     const args = process.argv.slice(2);
