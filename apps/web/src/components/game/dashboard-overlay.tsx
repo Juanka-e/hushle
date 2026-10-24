@@ -17,6 +17,7 @@ interface DashboardOverlayProps {
 }
 
 export function DashboardOverlay({ isOpen, onClose }: DashboardOverlayProps) {
+    const { t } = useI18n();
     // Close on ESC
     useEffect(() => {
         if (!isOpen) return;
@@ -56,7 +57,9 @@ export function DashboardOverlay({ isOpen, onClose }: DashboardOverlayProps) {
             <div className="glass-panel relative flex h-[100dvh] w-full animate-fade-in-up overflow-hidden rounded-none shadow-[0_30px_90px_-45px_rgba(15,23,42,0.5)] sm:h-[88vh] sm:max-w-[1280px] sm:rounded-[34px]">
                 {/* Close button */}
                 <button
+                    type="button"
                     onClick={onClose}
+                    aria-label={t("common.close")}
                     className="absolute right-4 top-4 z-50 flex h-9 w-9 items-center justify-center rounded-full border border-white/50 bg-white/75 text-slate-600 shadow-sm backdrop-blur-sm transition-all hover:bg-red-500 hover:text-white dark:border-slate-700/60 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-red-500"
                 >
                     <X size={16} />
@@ -83,6 +86,7 @@ export function DashboardLayout({
     showPlayTab?: boolean;
     playContent?: ReactNode;
 }) {
+    const { t } = useI18n();
     const [activeTab, setActiveTab] = useState<DashboardTab>(defaultTab);
     const [sidebarMode, setSidebarMode] = useState<"inline" | "desktop">(() => {
         if (typeof window !== "undefined") {
@@ -214,6 +218,7 @@ export function DashboardLayout({
                     <button
                         type="button"
                         onClick={() => setNotificationsOpen(true)}
+                        aria-label={t("notifications.title")}
                         className="absolute right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-sky-600 text-white shadow-xl transition hover:scale-105 md:hidden"
                         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5rem)" }}
                     >
@@ -227,6 +232,7 @@ export function DashboardLayout({
                     <button
                         type="button"
                         onClick={() => setSupportOpen(true)}
+                        aria-label={t("support.center")}
                         className="absolute right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-white shadow-xl transition hover:scale-105 dark:bg-amber-200 dark:text-slate-900 md:hidden"
                         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
                     >

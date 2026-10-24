@@ -52,6 +52,12 @@ test.describe("notification list locale", () => {
         await page.getByRole("button", { name: /^Giriş Yap$/i }).click();
         await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
 
+        // The phone-only notification and help buttons are icons; they need accessible names.
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect(page.getByRole("button", { name: "Bildirimler", exact: true })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Yardım merkezi", exact: true })).toBeVisible();
+        await page.setViewportSize({ width: 1280, height: 860 });
+
         const list = async (locale: "tr" | "en") => {
             await page.context().addCookies([{ name: "hushle_locale", value: locale, url: baseURL }]);
             const response = await page.request.get("/api/notifications?limit=10&filter=all");
