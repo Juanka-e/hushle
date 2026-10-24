@@ -109,6 +109,7 @@
     "test:word-pool-integration": "tsx scripts/test-word-pool-integration.ts",
     "test:release-ops-docs": "tsx scripts/test-release-ops-docs.ts",
     "test:deploy-rollback": "bash scripts/test-deploy-rollback.sh",
+    "test:playwright-install-cache": "bash scripts/test-playwright-install-cache.sh",
     "test:prisma-migrations": "tsx scripts/test-prisma-migration-contract.ts",
     "test:encoding-integrity": "tsx scripts/test-encoding-integrity.ts",
     "test:wallet-ledger": "tsx scripts/test-wallet-ledger-foundation.ts",

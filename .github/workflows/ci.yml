@@ -61,6 +61,9 @@ jobs:
           bash -n scripts/ops/lib/release.sh
           bash -n scripts/ops/release-gate.sh
 
+      - name: Test CI Playwright package cache
+        run: npm run test:playwright-install-cache
+
   # ─── 2. Build Check ───────────────────────────────────────────────
   build:
     name: Build
@@ -116,8 +119,36 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=dev
 
+      # Most of this step's time is the Ubuntu packages behind --with-deps (the
+      # browsers are seconds from Playwright's CDN), and the runner's mirror has
+      # been slow enough to stretch it to 30 minutes. Their .deb files are
+      # cached per runner image and Playwright version; a new image starts from
+      # the previous set and downloads only the packages that changed.
+      - name: Resolve Playwright package cache key
+        id: playwright-debs
+        run: |
+          image="${ImageOS:-$(. /etc/os-release && echo "$ID$VERSION_ID")}"
+          version="$(node -p "require('playwright-core/package.json').version")"
+          echo "prefix=playwright-debs-$image-" >> "$GITHUB_OUTPUT"
+          echo "key=playwright-debs-$image-${ImageVersion:-unknown}-$version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached Playwright packages
+        id: playwright-debs-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/playwright-debs
+          key: ${{ steps.playwright-debs.outputs.key }}
+          restore-keys: ${{ steps.playwright-debs.outputs.prefix }}
+
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
+        run: bash scripts/ci/playwright-install.sh ~/.cache/playwright-debs chromium webkit
+
+      - name: Save Playwright package cache
+        if: steps.playwright-debs-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/playwright-debs
+          key: ${{ steps.playwright-debs.outputs.key }}
 
       - name: Generate Prisma Client & deploy migrations
         run: |
