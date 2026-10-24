@@ -81,7 +81,7 @@ export async function migrateLegacyAssets(publicRoot: string): Promise<number> {
             }
         }
     }
-    for (const namespace of ["cosmetics", "branding"]) await walk(path.join(publicRoot, namespace), `/${namespace}`);
+    for (const namespace of ["cosmetics", "branding"]) await walk(path.join(/*turbopackIgnore: true*/ publicRoot, namespace), `/${namespace}`);
     return copied;
 }
 
@@ -104,7 +104,7 @@ export async function serveStoredAsset(req: IncomingMessage, res: ServerResponse
         if (req.headers["if-none-match"] === etag) { res.statusCode = 304; res.end(); return true; }
         res.setHeader("Content-Length", info.size);
         if (req.method === "HEAD") res.end();
-        else await pipeline(createReadStream(file), res);
+        else await pipeline(createReadStream(/*turbopackIgnore: true*/ file), res);
         return true;
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;

@@ -14,7 +14,7 @@
     "@hushle/platform-cache": "0.1.0",
     "@hushle/platform-db": "0.1.0",
     "@hushle/platform-wallet": "0.1.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=20"
