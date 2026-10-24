@@ -13,11 +13,11 @@
     "@hushle/platform-email": "0.1.0",
     "@hushle/platform-observability": "0.1.0",
     "@hushle/platform-payments": "0.1.0",
-    "@prisma/client": "^6.19.2"
+    "@prisma/client": "^6.19.3"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   },
   "engines": {
