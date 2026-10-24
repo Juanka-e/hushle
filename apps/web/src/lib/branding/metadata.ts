@@ -117,15 +117,17 @@ export function buildRootViewport(branding: BrandingSettings): Viewport {
     };
 }
 
-export function buildRoomMetadata(branding: BrandingSettings): Metadata {
+/** `copy` is the localized title and description (meta.roomTitle / meta.roomDescription). */
+export function buildRoomMetadata(
+    branding: BrandingSettings,
+    copy: { title: string; description: string }
+): Metadata {
     const metadataBase = resolveSiteUrl();
     const ogImage = resolveAssetUrl(branding.ogImageUrl, metadataBase);
-    const roomTitle = `Oyun Odasi | ${branding.siteName}`;
-    const roomDescription = `Online ${branding.siteName} odasi. Takiminla birlikte yasakli kelimelere dikkat ederek anlatmaya calis.`;
 
     return {
-        title: roomTitle,
-        description: roomDescription,
+        title: copy.title,
+        description: copy.description,
         robots: {
             index: false,
             follow: false,

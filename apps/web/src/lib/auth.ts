@@ -27,8 +27,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         Credentials({
             name: "Credentials",
             credentials: {
-                username: { label: "Kullanici Adi", type: "text" },
-                password: { label: "Sifre", type: "password" },
+                username: { label: "Kullanıcı Adı", type: "text" },
+                password: { label: "Parola", type: "password" },
                 portal: { label: "Portal", type: "text" },
                 captchaToken: { label: "Captcha Token", type: "text" },
                 captchaAction: { label: "Captcha Action", type: "text" },

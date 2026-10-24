@@ -286,6 +286,36 @@ for (const file of ADMIN_TEXT_SOURCES) {
     });
 }
 assert.ok(adminTexts >= 2000, `expected the admin texts, found ${adminTexts}`);
+
+/**
+ * Player-facing text outside the dictionaries (page metadata, loading fallbacks, seed data, the
+ * dictionaries themselves) is spelled with Turkish letters too. Stored values such as the
+ * "guncelleme" announcement type are key-like and skipped.
+ */
+const adminTextSources = new Set(ADMIN_TEXT_SOURCES);
+const PLAYER_UI_SOURCES = listFiles("apps/web/src", (file) => /\.tsx?$/.test(file))
+    .filter((file) => !/^apps\/web\/src\/(app\/admin|app\/api\/admin|components\/admin)\//.test(file))
+    .filter((file) => !adminTextSources.has(file));
+assert.ok(PLAYER_UI_SOURCES.length >= 250, `expected the player UI sources, found ${PLAYER_UI_SOURCES.length}`);
+let playerUiTexts = 0;
+for (const file of PLAYER_UI_SOURCES) {
+    const sf = parse(file);
+    walk(sf, (node) => {
+        let value: string | null = null;
+        if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateLiteralToken(node)) {
+            value = node.text.trim();
+        } else if (ts.isJsxText(node)) {
+            value = node.text.trim();
+        }
+        if (!value || isKeyLike(value) || !/[A-Za-z]{2}/.test(value)) return;
+        playerUiTexts += 1;
+        if (!hasFoldedTurkish(value)) return;
+        const statement = node.parent?.parent?.getText(sf) ?? "";
+        if (/^console\./.test(statement)) return;
+        foldedViolations.push(`${lineOf(sf, node)}: ${value}`);
+    });
+}
+assert.ok(playerUiTexts >= 3000, `expected the player UI texts, found ${playerUiTexts}`);
 assert.deepEqual(foldedViolations, [], foldedViolations.join("\n"));
 
 // ── 4. Server helpers ──
@@ -597,5 +627,5 @@ for (const [file, usage] of Object.entries(noticeClientSources)) {
 }
 
 console.log(
-    `player error codes passed: ${PLAYER_ERROR_CODES.length} codes, ${emitPlayerErrorCalls} socket emits, ${playerErrorUses} HTTP error bodies in ${playerRoutes.length} routes; ${PLAYER_NOTICE_CODES.length} notice codes, ${playerNoticeUses} success notices; ${adminTexts} admin texts`
+    `player error codes passed: ${PLAYER_ERROR_CODES.length} codes, ${emitPlayerErrorCalls} socket emits, ${playerErrorUses} HTTP error bodies in ${playerRoutes.length} routes; ${PLAYER_NOTICE_CODES.length} notice codes, ${playerNoticeUses} success notices; ${adminTexts} admin texts, ${playerUiTexts} player UI texts`
 );

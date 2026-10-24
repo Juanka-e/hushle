@@ -46,6 +46,7 @@ export const FOLDED_TURKISH_WORDS: ReadonlySet<string> = new Set(
     yarisi yasakli yazilir yazin yogun yonet yonetici yonetimi yonetin yukle yukleme yuklemek
     yuklemesi yuklendi yuklenemedi yukleniyor yuklenmez yuksek yumusak yuzdesel yuzdesi yuzeyi
     yuzeyinde yuzeyinden yuzeylerde yuzeylere zayif
+    acildiginda alanina asagidaki calis cubugunda donmeli gostermek hazirlaniyor hesabina odasi saklandi takiminla tiklama yonlendirme
     `
         .trim()
         .split(/\s+/)
