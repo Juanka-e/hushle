@@ -17,3 +17,5 @@ scripts/ops/lib/release.sh text eol=lf
 scripts/ops/release-gate.sh text eol=lf
 scripts/test-deploy-rollback.sh text eol=lf
 scripts/ci/docker-image-cache.sh text eol=lf
+scripts/ci/playwright-install.sh text eol=lf
+scripts/test-playwright-install-cache.sh text eol=lf

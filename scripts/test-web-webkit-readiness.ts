@@ -38,7 +38,7 @@ assert.match(config, /browserName:\s*"webkit"/);
 assert.match(config, /testMatch:\s*\["web-responsive\.spec\.ts", "prehydration-input\.spec\.ts"\]/);
 assert.match(config, /testMatch:\s*"web-launch-auth\.spec\.ts"/);
 
-assert.match(workflow, /playwright install --with-deps chromium webkit/);
+assert.match(workflow, /scripts\/ci\/playwright-install\.sh \S+ chromium webkit/);
 assert.match(guide, /WebKit motoru/i);
 assert.match(guide, /fiziksel iOS Safari kanıtı değildir/i);
 assert.match(guide, /registered/i);
