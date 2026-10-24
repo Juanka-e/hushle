@@ -24,6 +24,7 @@ import {
 } from "@/lib/announcements/content";
 import { AnnouncementBlocksEditor } from "@/components/admin/announcement-blocks-editor";
 import { AnnouncementPreviewCard } from "@/components/game/announcement-preview-card";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 interface AnnouncementRecord {
     id: number;
@@ -73,6 +74,13 @@ const defaultFormState: AnnouncementFormState = {
     mediaType: null as "image" | "youtube" | null,
 };
 
+async function requestAnnouncements(): Promise<AnnouncementRecord[]> {
+    const response = await fetch("/api/admin/announcements", {
+        cache: "no-store",
+    });
+    return (await response.json()) as AnnouncementRecord[];
+}
+
 export default function AdminAnnouncementsPage() {
     const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
     const [loading, setLoading] = useState(true);
@@ -86,24 +94,26 @@ export default function AdminAnnouncementsPage() {
     const [deleting, setDeleting] = useState<number | null>(null);
     const [togglingPin, setTogglingPin] = useState<number | null>(null);
 
+    // "New" badges are relative to when the list was loaded, not to each render.
+    const [loadedAt, setLoadedAt] = useState(0);
+    const announcementHandlers = useMemo(
+        () => ({
+            apply: (data: AnnouncementRecord[]) => {
+                setAnnouncements(data);
+                setLoadedAt(Date.now());
+            },
+            fail: () => toast.error("Duyurular yüklenemedi."),
+            settle: () => setLoading(false),
+        }),
+        []
+    );
+
+    useEffect(() => startRequest(requestAnnouncements, announcementHandlers), [announcementHandlers]);
+
     const fetchAnnouncements = useCallback(async () => {
         setLoading(true);
-        try {
-            const response = await fetch("/api/admin/announcements", {
-                cache: "no-store",
-            });
-            const data = (await response.json()) as AnnouncementRecord[];
-            setAnnouncements(data);
-        } catch {
-            toast.error("Duyurular yüklenemedi.");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchAnnouncements();
-    }, [fetchAnnouncements]);
+        await runRequest(requestAnnouncements, announcementHandlers);
+    }, [announcementHandlers]);
 
     const sortedAnnouncements = useMemo(
         () =>
@@ -338,8 +348,8 @@ export default function AdminAnnouncementsPage() {
                     <div className="divide-y divide-gray-100 dark:divide-slate-700">
                         {sortedAnnouncements.map((announcement) => {
                             const isNew =
-                                new Date(announcement.createdAt) >
-                                new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                                new Date(announcement.createdAt).getTime() >
+                                loadedAt - 7 * 24 * 60 * 60 * 1000;
                             const tags = announcement.tags
                                 ? announcement.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
                                 : [];

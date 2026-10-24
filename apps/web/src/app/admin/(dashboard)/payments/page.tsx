@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     AlertTriangle,
     CheckCircle2,
@@ -16,6 +16,7 @@ import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminEmptyState, AdminTableShell } from "@/components/admin/admin-table-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 type ReversalRequest = {
     id: string;
@@ -199,25 +200,40 @@ export default function AdminPaymentsPage() {
     const [rolloutReason, setRolloutReason] = useState("");
     const [rolloutConfirmation, setRolloutConfirmation] = useState("");
 
+    const fetchPayments = useCallback(async () => {
+        const params = new URLSearchParams({ page: String(page), limit: "20", status });
+        if (search) params.set("search", search);
+        const response = await fetch(`/api/admin/payments?${params}`, { cache: "no-store" });
+        const payload = await response.json().catch(() => null) as PaymentResponse | { error?: string } | null;
+        if (!response.ok || !payload || !("items" in payload)) {
+            throw new Error(payload && "error" in payload ? payload.error : "Ödemeler yüklenemedi.");
+        }
+        return payload;
+    }, [page, search, status]);
+    const paymentHandlers = useMemo(
+        () => ({
+            apply: (payload: PaymentResponse) => {
+                setData(payload);
+                setCheckoutPaused(payload.checkoutControl.control.paused);
+                setRolloutPercent(payload.checkoutControl.control.rolloutPercent);
+            },
+            fail: (error: unknown) => toast.error(error instanceof Error ? error.message : "Ödemeler yüklenemedi."),
+            settle: () => setLoading(false),
+        }),
+        []
+    );
     const load = useCallback(async () => {
         setLoading(true);
-        try {
-            const params = new URLSearchParams({ page: String(page), limit: "20", status });
-            if (search) params.set("search", search);
-            const response = await fetch(`/api/admin/payments?${params}`, { cache: "no-store" });
-            const payload = await response.json().catch(() => null) as PaymentResponse | { error?: string } | null;
-            if (!response.ok || !payload || !("items" in payload)) {
-                throw new Error(payload && "error" in payload ? payload.error : "Ödemeler yüklenemedi.");
-            }
-            setData(payload);
-            setCheckoutPaused(payload.checkoutControl.control.paused);
-            setRolloutPercent(payload.checkoutControl.control.rolloutPercent);
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Ödemeler yüklenemedi.");
-        } finally {
-            setLoading(false);
-        }
-    }, [page, search, status]);
+        await runRequest(fetchPayments, paymentHandlers);
+    }, [fetchPayments, paymentHandlers]);
+
+    // A new page, status or search shows the loading state from the render it changes in.
+    const paymentsKey = `${page}|${status}|${search}`;
+    const [loadingKey, setLoadingKey] = useState(paymentsKey);
+    if (loadingKey !== paymentsKey) {
+        setLoadingKey(paymentsKey);
+        setLoading(true);
+    }
 
     async function updateCheckoutControl(input: {
         paused: boolean;
@@ -247,7 +263,7 @@ export default function AdminPaymentsPage() {
             setBusyId(null);
         }
     }
-    useEffect(() => { void load(); }, [load]);
+    useEffect(() => startRequest(fetchPayments, paymentHandlers), [fetchPayments, paymentHandlers]);
 
     async function post(url: string, body: object, fallback: string): Promise<Record<string, unknown>> {
         const response = await fetch(url, {

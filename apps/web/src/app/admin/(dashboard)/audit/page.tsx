@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Activity, Archive, Database, Search } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
@@ -17,9 +17,43 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import type { AdminAuditListResponse, AdminAuditLogView } from "@/types/admin-audit";
+import { startRequest } from "@/lib/run-request";
 
 type EconomyGuardFilter = "" | "match_reward" | "triggered" | "ceiling" | "repeated_group";
 type AuditSource = "hot" | "archive";
+
+interface AuditLogQuery {
+    page: number;
+    search: string;
+    action: string;
+    resourceType: string;
+    actorRole: string;
+    economyGuard: EconomyGuardFilter;
+    source: AuditSource;
+}
+
+/** Null when the server refuses the query (the page keeps what it shows). */
+async function requestAuditLogs(query: AuditLogQuery, signal: AbortSignal): Promise<AdminAuditListResponse | null> {
+    const params = new URLSearchParams({
+        page: String(query.page),
+        limit: "15",
+    });
+    if (query.search) params.set("search", query.search);
+    if (query.action) params.set("action", query.action);
+    if (query.resourceType) params.set("resourceType", query.resourceType);
+    if (query.actorRole) params.set("actorRole", query.actorRole);
+    if (query.economyGuard) params.set("economyGuard", query.economyGuard);
+    params.set("source", query.source);
+
+    const response = await fetch(`/api/admin/audit?${params.toString()}`, {
+        cache: "no-store",
+        signal,
+    });
+    if (!response.ok) {
+        return null;
+    }
+    return (await response.json()) as AdminAuditListResponse;
+}
 
 const economyGuardPresets: Array<{
     value: EconomyGuardFilter;
@@ -243,16 +277,50 @@ export default function AdminAuditPage() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
 
-    useEffect(() => {
-        setSearch((searchParams.get("search") ?? "").trim());
-        setAction(searchParams.get("action") ?? "");
-        setResourceType(searchParams.get("resourceType") ?? "");
-        setActorRole(searchParams.get("actorRole") ?? "");
+    // Adjusted during render instead of in effects. The URL filters apply on load and on each
+    // navigation without counting as a filter change, so a deep-linked ?page= is kept; a
+    // filter the admin changes starts from page one; a new source drops the other one's rows.
+    const filterKey = JSON.stringify([debouncedSearch, action, resourceType, actorRole, economyGuard, source]);
+    const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+    const urlKey = searchParams.toString();
+    const [syncedUrlKey, setSyncedUrlKey] = useState<string | null>(null);
+    if (syncedUrlKey !== urlKey) {
+        setSyncedUrlKey(urlKey);
+        const nextSearch = (searchParams.get("search") ?? "").trim();
+        const nextAction = searchParams.get("action") ?? "";
+        const nextResourceType = searchParams.get("resourceType") ?? "";
+        const nextActorRole = searchParams.get("actorRole") ?? "";
         const nextEconomyGuard = (searchParams.get("economyGuard") ?? "") as EconomyGuardFilter;
+        const nextSource: AuditSource = searchParams.get("source") === "archive" ? "archive" : "hot";
+        setSearch(nextSearch);
+        setDebouncedSearch(nextSearch);
+        setAction(nextAction);
+        setResourceType(nextResourceType);
+        setActorRole(nextActorRole);
         setEconomyGuard(nextEconomyGuard);
-        setSource(searchParams.get("source") === "archive" ? "archive" : "hot");
+        setSource(nextSource);
         setPage(Number(searchParams.get("page") ?? "1") || 1);
-    }, [searchParams]);
+        setPageFilterKey(
+            JSON.stringify([nextSearch, nextAction, nextResourceType, nextActorRole, nextEconomyGuard, nextSource])
+        );
+    } else if (pageFilterKey !== filterKey) {
+        setPageFilterKey(filterKey);
+        setPage(1);
+    }
+    const [rowsSource, setRowsSource] = useState(source);
+    if (rowsSource !== source) {
+        setRowsSource(source);
+        setLogs([]);
+        setTotal(0);
+    }
+    // A new query shows the loading state from the render it changes in.
+    const logsKey = JSON.stringify([page, filterKey]);
+    const [loadingLogsKey, setLoadingLogsKey] = useState(logsKey);
+    if (loadingLogsKey !== logsKey) {
+        setLoadingLogsKey(logsKey);
+        setLoading(true);
+        setLoadError(null);
+    }
 
     useEffect(() => {
         const timeout = window.setTimeout(() => {
@@ -309,64 +377,38 @@ export default function AdminAuditPage() {
         source,
     ]);
 
-    const loadLogs = useCallback(async (signal: AbortSignal) => {
-        setLoading(true);
-        setLoadError(null);
-        try {
-            const params = new URLSearchParams({
-                page: String(page),
-                limit: "15",
-            });
-            if (debouncedSearch) params.set("search", debouncedSearch);
-            if (action) params.set("action", action);
-            if (resourceType) params.set("resourceType", resourceType);
-            if (actorRole) params.set("actorRole", actorRole);
-            if (economyGuard) params.set("economyGuard", economyGuard);
-            params.set("source", source);
-
-            const response = await fetch(`/api/admin/audit?${params.toString()}`, {
-                cache: "no-store",
-                signal,
-            });
-            if (!response.ok) {
-                return;
-            }
-
-            const payload = (await response.json()) as AdminAuditListResponse;
-            setLogs(payload.logs);
-            setPage(payload.page);
-            setPages(payload.pages);
-            setTotal(payload.total);
-            setActionOptions(payload.actionOptions);
-            setResourceTypeOptions(payload.resourceTypeOptions);
-            setRoleOptions(payload.roleOptions);
-        } catch (error) {
-            if (!(error instanceof DOMException && error.name === "AbortError")) {
-                setLogs([]);
-                setTotal(0);
-                setLoadError("Audit kayıtları yüklenemedi. Lütfen tekrar deneyin.");
-            }
-        } finally {
-            if (!signal.aborted) {
-                setLoading(false);
-            }
-        }
-    }, [action, actorRole, debouncedSearch, economyGuard, page, resourceType, source]);
-
     useEffect(() => {
         const controller = new AbortController();
-        void loadLogs(controller.signal);
-        return () => controller.abort();
-    }, [loadLogs]);
-
-    useEffect(() => {
-        setPage(1);
-    }, [debouncedSearch, action, resourceType, actorRole, economyGuard, source]);
-
-    useEffect(() => {
-        setLogs([]);
-        setTotal(0);
-    }, [source]);
+        const cancel = startRequest(
+            () =>
+                requestAuditLogs(
+                    { page, search: debouncedSearch, action, resourceType, actorRole, economyGuard, source },
+                    controller.signal
+                ),
+            {
+                apply: (payload) => {
+                    if (!payload) return;
+                    setLogs(payload.logs);
+                    setPage(payload.page);
+                    setPages(payload.pages);
+                    setTotal(payload.total);
+                    setActionOptions(payload.actionOptions);
+                    setResourceTypeOptions(payload.resourceTypeOptions);
+                    setRoleOptions(payload.roleOptions);
+                },
+                fail: () => {
+                    setLogs([]);
+                    setTotal(0);
+                    setLoadError("Audit kayıtları yüklenemedi. Lütfen tekrar deneyin.");
+                },
+                settle: () => setLoading(false),
+            }
+        );
+        return () => {
+            cancel();
+            controller.abort();
+        };
+    }, [action, actorRole, debouncedSearch, economyGuard, page, resourceType, source]);
 
     const stats = useMemo(
         () => [

@@ -7,6 +7,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { LogIn } from "lucide-react";
 import { useBranding } from "@/components/providers/branding-provider";
+import { useHydrated } from "@/hooks/use-hydrated";
 import { useI18n } from "@/components/providers/i18n-provider";
 import { LanguageSwitcher } from "@/components/i18n/language-switcher";
 import { Button } from "@/components/ui/button";
@@ -34,24 +35,29 @@ export default function LoginPage() {
     const router = useRouter();
     const branding = useBranding();
     const { t } = useI18n();
+    // An OAuth error from the URL shows until the next sign-in attempt; it is read after
+    // hydration so the server and the first client render agree.
+    const hydrated = useHydrated();
+    const [urlErrorDismissed, setUrlErrorDismissed] = useState(false);
+    const urlAuthError = hydrated && !urlErrorDismissed
+        ? new URLSearchParams(window.location.search).get("error")
+        : null;
+    const shownError =
+        error ||
+        (urlAuthError === "OAuthAccountNotLinked"
+            ? t("auth.oauthLinked")
+            : urlAuthError
+              ? t("auth.oauthFailed")
+              : "");
 
     useEffect(() => {
-        const authError = new URLSearchParams(window.location.search).get("error");
-        if (authError === "OAuthAccountNotLinked") {
-            setError(
-                t("auth.oauthLinked")
-            );
-        } else if (authError) {
-            setError(t("auth.oauthFailed"));
-        }
-
         void fetch("/api/auth/providers", { cache: "no-store" })
             .then((response) => (response.ok ? response.json() : null))
             .then((providers: Record<string, unknown> | null) =>
                 setGoogleEnabled(Boolean(providers?.google))
             )
             .catch(() => setGoogleEnabled(false));
-    }, [t]);
+    }, []);
 
     const getCallbackUrl = () =>
         resolveSafeCallbackUrl(
@@ -63,6 +69,7 @@ export default function LoginPage() {
         event.preventDefault();
         setLoading(true);
         setError("");
+        setUrlErrorDismissed(true);
         const callbackUrl = getCallbackUrl();
 
         try {
@@ -159,8 +166,8 @@ export default function LoginPage() {
                                 {t("auth.forgotPassword")}
                             </Link>
                         </div>
-                        {error ? (
-                            <div className="text-sm font-medium text-red-500">{error}</div>
+                        {shownError ? (
+                            <div className="text-sm font-medium text-red-500">{shownError}</div>
                         ) : null}
                         <Button
                             type="submit"

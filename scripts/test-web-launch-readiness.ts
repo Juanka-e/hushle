@@ -49,6 +49,7 @@ const checks: ReadinessCheck[] = [
     { area: "inventory ownership", script: "test:inventory-core" },
     { area: "system notifications", script: "test:system-notifications" },
     { area: "notification templates", script: "test:notification-templates" },
+    { area: "client request helper", script: "test:run-request" },
 ];
 
 const npmCliPath = process.env.npm_execpath;
