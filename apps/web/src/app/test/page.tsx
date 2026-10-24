@@ -9,7 +9,7 @@ const sampleCard: CardData = {
     word: "Hushle",
     difficulty: 2,
     categoryColor: "#0f766e",
-    taboo: ["Sessiz", "Kelime", "Takim", "Iletisim", "Lobby"],
+    taboo: ["Sessiz", "Kelime", "Takım", "İletişim", "Lobi"],
 };
 
 const sampleFaceTheme = resolveCardFaceTheme({
@@ -64,8 +64,8 @@ export default function TestPage() {
                         Kart Flip Test Sahnesi
                     </h1>
                     <p className="mx-auto max-w-2xl text-sm text-slate-300 sm:text-base">
-                        Default durumda flip kapali olmali. Toggle acildiginda kart
-                        tiklama ile on ve arka yuz arasinda donmeli.
+                        Varsayılan durumda çevirme kapalı olmalı. Açıldığında kart
+                        tıklanınca ön ve arka yüz arasında dönmeli.
                     </p>
                 </div>
 

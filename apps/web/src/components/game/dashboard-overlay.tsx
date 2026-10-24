@@ -9,6 +9,7 @@ import { SupportDeskSheet } from "./support-desk-sheet";
 import { NotificationsSheet } from "./notifications-sheet";
 import { NOTIFICATIONS_UPDATED_EVENT } from "@/lib/notification-events";
 import type { NotificationUnreadCountResponse } from "@/types/notifications";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 interface DashboardOverlayProps {
     isOpen: boolean;
@@ -305,11 +306,12 @@ const SettingsContentLazy = dynamic(
 );
 
 function PageLoading() {
+    const { t } = useI18n();
     return (
         <div className="flex h-full items-center justify-center p-8">
             <div className="flex items-center gap-3 rounded-full border border-slate-200/70 bg-white/70 px-4 py-3 text-sm font-bold text-slate-600 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-300">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-                Yukleniyor
+                {t("common.loading")}
             </div>
         </div>
     );

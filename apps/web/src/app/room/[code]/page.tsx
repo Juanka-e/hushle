@@ -955,10 +955,10 @@ export default function RoomPage() {
             <main className="flex min-h-screen items-center justify-center bg-gray-50 px-6 dark:bg-slate-900">
                 <div className="rounded-3xl border border-gray-200 bg-white px-8 py-6 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900">
                     <div className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
-                        Lobby Yukleniyor
+                        {t("room.loadingLobby")}
                     </div>
                     <div className="mt-2 text-sm font-medium text-gray-600 dark:text-gray-300">
-                        Oda bilgileri hazirlaniyor.
+                        {t("room.preparingRoom")}
                     </div>
                 </div>
             </main>

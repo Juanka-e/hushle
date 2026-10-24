@@ -39,7 +39,7 @@ function ensurePreconnect(origin: string): void {
 
 function loadScript(src: string, dataAttribute: string): Promise<void> {
     if (typeof window === "undefined") {
-        return Promise.reject(new Error("Captcha sadece client tarafinda calisir."));
+        return Promise.reject(new Error("Captcha yalnız tarayıcıda çalışır."));
     }
 
     const existingScript = document.querySelector<HTMLScriptElement>(
@@ -57,7 +57,7 @@ function loadScript(src: string, dataAttribute: string): Promise<void> {
         script.setAttribute(dataAttribute, "true");
         script.onload = () => resolve();
         script.onerror = () =>
-            reject(new Error("Captcha script yuklenemedi."));
+            reject(new Error("Captcha betiği yüklenemedi."));
         document.head.appendChild(script);
     });
 }
@@ -102,7 +102,7 @@ async function fetchCaptchaConfig(action: CaptchaAction): Promise<PublicCaptchaC
         cache: "no-store",
     }).then(async (response) => {
         if (!response.ok) {
-            throw new Error("Captcha ayarlari alinamadi.");
+            throw new Error("Captcha ayarları alınamadı.");
         }
         return (await response.json()) as PublicCaptchaConfig;
     });
@@ -143,7 +143,7 @@ async function executeTurnstile(config: PublicCaptchaConfig, action: CaptchaActi
     await ensureTurnstileLoaded();
 
     if (!window.turnstile) {
-        throw new Error("Turnstile kullanima hazir degil.");
+        throw new Error("Turnstile kullanıma hazır değil.");
     }
 
     const container = document.createElement("div");
@@ -202,7 +202,7 @@ async function executeRecaptcha(siteKey: string, action: CaptchaAction): Promise
     await ensureRecaptchaLoaded(siteKey);
 
     if (!window.grecaptcha) {
-        throw new Error("reCAPTCHA kullanima hazir degil.");
+        throw new Error("reCAPTCHA kullanıma hazır değil.");
     }
 
     return await new Promise<string>((resolve, reject) => {
