@@ -113,7 +113,7 @@ test.describe("guest match claim", () => {
         return page;
     }
 
-    type LobbyPlayer = { ad: string; rol: string; takim: "A" | "B" | null; online?: boolean };
+    type LobbyPlayer = { ad: string; rol: string; takim: "A" | "B" | null };
 
     /** Resolves once the server lists `name` in the room, whatever screen the room shows. */
     function lobbyIncludes(socket: Socket, name: string): Promise<LobbyPlayer> {
@@ -125,26 +125,6 @@ test.describe("guest match claim", () => {
                 clearTimeout(timer);
                 socket.off("lobiGuncelle", onLobby);
                 resolve(player);
-            };
-            socket.on("lobiGuncelle", onLobby);
-        });
-    }
-
-    /** Resolves on the next lobby update that lists `count` seated players online. */
-    function lobbyHasOnlineSeats(socket: Socket, count: number): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                socket.off("lobiGuncelle", onLobby);
-                reject(new Error(`the lobby never listed ${count} seated players online`));
-            }, 20_000);
-            const onLobby = (lobby: { oyuncular: LobbyPlayer[] }) => {
-                const seated = lobby.oyuncular.filter(
-                    (entry) => entry.online !== false && entry.rol !== "İzleyici" && (entry.takim === "A" || entry.takim === "B")
-                );
-                if (seated.length < count) return;
-                clearTimeout(timer);
-                socket.off("lobiGuncelle", onLobby);
-                resolve();
             };
             socket.on("lobiGuncelle", onLobby);
         });
@@ -198,27 +178,13 @@ test.describe("guest match claim", () => {
             )
         );
         const gameOver = new Promise<void>((resolve) => host.socket.once("oyunBitti", () => resolve()));
-        const startGame = () =>
-            host.socket.emit("oyun_baslat", {
-                seciliKategoriler: [categoryId],
-                seciliZorluklar: [1],
-                ayarlar: { sure: 60, mod: "skor", deger: 10 },
-            });
-        // The browser guest joins through the home page socket and rejoins from the room page,
-        // so it can be offline for a moment after the host first lists it (seen in CI as
-        // NOT_ENOUGH_PLAYERS). Like a host pressing Start again, a refused start is sent again
-        // once the lobby lists the four seats online.
-        let startRetries = 0;
-        const retryRefusedStart = (_message: unknown, meta?: { code?: string }) => {
-            if (meta?.code !== "NOT_ENOUGH_PLAYERS" || startRetries >= 3) return;
-            startRetries += 1;
-            void lobbyHasOnlineSeats(host.socket, 4).then(startGame).catch(() => undefined);
-        };
-        host.socket.on("hata", retryRefusedStart);
-        startGame();
+        host.socket.emit("oyun_baslat", {
+            seciliKategoriler: [categoryId],
+            seciliZorluklar: [1],
+            ayarlar: { sure: 60, mod: "skor", deger: 10 },
+        });
         // The start transition alone takes about ten seconds.
         const turnRoles = await within(roles, 30_000, () => `first turn roles never arrived (${context()})`);
-        host.socket.off("hata", retryRefusedStart);
         const narrator = turnRoles.find(([, role]) => role === "Anlatıcı")?.[0] ?? null;
         await duringMatch?.(roomCode, host.socket);
         let over = false;

@@ -27,6 +27,7 @@ const checks: ReadinessCheck[] = [
     { area: "room capacity", script: "test:room-capacity-controls" },
     { area: "room game-start transition", script: "test:room-game-start" },
     { area: "room connection continuity", script: "test:room-connection-continuity" },
+    { area: "room socket handoff", script: "test:room-socket-handoff" },
     { area: "server-side match settlement", script: "test:match-settlement" },
     { area: "guest match claim", script: "test:guest-match-claim" },
     { area: "guest claim analytics", script: "test:guest-claim-analytics" },

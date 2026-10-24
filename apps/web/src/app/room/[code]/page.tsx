@@ -24,6 +24,7 @@ import {
     SOCKET_CLIENT_AUTH,
     getSocketProtocolErrorMessage,
 } from "@/lib/socket/protocol-version";
+import { adoptRoomSocket } from "@/lib/socket/room-socket-handoff";
 import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import {
     isRoomNotFoundError,
@@ -418,24 +419,31 @@ export default function RoomPage() {
                     return;
                 }
 
-                const socket = io({
-                    path: "/api/socketio",
-                    auth: SOCKET_CLIENT_AUTH,
-                    transports: ["websocket", "polling"],
-                    tryAllTransports: true,
-                });
+                // Joining from the home page or the dashboard hands their socket over, so the
+                // player stays online while the page changes.
+                const socket =
+                    adoptRoomSocket(roomCode) ??
+                    io({
+                        path: "/api/socketio",
+                        auth: SOCKET_CLIENT_AUTH,
+                        transports: ["websocket", "polling"],
+                        tryAllTransports: true,
+                    });
 
                 activeSocket = socket;
                 socketRef.current = socket;
 
-                socket.on("connect", () => {
-                    setIsConnected(true);
+                const requestRoom = () => {
                     socket.emit("room:request", {
                         kullaniciAdi: username,
                         odaKodu: roomCode,
                         ...(guestToken ? { guestToken } : {}),
                         ...(captchaToken ? { captchaToken } : {}),
                     });
+                };
+                socket.on("connect", () => {
+                    setIsConnected(true);
+                    requestRoom();
                 });
 
                 socket.on("disconnect", () => setIsConnected(false));
@@ -449,6 +457,8 @@ export default function RoomPage() {
                 });
 
                 socket.on("kimlikAta", ({ playerId, guestToken: assignedGuestToken }: SocketIdentityPayload) => {
+                    // Also covers a handed-over socket, which connected before this page listened.
+                    setIsConnected(true);
                     window.sessionStorage.setItem("tabu_playerId", playerId);
                     if (assignedGuestToken) {
                         window.sessionStorage.setItem("tabu_guestToken", assignedGuestToken);
@@ -622,6 +632,12 @@ export default function RoomPage() {
                         router.push("/");
                     }
                 });
+
+                // A handed-over socket is already connected and does not fire "connect" again; the
+                // request comes after every listener is in place so no reply is missed.
+                if (socket.connected) {
+                    requestRoom();
+                }
             } catch {
                 if (isMounted) {
                     setEntryError(translate(localeRef.current, "home.securityFailed"));

@@ -79,6 +79,18 @@ Success and status text that the server sends to players has stable codes too, f
   that every notice code has Turkish and English text, and that the Turkish text matches what older
   clients already show.
 
+## Joining from the home page or the dashboard
+
+- The home page and the dashboard send `room:request` on their own socket. Once `lobiGuncelle`
+  confirms the join, they hand the connected socket to the room page
+  (`apps/web/src/lib/socket/room-socket-handoff.ts`) instead of disconnecting it.
+- The room page continues on that socket and sends `room:request` again for the room state; the
+  server treats it as a reconnect of the same socket. The player never shows offline in between,
+  so a host who starts during the navigation is not refused with `NOT_ENOUGH_PLAYERS`.
+- A socket the room page does not pick up within 30 seconds, or that joined another room, is closed.
+- `npm run test:room-socket-handoff` covers these rules; `tests/room-join-handoff.spec.ts` checks in
+  a browser that the host never sees the guest offline and can start at that moment.
+
 ## March 9, 2026 Regression Note
 
 - Guest room creation/join was broken because the custom Socket.IO middleware in `server.ts` rejected unauthenticated sockets.
