@@ -5,6 +5,7 @@ import {
     buildRootViewport,
     buildRoomMetadata,
 } from "@/lib/branding/metadata";
+import { translate } from "@/lib/i18n/dictionaries";
 import {
     DEFAULT_SYSTEM_SETTINGS,
     normalizeSystemSettings,
@@ -33,7 +34,12 @@ function main() {
 
     const rootMetadata = buildRootMetadata(settings.branding);
     const rootViewport = buildRootViewport(settings.branding);
-    const roomMetadata = buildRoomMetadata(settings.branding);
+    const roomCopy = (locale: "tr" | "en") => ({
+        title: translate(locale, "meta.roomTitle", { siteName: settings.branding.siteName }),
+        description: translate(locale, "meta.roomDescription", { siteName: settings.branding.siteName }),
+    });
+    const roomMetadata = buildRoomMetadata(settings.branding, roomCopy("tr"));
+    const englishRoomMetadata = buildRoomMetadata(settings.branding, roomCopy("en"));
     const titleConfig =
         typeof rootMetadata.title === "object" && rootMetadata.title
             ? (rootMetadata.title as { template?: string })
@@ -57,7 +63,8 @@ function main() {
     assert.equal(iconsConfig?.icon?.[0]?.url, "http://localhost:3000/brand/favicon.ico");
     assert.equal(iconsConfig?.icon?.[0]?.type, "image/x-icon");
     assert.equal(iconsConfig?.apple, undefined);
-    assert.equal(roomMetadata.title, "Oyun Odasi | Tabu Arena");
+    assert.equal(roomMetadata.title, "Oyun Odası | Tabu Arena");
+    assert.equal(englishRoomMetadata.title, "Game Room | Tabu Arena");
     assert.equal(roomMetadata.openGraph?.title, "Tabu Arena | Online Oyun");
     assert.equal(isAutomaticBrandingPreviewUrl("/og/tabu-arena.png"), true);
     assert.equal(isAutomaticBrandingPreviewUrl("https://cdn.example.com/tabu.png"), false);

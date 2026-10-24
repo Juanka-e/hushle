@@ -203,7 +203,7 @@ export const mockBundles: MockBundleSeed[] = [
     {
         code: "bundle_starter_showcase",
         name: "Starter Showcase",
-        description: "Avatar, frame ve kart arkasi ile ilk set.",
+        description: "Avatar, frame ve kart arkası ile ilk set.",
         priceCoin: 780,
         isActive: true,
         sortOrder: 10,
@@ -216,7 +216,7 @@ export const mockBundles: MockBundleSeed[] = [
     {
         code: "bundle_legends_cache",
         name: "Legends Cache",
-        description: "Nadir avatar, premium frame ve iki kart temasi.",
+        description: "Nadir avatar, premium frame ve iki kart teması.",
         priceCoin: 2200,
         isActive: true,
         sortOrder: 20,
@@ -233,7 +233,7 @@ export const mockDiscountCampaigns: MockDiscountSeed[] = [
     {
         code: "discount_launch_bundle",
         name: "Launch Bundle Week",
-        description: "Starter Showcase paketinde acilis indirimi.",
+        description: "Starter Showcase paketinde açılış indirimi.",
         targetType: "bundle",
         discountType: "percentage",
         percentageOff: 15,
@@ -248,7 +248,7 @@ export const mockDiscountCampaigns: MockDiscountSeed[] = [
     {
         code: "discount_neon_owl_spotlight",
         name: "Neon Owl Spotlight",
-        description: "Neon Owl avatarinda sabit coin indirimi.",
+        description: "Neon Owl avatarında sabit coin indirimi.",
         targetType: "shop_item",
         discountType: "fixed_coin",
         percentageOff: null,
@@ -266,7 +266,7 @@ export const mockCouponCodes: MockCouponSeed[] = [
     {
         code: "WELCOME25",
         name: "Welcome 25",
-        description: "Ilk satin almada global coin indirimi.",
+        description: "İlk satın almada global coin indirimi.",
         targetType: "global",
         discountType: "fixed_coin",
         percentageOff: null,
@@ -280,7 +280,7 @@ export const mockCouponCodes: MockCouponSeed[] = [
     {
         code: "LEGENDS15",
         name: "Legends 15",
-        description: "Legends Cache paketi icin yuzde indirim.",
+        description: "Legends Cache paketi için yüzde indirim.",
         targetType: "bundle",
         discountType: "percentage",
         percentageOff: 15,
