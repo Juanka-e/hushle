@@ -320,18 +320,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-typecheck
     timeout-minutes: 20
-    services:
-      mysql:
-        image: mysql:8.4
-        env:
-          MYSQL_ROOT_PASSWORD: root
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
 
     steps:
       - name: Checkout code
@@ -339,9 +327,51 @@ jobs:
         with:
           persist-credentials: false
 
+      # Anonymous pulls from Docker Hub and public.ecr.aws hit per-IP limits on
+      # shared runners, so every image of this job (the MySQL server included,
+      # which is why it is not a service container) comes from the Actions cache.
+      - name: List scenario images
+        id: images
+        run: |
+          bash scripts/test-remote-backup-e2e.sh --print-images > "$RUNNER_TEMP/backup-e2e-images.txt"
+          cat "$RUNNER_TEMP/backup-e2e-images.txt"
+          echo "key=backup-e2e-images-$(sha256sum "$RUNNER_TEMP/backup-e2e-images.txt" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached images
+        id: image-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/backup-e2e-images
+          key: ${{ steps.images.outputs.key }}
+
+      - name: Load or pull scenario images
+        run: bash scripts/ci/docker-image-cache.sh ~/backup-e2e-images < "$RUNNER_TEMP/backup-e2e-images.txt"
+
+      - name: Save image cache
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/backup-e2e-images
+          key: ${{ steps.images.outputs.key }}
+
+      - name: Start MySQL server
+        run: |
+          docker run -d --name backup-e2e-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=root mysql:8.4
+          # TCP ping: the entrypoint's init server runs without networking, so
+          # this only succeeds once the real server accepts connections.
+          for attempt in $(seq 1 60); do
+            if docker exec backup-e2e-mysql mysqladmin ping --protocol=TCP -h 127.0.0.1 -uroot -proot --silent; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs backup-e2e-mysql
+          exit 1
+
       - name: Back up, upload, list, download and restore through MinIO
         run: bash scripts/test-remote-backup-e2e.sh --run
         env:
+          E2E_IMAGES_PRELOADED: "true"
           E2E_MYSQL_HOST: host.docker.internal
           E2E_MYSQL_PORT: "3306"
           E2E_MYSQL_ADMIN_PASSWORD: root
