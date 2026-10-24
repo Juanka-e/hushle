@@ -254,7 +254,15 @@ async function applyApprovedReversal(
                 body: `${order.productNameSnapshot} ödeme durumu güncellendi.`,
                 resourceType: "payment_order",
                 resourceId: order.id,
-                metadata: { outcome: "chargeback", reversalStatus: updated.status },
+                metadata: {
+                    outcome: "chargeback",
+                    reversalStatus: updated.status,
+                    // Rendered in the reader's locale by apps/web/src/lib/notifications/templates.ts.
+                    template: {
+                        id: "paymentChargebackRecorded",
+                        params: { product: order.productNameSnapshot },
+                    },
+                },
             },
         });
         return {
@@ -417,7 +425,17 @@ async function applyApprovedReversal(
                 : `${order.productNameSnapshot} kullanım hakkı ödeme durumuna göre güncellendi.`,
             resourceType: "payment_order",
             resourceId: order.id,
-            metadata: { outcome: request.outcome, reversalStatus },
+            metadata: {
+                outcome: request.outcome,
+                reversalStatus,
+                template: {
+                    id: request.outcome === "refund" ? "paymentRefunded" : "paymentChargeback",
+                    params: {
+                        product: order.productNameSnapshot,
+                        underReview: reversalStatus === "manual_review",
+                    },
+                },
+            },
         },
     });
     await tx.paymentReversal.update({

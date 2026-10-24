@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createUserNotificationWithClient } from "@/lib/notifications/service";
+import { notificationTemplate } from "@/lib/notifications/templates";
 import { getOrSetJsonCache } from "@hushle/platform-cache";
 import { ensureUserProfile, Prisma } from "@hushle/platform-db";
 import { getStoreCatalog as getPlatformStoreCatalog } from "@hushle/platform-store";
@@ -1206,6 +1207,10 @@ export async function purchaseStoreItem(
             actionLabel: "Envanteri Aç",
             actionHref: "/dashboard?tab=inventory",
             metadata: {
+                template: notificationTemplate("itemPurchased", {
+                    item: item.name,
+                    coupon: resolvedPricing?.ok && coupon ? coupon.code : "",
+                }),
                 kind: "store_purchase",
                 finalPriceCoin,
                 couponCode: resolvedPricing?.ok ? coupon?.code ?? null : null,
@@ -1427,6 +1432,10 @@ export async function purchaseStoreBundle(
             actionLabel: "Envanteri Aç",
             actionHref: "/dashboard?tab=inventory",
             metadata: {
+                template: notificationTemplate("bundlePurchased", {
+                    bundle: bundle.name,
+                    coupon: resolvedPricing?.ok && coupon ? coupon.code : "",
+                }),
                 kind: "bundle_purchase",
                 finalPriceCoin,
                 awardedItemCount: awardedEntries.length,

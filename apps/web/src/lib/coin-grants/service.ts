@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { Prisma } from "@hushle/platform-db";
 import { prisma } from "@/lib/prisma";
 import { createUserNotificationWithClient } from "@/lib/notifications/service";
+import { notificationTemplate } from "@/lib/notifications/templates";
 import { invalidateNotificationUnreadCountCache } from "@/lib/cache/application-cache";
 import { applyWalletLedgerMutation, ensureWallet } from "@/lib/wallet-ledger/service";
 import type {
@@ -791,6 +792,7 @@ export async function redeemCoinGrantCode(input: {
                 actionLabel: "Mağazayı Aç",
                 actionHref: "/dashboard?tab=shop",
                 metadata: {
+                    template: notificationTemplate("coinGrantRedeemed", { amount: codeRecord.campaign.coinAmount }),
                     kind: "coin_grant",
                     code: codeRecord.code,
                     campaignCode: codeRecord.campaign.code,

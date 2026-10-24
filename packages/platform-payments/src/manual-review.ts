@@ -75,7 +75,14 @@ export async function resolvePaymentManualReview(
                     body: noticeMessage,
                     resourceType: "payment_manual_review_case",
                     resourceId: reviewCase.id,
-                    metadata: { decision: value.decision },
+                    metadata: {
+                        decision: value.decision,
+                        // Only the default notice is localized; a staff message stays as written.
+                        template: {
+                            id: "paymentReviewUpdated",
+                            params: { defaultNotice: noticeMessage === DEFAULT_NOTICE },
+                        },
+                    },
                 },
             });
         }

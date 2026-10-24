@@ -12,6 +12,8 @@ import type {
     NotificationView,
 } from "@/types/notifications";
 import type { NotificationListQuery } from "@/lib/notifications/schema";
+import { renderNotificationText } from "@/lib/notifications/templates";
+import { DEFAULT_LOCALE, type AppLocale } from "@/lib/i18n/config";
 
 type NotificationCreateData = {
     userId: number;
@@ -60,6 +62,7 @@ type NotificationRecord = {
     readAt: Date | null;
     archivedAt: Date | null;
     createdAt: Date;
+    metadata?: unknown;
 };
 
 export interface CreateUserNotificationInput {
@@ -81,15 +84,20 @@ export function shouldCreateSupportStatusNotification(
     return previousStatus !== nextStatus && (nextStatus === "resolved" || nextStatus === "closed");
 }
 
-function mapNotification(notification: NotificationRecord): NotificationView {
+function mapNotification(notification: NotificationRecord, locale: AppLocale): NotificationView {
+    const text = renderNotificationText(
+        { title: notification.title, body: notification.body, actionLabel: notification.actionLabel },
+        notification.metadata,
+        locale
+    );
     return {
         id: notification.id,
         type: notification.type,
-        title: notification.title,
-        body: notification.body,
+        title: text.title,
+        body: text.body,
         resourceType: notification.resourceType,
         resourceId: notification.resourceId,
-        actionLabel: notification.actionLabel,
+        actionLabel: text.actionLabel,
         actionHref: notification.actionHref,
         isRead: notification.isRead,
         readAt: notification.readAt?.toISOString() ?? null,
@@ -145,7 +153,8 @@ async function loadNotificationUnreadCount(userId: number): Promise<number> {
 
 export async function listNotificationsForUser(
     userId: number,
-    query: NotificationListQuery
+    query: NotificationListQuery,
+    locale: AppLocale = DEFAULT_LOCALE
 ): Promise<NotificationListResponse> {
     const notificationClient = prisma as unknown as NotificationQueryClient;
     const where = {
@@ -172,6 +181,7 @@ export async function listNotificationsForUser(
                 readAt: true,
                 archivedAt: true,
                 createdAt: true,
+                metadata: true,
             },
         }),
         loadNotificationUnreadCount(userId),
@@ -179,7 +189,7 @@ export async function listNotificationsForUser(
 
     return {
         notifications: notifications.map((notification) =>
-            mapNotification(notification as NotificationRecord)
+            mapNotification(notification as NotificationRecord, locale)
         ),
         unreadCount,
         limit: query.limit,

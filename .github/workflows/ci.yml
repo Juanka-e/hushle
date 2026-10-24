@@ -152,6 +152,11 @@ jobs:
         env:
           GUEST_MATCH_CLAIM_INTEGRATION_TEST: "true"
 
+      - name: Test localized notifications
+        run: npm run test:notification-locale-integration
+        env:
+          NOTIFICATION_LOCALE_INTEGRATION_TEST: "true"
+
       - name: Test guest claim analytics
         run: npm run test:guest-claim-analytics-integration
         env:
@@ -294,6 +299,13 @@ jobs:
           ROOM_JOIN_MAX_ATTEMPTS: "100"
           PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
           REDIS_KEY_PREFIX: "hushle:ci-guest-claim-ui"
+
+      - name: Test notification list locale
+        run: npm run test:notifications-locale-e2e
+        env:
+          WEB_LAUNCH_DB_E2E: "true"
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-notifications-locale"
 
       - name: Test payment checkout UI
         run: npm run test:payment-checkout-e2e

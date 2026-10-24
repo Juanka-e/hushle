@@ -48,6 +48,7 @@ const checks: ReadinessCheck[] = [
     { area: "payment provider spec vectors", script: "test:payment-provider-spec-vectors" },
     { area: "inventory ownership", script: "test:inventory-core" },
     { area: "system notifications", script: "test:system-notifications" },
+    { area: "notification templates", script: "test:notification-templates" },
 ];
 
 const npmCliPath = process.env.npm_execpath;
