@@ -300,6 +300,14 @@ jobs:
           PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
           REDIS_KEY_PREFIX: "hushle:ci-guest-claim-ui"
 
+      - name: Test room join handoff
+        run: npm run test:room-join-handoff-e2e
+        env:
+          ROOM_JOIN_HANDOFF_E2E: "true"
+          ROOM_JOIN_MAX_ATTEMPTS: "100"
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-room-join-handoff"
+
       - name: Test notification list locale
         run: npm run test:notifications-locale-e2e
         env:

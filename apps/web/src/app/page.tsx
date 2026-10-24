@@ -32,6 +32,7 @@ import {
     SOCKET_CLIENT_AUTH,
     getSocketProtocolErrorMessage,
 } from "@/lib/socket/protocol-version";
+import { handOffRoomSocket } from "@/lib/socket/room-socket-handoff";
 import {
     readSocketPlayerError,
     resolvePlayerErrorMessage,
@@ -117,7 +118,8 @@ export default function HomePage() {
             socket.on("lobiGuncelle", (data: { odaKodu: string }) => {
                 localStorage.setItem("tabu_username", currentUsername);
                 localStorage.setItem("tabu_roomCode", data.odaKodu);
-                socket.disconnect();
+                // The room page continues on this socket, so the player never shows offline.
+                handOffRoomSocket(data.odaKodu, socket);
                 router.push(`/room/${data.odaKodu}`);
             });
 
