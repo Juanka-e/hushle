@@ -115,33 +115,19 @@ export function InventoryContent() {
     };
   }, [session]);
 
-  useEffect(() => {
-    setItems((currentItems) =>
-      currentItems.map((item) => ({
-        ...item,
-        equipped: isItemEquipped(item, equippedSlots),
-      }))
-    );
-    setPreviewItem((current) => {
-      if (!current) {
-        return null;
-      }
-
-      return {
-        ...current,
-        equipped: isItemEquipped(current, equippedSlots),
-      };
-    });
-  }, [equippedSlots]);
+  // Equipped flags are derived from the equipped slots instead of copied in by an effect.
+  const equippedItems = useMemo(
+    () => items.map((item) => ({ ...item, equipped: isItemEquipped(item, equippedSlots) })),
+    [equippedSlots, items]
+  );
+  const shownPreviewItem = previewItem
+    ? { ...previewItem, equipped: isItemEquipped(previewItem, equippedSlots) }
+    : null;
 
   const filteredItems = useMemo(
-    () => activeType === "all" ? items : items.filter((item) => item.type === activeType),
-    [activeType, items]
+    () => activeType === "all" ? equippedItems : equippedItems.filter((item) => item.type === activeType),
+    [activeType, equippedItems]
   );
-
-  useEffect(() => {
-    setVisibleItemCount(COSMETIC_GRID_BATCH_SIZE);
-  }, [activeType]);
 
   const visibleItems = useMemo(
     () => filteredItems.slice(0, visibleItemCount),
@@ -196,6 +182,7 @@ export function InventoryContent() {
                   key={tab.id}
                   onClick={() => {
                     setActiveType(tab.id);
+                    setVisibleItemCount(COSMETIC_GRID_BATCH_SIZE);
                     setPreviewItem(null);
                   }}
                   className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.18em] transition-colors ${
@@ -291,8 +278,8 @@ export function InventoryContent() {
           </div>
         </DashboardSection>
       </div>
-      {previewItem ? (
-        <InventoryPreviewModal selectedItem={previewItem} onClose={() => setPreviewItem(null)} />
+      {shownPreviewItem ? (
+        <InventoryPreviewModal selectedItem={shownPreviewItem} onClose={() => setPreviewItem(null)} />
       ) : null}
     </DashboardPageShell>
   );

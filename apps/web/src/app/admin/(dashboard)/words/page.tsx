@@ -38,6 +38,7 @@ import {
     GAME_CONTENT_LOCALE_DEFINITIONS,
     type GameContentLocale,
 } from "@hushle/domain-game";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 interface TabooWord {
     id: number;
@@ -142,6 +143,14 @@ function WordPerformance({
     );
 }
 
+async function requestCategoryOptions(locale: GameContentLocale): Promise<CategoryOption[]> {
+    const response = await fetch(`/api/admin/categories?locale=${locale}`, { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error("Categories could not be loaded.");
+    }
+    return (await response.json()) as CategoryOption[];
+}
+
 export default function AdminWordsPage() {
     const [words, setWords] = useState<Word[]>([]);
     const [selectedLocale, setSelectedLocale] = useState<GameContentLocale>(
@@ -239,8 +248,7 @@ export default function AdminWordsPage() {
         [bulkCategoryId, bulkSubcategoryId, categories]
     );
 
-    const fetchWords = useCallback(async () => {
-        setLoading(true);
+    const requestWords = useCallback(async () => {
         const params = new URLSearchParams({
             page: String(page),
             limit: "15",
@@ -257,47 +265,57 @@ export default function AdminWordsPage() {
         }
         params.set("analyticsDays", String(analyticsDays));
 
-        try {
-            const response = await fetch(`/api/admin/words?${params.toString()}`, {
-                cache: "no-store",
-            });
-            if (!response.ok) {
-                toast.error("Kelime listesi yüklenemedi.");
-                return;
-            }
-
-            const payload = (await response.json()) as WordListResponse;
-            setWords(payload.words);
-            setTotal(payload.total);
-            setPages(payload.pages);
-            setPage(payload.page);
-            setAnalyticsByWordId(payload.analyticsByWordId);
-        } catch {
-            toast.error("Kelime listesi yüklenemedi.");
-        } finally {
-            setLoading(false);
+        const response = await fetch(`/api/admin/words?${params.toString()}`, {
+            cache: "no-store",
+        });
+        if (!response.ok) {
+            throw new Error("Words could not be loaded.");
         }
+        return (await response.json()) as WordListResponse;
     }, [analyticsDays, filterCategoryId, filterDifficulty, page, search, selectedLocale]);
+    const wordHandlers = useMemo(
+        () => ({
+            apply: (payload: WordListResponse) => {
+                setWords(payload.words);
+                setTotal(payload.total);
+                setPages(payload.pages);
+                setPage(payload.page);
+                setAnalyticsByWordId(payload.analyticsByWordId);
+            },
+            fail: () => toast.error("Kelime listesi yüklenemedi."),
+            settle: () => setLoading(false),
+        }),
+        []
+    );
+    const fetchWords = useCallback(async () => {
+        setLoading(true);
+        await runRequest(requestWords, wordHandlers);
+    }, [requestWords, wordHandlers]);
 
-    const fetchCategories = useCallback(async () => {
+    // New filters, page or locale show the loading state from the render they change in.
+    const wordsKey = JSON.stringify([analyticsDays, filterCategoryId, filterDifficulty, page, search, selectedLocale]);
+    const [loadingWordsKey, setLoadingWordsKey] = useState(wordsKey);
+    if (loadingWordsKey !== wordsKey) {
+        setLoadingWordsKey(wordsKey);
+        setLoading(true);
+    }
+    const [loadingCategoriesLocale, setLoadingCategoriesLocale] = useState(selectedLocale);
+    if (loadingCategoriesLocale !== selectedLocale) {
+        setLoadingCategoriesLocale(selectedLocale);
         setCategoriesLoading(true);
-        try {
-            const response = await fetch(`/api/admin/categories?locale=${selectedLocale}`, { cache: "no-store" });
-            if (!response.ok) {
-                return;
-            }
-            const payload = (await response.json()) as CategoryOption[];
-            setCategories(payload);
-        } catch {
-            // Keep the last successful category list.
-        } finally {
-            setCategoriesLoading(false);
-        }
-    }, [selectedLocale]);
+    }
 
-    useEffect(() => {
-        void fetchWords();
-    }, [fetchWords]);
+    useEffect(() => startRequest(requestWords, wordHandlers), [requestWords, wordHandlers]);
+
+    // A failed category load keeps the last successful list (no fail handler).
+    useEffect(
+        () =>
+            startRequest(() => requestCategoryOptions(selectedLocale), {
+                apply: setCategories,
+                settle: () => setCategoriesLoading(false),
+            }),
+        [selectedLocale]
+    );
 
     const visibleWordIds = useMemo(() => words.map((word) => word.id), [words]);
     const {
@@ -308,10 +326,6 @@ export default function AdminWordsPage() {
         toggleAll,
         toggleOne,
     } = useAdminSelection(visibleWordIds);
-
-    useEffect(() => {
-        void fetchCategories();
-    }, [fetchCategories]);
 
     const resetForm = useCallback(() => {
         setEditingWord(null);

@@ -6,6 +6,24 @@ import type { LabRangeDays } from "@/components/admin/lab/lab-card-parts";
  * or refresh) aborts the one in flight and only the latest request may touch the state,
  * so a slow refresh can never paint stale data over a newer range.
  */
+async function fetchLabSummary<T>(
+    url: string,
+    signal: AbortSignal,
+    isSummary: (value: unknown) => value is T,
+    fallbackError: string
+): Promise<T> {
+    const response = await fetch(url, { cache: "no-store", signal });
+    const payload = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok || !isSummary(payload)) {
+        const message =
+            payload && typeof payload === "object" && "error" in payload
+                ? String((payload as { error: unknown }).error)
+                : null;
+        throw new Error(message || fallbackError);
+    }
+    return payload;
+}
+
 export function useLabSummary<T extends { days: number }>({
     url,
     isSummary,
@@ -23,43 +41,41 @@ export function useLabSummary<T extends { days: number }>({
     const latestRequest = useRef(0);
     const inFlight = useRef<AbortController | null>(null);
 
-    const load = useCallback(
-        async (range: LabRangeDays) => {
+    // A new range shows the loading state from the render it is picked in.
+    const [requestedDays, setRequestedDays] = useState(days);
+    if (requestedDays !== days) {
+        setRequestedDays(days);
+        setLoading(true);
+        setLoadError(null);
+    }
+
+    /** Starts a request; results are applied in its callbacks, only if it is still the latest. */
+    const startRequest = useCallback(
+        (range: LabRangeDays) => {
             inFlight.current?.abort();
             const controller = new AbortController();
             inFlight.current = controller;
             const requestId = ++latestRequest.current;
             const isLatest = () => requestId === latestRequest.current;
-            setLoading(true);
-            setLoadError(null);
-            try {
-                const response = await fetch(url(range), {
-                    cache: "no-store",
-                    signal: controller.signal,
+            fetchLabSummary(url(range), controller.signal, isSummary, fallbackError)
+                .then((payload) => {
+                    if (isLatest()) setSummary(payload);
+                })
+                .catch((error: unknown) => {
+                    if (!isLatest()) return;
+                    if (error instanceof DOMException && error.name === "AbortError") return;
+                    setLoadError(error instanceof Error && error.message ? error.message : fallbackError);
+                })
+                .finally(() => {
+                    if (isLatest()) setLoading(false);
                 });
-                const payload = (await response.json().catch(() => null)) as unknown;
-                if (!response.ok || !isSummary(payload)) {
-                    const message =
-                        payload && typeof payload === "object" && "error" in payload
-                            ? String((payload as { error: unknown }).error)
-                            : null;
-                    throw new Error(message || fallbackError);
-                }
-                if (isLatest()) setSummary(payload);
-            } catch (error) {
-                if (!isLatest()) return;
-                if (error instanceof DOMException && error.name === "AbortError") return;
-                setLoadError(error instanceof Error && error.message ? error.message : fallbackError);
-            } finally {
-                if (isLatest()) setLoading(false);
-            }
         },
         [url, isSummary, fallbackError]
     );
 
     useEffect(() => {
-        void load(days);
-    }, [days, load]);
+        startRequest(days);
+    }, [days, startRequest]);
 
     useEffect(
         () => () => {
@@ -70,7 +86,11 @@ export function useLabSummary<T extends { days: number }>({
         []
     );
 
-    const reload = useCallback(() => load(days), [days, load]);
+    const reload = useCallback(() => {
+        setLoading(true);
+        setLoadError(null);
+        startRequest(days);
+    }, [days, startRequest]);
 
     return { days, setDays, summary, loading, loadError, reload };
 }

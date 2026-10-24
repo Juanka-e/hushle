@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   Gamepad2,
@@ -15,6 +16,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { DashboardPageShell, DashboardSection } from "@/components/game/dashboard-page-shell";
+import { useHydrated } from "@/hooks/use-hydrated";
 import {
   defaultDashboardSettings,
   readDashboardSettings,
@@ -62,18 +64,47 @@ export function SettingsContent() {
   const [accountLinkMessage, setAccountLinkMessage] = useState("");
 
   const username = session?.user?.name || "";
+  const router = useRouter();
 
-  useEffect(() => {
-    writeDashboardSettings(settings);
-  }, [settings]);
+  // Prefill the name from each new session value (adjusted during render, not in an effect).
+  const [profileSession, setProfileSession] = useState<typeof session>(null);
+  if (session?.user && profileSession !== session) {
+    setProfileSession(session);
+    setDisplayName(session.user.name || "");
+  }
+
+  // Stored preferences are read once after hydration (the server renders the defaults) and
+  // written only when the player changes one, so opening the page cannot reset them.
+  const hydrated = useHydrated();
+  const [storedSettingsRead, setStoredSettingsRead] = useState(false);
+  if (hydrated && !storedSettingsRead) {
+    setStoredSettingsRead(true);
+    setSettings(readDashboardSettings());
+  }
+  const updateSettings = (change: Partial<DashboardSettingsState>) => {
+    const next = { ...settings, ...change };
+    setSettings(next);
+    writeDashboardSettings(next);
+  };
+
+  // The OAuth result in the URL shows until the next link action; read after hydration.
+  const [urlLinkMessageDismissed, setUrlLinkMessageDismissed] = useState(false);
+  const urlParams = hydrated && !urlLinkMessageDismissed ? new URLSearchParams(window.location.search) : null;
+  const urlLinkError = urlParams?.get("error");
+  const urlLinkMessage =
+    urlLinkError === "OAuthAccountNotLinked"
+      ? t("settings.linkConflict")
+      : urlLinkError
+        ? t("settings.linkFailed")
+        : urlParams?.get("linked") === "1"
+          ? t("settings.googleLinked")
+          : "";
+  const shownAccountLinkMessage = accountLinkMessage || urlLinkMessage;
 
   useEffect(() => {
     if (!session?.user) {
       return;
     }
-
-    setDisplayName(session.user.name || "");
-    setSettings(readDashboardSettings());
 
     const load = async () => {
       try {
@@ -127,23 +158,10 @@ export function SettingsContent() {
     void load();
   }, [session]);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const error = params.get("error");
-    if (error === "OAuthAccountNotLinked") {
-      setAccountLinkMessage(
-        t("settings.linkConflict")
-      );
-    } else if (error) {
-      setAccountLinkMessage(t("settings.linkFailed"));
-    } else if (params.get("linked") === "1") {
-      setAccountLinkMessage(t("settings.googleLinked"));
-    }
-  }, [t]);
-
   const handleOAuthAccount = async (provider: LinkedAccountProvider) => {
     setAccountLinkLoading(true);
     setAccountLinkMessage("");
+    setUrlLinkMessageDismissed(true);
     if (!provider.linked) {
       await signIn(provider.id, { callbackUrl: "/dashboard?tab=settings&linked=1" });
       return;
@@ -519,7 +537,8 @@ export function SettingsContent() {
                 </div>
                 <ToggleSwitch
                   checked={settings.soundOn}
-                  onChange={(value) => setSettings((current) => ({ ...current, soundOn: value }))}
+                  label={t("settings.soundEffects")}
+                  onChange={(value) => updateSettings({ soundOn: value })}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -531,7 +550,8 @@ export function SettingsContent() {
                 </div>
                 <ToggleSwitch
                   checked={settings.musicOn}
-                  onChange={(value) => setSettings((current) => ({ ...current, musicOn: value }))}
+                  label={t("settings.backgroundMusic")}
+                  onChange={(value) => updateSettings({ musicOn: value })}
                 />
               </div>
             </div>
@@ -586,9 +606,9 @@ export function SettingsContent() {
                   {t("settings.onlyLoginHelp")}
                 </div>
               ) : null}
-              {accountLinkMessage ? (
+              {shownAccountLinkMessage ? (
                 <p className="text-xs leading-5 text-slate-600 dark:text-slate-300">
-                  {accountLinkMessage}
+                  {shownAccountLinkMessage}
                 </p>
               ) : null}
             </div>
@@ -601,9 +621,7 @@ export function SettingsContent() {
           >
             <div className="space-y-3">
               <button
-                onClick={() => {
-                  window.location.href = "/forgot-password";
-                }}
+                onClick={() => router.push("/forgot-password")}
                 className="group flex w-full items-center justify-between rounded-xl p-3 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
                 type="button"
               >
@@ -630,13 +648,18 @@ export function SettingsContent() {
 
 function ToggleSwitch({
   checked,
+  label,
   onChange,
 }: {
   checked: boolean;
+  label: string;
   onChange: (value: boolean) => void;
 }) {
   return (
     <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors ${
         checked ? "bg-blue-500" : "bg-slate-300 dark:bg-slate-600"

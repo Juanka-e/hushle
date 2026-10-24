@@ -329,9 +329,16 @@ export function ShopContent({ layout = "dashboard" }: ShopContentProps) {
         });
     }, [activeCouponItemMap, activeCouponPreview, filteredItems]);
 
-    useEffect(() => {
+    // A new filter starts the grid from the first batch (adjusted during render, not in an effect).
+    const [gridFilters, setGridFilters] = useState({ category, searchQuery, activeCouponPreview });
+    if (
+        gridFilters.category !== category ||
+        gridFilters.searchQuery !== searchQuery ||
+        gridFilters.activeCouponPreview !== activeCouponPreview
+    ) {
+        setGridFilters({ category, searchQuery, activeCouponPreview });
         setVisibleItemCount(COSMETIC_GRID_BATCH_SIZE);
-    }, [category, searchQuery, activeCouponPreview]);
+    }
 
     const visibleItems = useMemo(
         () => sortedItems.slice(0, visibleItemCount),

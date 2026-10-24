@@ -33,6 +33,7 @@ import type {
     ShopBundleView,
     StoreItemView,
 } from "@/types/economy";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 type ItemOption = Pick<StoreItemView, "id" | "code" | "name" | "type">;
 type PromotionSectionFilter = "all" | "bundles" | "discounts" | "coupons";
@@ -834,6 +835,26 @@ function CouponEditor({
         </div>
     );
 }
+async function requestPromotionData() {
+    const [itemsResponse, bundlesResponse, discountsResponse, couponsResponse] = await Promise.all([
+        fetch("/api/admin/shop-items?active=true", { cache: "no-store" }),
+        fetch("/api/admin/promotions/bundles", { cache: "no-store" }),
+        fetch("/api/admin/promotions/discounts", { cache: "no-store" }),
+        fetch("/api/admin/promotions/coupons", { cache: "no-store" }),
+    ]);
+
+    if (!itemsResponse.ok || !bundlesResponse.ok || !discountsResponse.ok || !couponsResponse.ok) {
+        throw new Error("Promotion data could not be loaded.");
+    }
+
+    return Promise.all([
+        itemsResponse.json() as Promise<StoreItemView[]>,
+        bundlesResponse.json() as Promise<ShopBundleView[]>,
+        discountsResponse.json() as Promise<DiscountCampaignView[]>,
+        couponsResponse.json() as Promise<CouponCodeView[]>,
+    ]);
+}
+
 export default function PromotionsPage() {
     const searchParams = useSearchParams();
     const deepLinkedSearch = searchParams.get("q")?.trim() ?? "";
@@ -915,9 +936,12 @@ export default function PromotionsPage() {
         (sectionFilter === "all" || sectionFilter === "discounts" ? 1 : 0) +
         (sectionFilter === "all" || sectionFilter === "coupons" ? 1 : 0);
 
-    useEffect(() => {
+    // A new ?q= deep link replaces the search (adjusted during render, not in an effect).
+    const [syncedDeepLink, setSyncedDeepLink] = useState(deepLinkedSearch);
+    if (syncedDeepLink !== deepLinkedSearch) {
+        setSyncedDeepLink(deepLinkedSearch);
         setSearch(deepLinkedSearch);
-    }, [deepLinkedSearch]);
+    }
 
     useEffect(() => {
         const applyDeepLink = () => {
@@ -944,43 +968,29 @@ export default function PromotionsPage() {
         return () => window.removeEventListener("hashchange", applyDeepLink);
     }, [loading]);
 
+    const promotionHandlers = useMemo(
+        () => ({
+            apply: ([itemsPayload, bundlesPayload, discountsPayload, couponsPayload]: Awaited<
+                ReturnType<typeof requestPromotionData>
+            >) => {
+                setItemOptions(itemsPayload.map((item) => ({ id: item.id, code: item.code, name: item.name, type: item.type })));
+                setBundles(bundlesPayload);
+                setDiscounts(discountsPayload);
+                setCoupons(couponsPayload);
+            },
+            fail: () => setLoadError("Admin promosyon verileri yüklenemedi."),
+            settle: () => setLoading(false),
+        }),
+        []
+    );
+
+    useEffect(() => startRequest(requestPromotionData, promotionHandlers), [promotionHandlers]);
+
     const loadAll = useCallback(async () => {
         setLoading(true);
         setLoadError(null);
-        try {
-            const [itemsResponse, bundlesResponse, discountsResponse, couponsResponse] = await Promise.all([
-                fetch("/api/admin/shop-items?active=true", { cache: "no-store" }),
-                fetch("/api/admin/promotions/bundles", { cache: "no-store" }),
-                fetch("/api/admin/promotions/discounts", { cache: "no-store" }),
-                fetch("/api/admin/promotions/coupons", { cache: "no-store" }),
-            ]);
-
-            if (!itemsResponse.ok || !bundlesResponse.ok || !discountsResponse.ok || !couponsResponse.ok) {
-                setLoadError("Admin promosyon verileri yüklenemedi.");
-                return;
-            }
-
-            const [itemsPayload, bundlesPayload, discountsPayload, couponsPayload] = await Promise.all([
-                itemsResponse.json() as Promise<StoreItemView[]>,
-                bundlesResponse.json() as Promise<ShopBundleView[]>,
-                discountsResponse.json() as Promise<DiscountCampaignView[]>,
-                couponsResponse.json() as Promise<CouponCodeView[]>,
-            ]);
-
-            setItemOptions(itemsPayload.map((item) => ({ id: item.id, code: item.code, name: item.name, type: item.type })));
-            setBundles(bundlesPayload);
-            setDiscounts(discountsPayload);
-            setCoupons(couponsPayload);
-        } catch {
-            setLoadError("Admin promosyon verileri yüklenemedi.");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        void loadAll();
-    }, [loadAll]);
+        await runRequest(requestPromotionData, promotionHandlers);
+    }, [promotionHandlers]);
 
     const closeEditor = () => {
         if (saving) return;

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Gift, Loader2, Search, ShieldAlert, Shirt, Sparkles, Trash2, UserRound } from "lucide-react";
@@ -25,6 +25,7 @@ import type {
     AdminUserInventoryView,
 } from "@/types/admin-inventory-operations";
 import type { InventoryItemView, StoreItemView } from "@/types/economy";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 type InventoryFilter =
     | "all"
@@ -131,12 +132,68 @@ function buildAuditHref(username: string): string {
     return `/admin/audit?search=${encodeURIComponent(username)}`;
 }
 
+interface AdminUserListPayload {
+    users: Array<{
+        id: number;
+        username: string;
+        email: string | null;
+        role: string;
+        displayName: string | null;
+    }>;
+}
+
+async function requestInventoryUsers(search: string): Promise<AdminInventoryUserOption[]> {
+    const params = new URLSearchParams({
+        page: "1",
+        limit: "12",
+        status: "all",
+    });
+    if (search) {
+        params.set("search", search);
+    }
+
+    const response = await fetch(`/api/admin/users?${params.toString()}`, {
+        cache: "no-store",
+    });
+    if (!response.ok) {
+        throw new Error("Users could not be loaded.");
+    }
+
+    const payload = (await response.json()) as AdminUserListPayload;
+    return payload.users.map((user) => ({
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role,
+    }));
+}
+
+/** Null when the inventory request is refused (the page then shows no inventory). */
+async function requestUserInventory(userId: number): Promise<AdminUserInventoryView | null> {
+    const response = await fetch(`/api/admin/users/${userId}/inventory`, {
+        cache: "no-store",
+    });
+    if (!response.ok) {
+        return null;
+    }
+    return (await response.json()) as AdminUserInventoryView;
+}
+
+async function requestGrantOptions(): Promise<StoreItemView[]> {
+    const response = await fetch("/api/admin/shop-items", {
+        cache: "no-store",
+    });
+    if (!response.ok) {
+        throw new Error("Shop items could not be loaded.");
+    }
+    return (await response.json()) as StoreItemView[];
+}
+
 export default function AdminInventoryPage() {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const pendingUserIdRef = useRef<number | null>(null);
-    const hydratedRef = useRef(false);
     const [search, setSearch] = useState("");
     const [debouncedUserSearch, setDebouncedUserSearch] = useState("");
     const [users, setUsers] = useState<AdminInventoryUserOption[]>([]);
@@ -161,18 +218,25 @@ export default function AdminInventoryPage() {
     const [revokeOverrideConfirmed, setRevokeOverrideConfirmed] = useState(false);
     const [resetTargetSlot, setResetTargetSlot] = useState<AdminInventoryEquipSlot | null>(null);
 
-    useEffect(() => {
+    // Adjusted during render instead of in effects. The URL filters apply on load and on
+    // each navigation (a ?userId= is selected once it appears in the user list), so the
+    // URL write below never runs with the defaults and drops a deep link.
+    const urlKey = searchParams.toString();
+    const [syncedUrlKey, setSyncedUrlKey] = useState<string | null>(null);
+    const [pendingUserId, setPendingUserId] = useState<number | null>(null);
+    if (syncedUrlKey !== urlKey) {
+        setSyncedUrlKey(urlKey);
         const nextSearch = (searchParams.get("search") ?? "").trim();
         const nextUserId = Number(searchParams.get("userId") ?? "");
 
         setSearch(nextSearch);
         setDebouncedUserSearch(nextSearch);
-        pendingUserIdRef.current = Number.isInteger(nextUserId) && nextUserId > 0 ? nextUserId : null;
-        hydratedRef.current = true;
-    }, [searchParams]);
+        setPendingUserId(Number.isInteger(nextUserId) && nextUserId > 0 ? nextUserId : null);
+    }
+    const urlSynced = syncedUrlKey !== null;
 
     useEffect(() => {
-        if (!hydratedRef.current) {
+        if (!urlSynced) {
             return;
         }
 
@@ -182,8 +246,10 @@ export default function AdminInventoryPage() {
             params.set("search", search.trim());
         }
 
-        if (selectedUserId) {
-            params.set("userId", String(selectedUserId));
+        // An unresolved deep link stays in the URL until the user list can select it.
+        const userIdForUrl = selectedUserId ?? pendingUserId;
+        if (userIdForUrl) {
+            params.set("userId", String(userIdForUrl));
         }
 
         const next = params.toString();
@@ -197,7 +263,7 @@ export default function AdminInventoryPage() {
         if (next !== current) {
             router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
         }
-    }, [pathname, router, search, selectedUserId]);
+    }, [pathname, pendingUserId, router, search, selectedUserId, urlSynced]);
 
     useEffect(() => {
         const timeoutId = window.setTimeout(() => {
@@ -209,117 +275,71 @@ export default function AdminInventoryPage() {
         };
     }, [search]);
 
-    const loadUsers = useCallback(async () => {
+    // Loading states turn on in the render their request key changes in.
+    const [loadingUsersSearch, setLoadingUsersSearch] = useState(debouncedUserSearch);
+    if (loadingUsersSearch !== debouncedUserSearch) {
+        setLoadingUsersSearch(debouncedUserSearch);
         setLoadingUsers(true);
-        try {
-            const params = new URLSearchParams({
-                page: "1",
-                limit: "12",
-                status: "all",
-            });
-            if (debouncedUserSearch) {
-                params.set("search", debouncedUserSearch);
-            }
+    }
+    const [loadingInventoryUserId, setLoadingInventoryUserId] = useState<number | null>(null);
+    if (loadingInventoryUserId !== selectedUserId) {
+        setLoadingInventoryUserId(selectedUserId);
+        if (selectedUserId !== null) setLoadingInventory(true);
+        else setInventory(null);
+    }
 
-            const response = await fetch(`/api/admin/users?${params.toString()}`, {
-                cache: "no-store",
-            });
-            if (!response.ok) {
-                return;
-            }
+    // A failed user or grant option load keeps the previous list (no fail handler).
+    useEffect(
+        () =>
+            startRequest(() => requestInventoryUsers(debouncedUserSearch), {
+                apply: setUsers,
+                settle: () => setLoadingUsers(false),
+            }),
+        [debouncedUserSearch]
+    );
 
-            const payload = (await response.json()) as {
-                users: Array<{
-                    id: number;
-                    username: string;
-                    email: string | null;
-                    role: string;
-                    displayName: string | null;
-                }>;
-            };
-
-            const mappedUsers: AdminInventoryUserOption[] = payload.users.map((user) => ({
-                id: user.id,
-                username: user.username,
-                displayName: user.displayName,
-                email: user.email,
-                role: user.role,
-            }));
-
-            setUsers(mappedUsers);
-            setSelectedUserId((current) => {
-                if (
-                    pendingUserIdRef.current &&
-                    mappedUsers.some((user) => user.id === pendingUserIdRef.current)
-                ) {
-                    return pendingUserIdRef.current;
-                }
-                if (current && mappedUsers.some((user) => user.id === current)) {
-                    return current;
-                }
-                return mappedUsers[0]?.id ?? null;
-            });
-            if (
-                pendingUserIdRef.current &&
-                mappedUsers.some((user) => user.id === pendingUserIdRef.current)
-            ) {
-                pendingUserIdRef.current = null;
-            }
-        } finally {
-            setLoadingUsers(false);
+    // A new user list picks the selection: the ?userId= deep link once it is listed, then
+    // the current user if still listed, then the first user.
+    const [selectionUsers, setSelectionUsers] = useState(users);
+    if (selectionUsers !== users) {
+        setSelectionUsers(users);
+        const pendingListed = pendingUserId !== null && users.some((user) => user.id === pendingUserId);
+        if (pendingListed) {
+            setSelectedUserId(pendingUserId);
+            setPendingUserId(null);
+        } else if (!selectedUserId || !users.some((user) => user.id === selectedUserId)) {
+            setSelectedUserId(users[0]?.id ?? null);
         }
-    }, [debouncedUserSearch]);
+    }
 
-    const loadInventory = useCallback(async (userId: number) => {
-        setLoadingInventory(true);
-        try {
-            const response = await fetch(`/api/admin/users/${userId}/inventory`, {
-                cache: "no-store",
-            });
-            if (!response.ok) {
-                setInventory(null);
-                return;
-            }
-
-            const payload = (await response.json()) as AdminUserInventoryView;
-            setInventory(payload);
-        } finally {
-            setLoadingInventory(false);
-        }
-    }, []);
-
-    const loadGrantOptions = useCallback(async () => {
-        setLoadingGrantOptions(true);
-        try {
-            const response = await fetch("/api/admin/shop-items", {
-                cache: "no-store",
-            });
-            if (!response.ok) {
-                return;
-            }
-            const payload = (await response.json()) as StoreItemView[];
-            setGrantOptions(payload);
-            setGrantItemId((current) => current ?? payload[0]?.id ?? null);
-        } finally {
-            setLoadingGrantOptions(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        void loadUsers();
-    }, [loadUsers]);
+    const inventoryHandlers = useMemo(
+        () => ({ apply: setInventory, settle: () => setLoadingInventory(false) }),
+        []
+    );
 
     useEffect(() => {
         if (!selectedUserId) {
-            setInventory(null);
             return;
         }
-        void loadInventory(selectedUserId);
-    }, [loadInventory, selectedUserId]);
+        return startRequest(() => requestUserInventory(selectedUserId), inventoryHandlers);
+    }, [inventoryHandlers, selectedUserId]);
 
-    useEffect(() => {
-        void loadGrantOptions();
-    }, [loadGrantOptions]);
+    const loadInventory = useCallback(async (userId: number) => {
+        setLoadingInventory(true);
+        await runRequest(() => requestUserInventory(userId), inventoryHandlers);
+    }, [inventoryHandlers]);
+
+    useEffect(
+        () =>
+            startRequest(requestGrantOptions, {
+                apply: (payload: StoreItemView[]) => {
+                    setGrantOptions(payload);
+                    setGrantItemId((current) => current ?? payload[0]?.id ?? null);
+                },
+                settle: () => setLoadingGrantOptions(false),
+            }),
+        []
+    );
 
     const filteredItems = useMemo(() => {
         if (!inventory) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -20,6 +20,7 @@ import { AdminEmptyState, AdminTableShell } from "@/components/admin/admin-table
 import { AdminToolbar, AdminToolbarStats } from "@/components/admin/admin-toolbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { runRequest, startRequest } from "@/lib/run-request";
 import type {
     SupportAdminListResponse,
     SupportTicketPriority,
@@ -82,12 +83,44 @@ function buildAuditHref(username: string): string {
     return `/admin/audit?${params.toString()}`;
 }
 
+/** A refused queue request; the message is the server's reason, if it gave one. */
+class SupportQueueError extends Error {}
+
+async function requestSupportQueue(
+    query: { page: number; status: "all" | SupportTicketStatus; search: string },
+    signal?: AbortSignal
+): Promise<SupportAdminListResponse> {
+    const params = new URLSearchParams({
+        page: String(query.page),
+        limit: "12",
+        status: query.status,
+    });
+    if (query.search) {
+        params.set("search", query.search);
+    }
+
+    const response = await fetch(`/api/admin/support/tickets?${params.toString()}`, {
+        cache: "no-store",
+        signal,
+    });
+    const payload = (await response.json().catch(() => null)) as
+        | SupportAdminListResponse
+        | { error?: string }
+        | null;
+    if (!response.ok || !payload || !("tickets" in payload)) {
+        throw new SupportQueueError((payload && "error" in payload && payload.error) || "");
+    }
+    return payload;
+}
+
+function supportQueueErrorMessage(error: unknown, fallback: string): string {
+    return error instanceof SupportQueueError && error.message ? error.message : fallback;
+}
+
 export default function AdminSupportPage() {
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const pendingTicketIdRef = useRef<number | null>(null);
-    const hydratedRef = useRef(false);
     const [tickets, setTickets] = useState<SupportTicketView[]>([]);
     const [assignableAdmins, setAssignableAdmins] = useState<SupportAdminListResponse["assignableAdmins"]>([]);
     const [loading, setLoading] = useState(true);
@@ -106,7 +139,14 @@ export default function AdminSupportPage() {
     const [savingTicket, setSavingTicket] = useState(false);
     const [sendingMessage, setSendingMessage] = useState(false);
 
-    useEffect(() => {
+    // Adjusted during render instead of in effects. The URL filters apply on load and on
+    // each navigation (a ?ticketId= is selected once it appears in the queue), so the URL
+    // write below never runs with the defaults.
+    const urlKey = searchParams.toString();
+    const [syncedUrlKey, setSyncedUrlKey] = useState<string | null>(null);
+    const [pendingTicketId, setPendingTicketId] = useState<number | null>(null);
+    if (syncedUrlKey !== urlKey) {
+        setSyncedUrlKey(urlKey);
         const nextSearch = (searchParams.get("search") ?? "").trim();
         const nextStatus = searchParams.get("status");
         const nextTicketId = Number(searchParams.get("ticketId") ?? "");
@@ -117,12 +157,12 @@ export default function AdminSupportPage() {
         if (nextStatus === "all" || nextStatus === "open" || nextStatus === "in_progress" || nextStatus === "resolved" || nextStatus === "closed") {
             setStatus(nextStatus);
         }
-        pendingTicketIdRef.current = Number.isInteger(nextTicketId) && nextTicketId > 0 ? nextTicketId : null;
-        hydratedRef.current = true;
-    }, [searchParams]);
+        setPendingTicketId(Number.isInteger(nextTicketId) && nextTicketId > 0 ? nextTicketId : null);
+    }
+    const urlSynced = syncedUrlKey !== null;
 
     useEffect(() => {
-        if (!hydratedRef.current) {
+        if (!urlSynced) {
             return;
         }
 
@@ -136,8 +176,10 @@ export default function AdminSupportPage() {
             params.set("status", status);
         }
 
-        if (selectedTicketId) {
-            params.set("ticketId", String(selectedTicketId));
+        // An unresolved deep link stays in the URL until the queue can select it.
+        const ticketIdForUrl = selectedTicketId ?? pendingTicketId;
+        if (ticketIdForUrl) {
+            params.set("ticketId", String(ticketIdForUrl));
         }
 
         const next = params.toString();
@@ -151,84 +193,64 @@ export default function AdminSupportPage() {
         if (next !== current) {
             router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
         }
-    }, [pathname, router, search, selectedTicketId, status]);
+    }, [pathname, pendingTicketId, router, search, selectedTicketId, status, urlSynced]);
 
     const selectedTicket = useMemo(
         () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
         [selectedTicketId, tickets]
     );
 
-    useEffect(() => {
-        const abort = new AbortController();
-
-        async function load() {
-            setLoading(true);
-            try {
-                const params = new URLSearchParams({
-                    page: String(page),
-                    limit: "12",
-                    status,
-                });
-                if (search) {
-                    params.set("search", search);
-                }
-
-                const response = await fetch(`/api/admin/support/tickets?${params.toString()}`, {
-                    cache: "no-store",
-                    signal: abort.signal,
-                });
-                const payload = (await response.json().catch(() => null)) as
-                    | SupportAdminListResponse
-                    | { error?: string }
-                    | null;
-
-                if (!response.ok || !payload || !("tickets" in payload)) {
-                    toast.error((payload && "error" in payload && payload.error) || "Destek kuyruğu yüklenemedi.");
-                    return;
-                }
-
+    const queueHandlers = useMemo(
+        () => ({
+            apply: (payload: SupportAdminListResponse) => {
                 setTickets(payload.tickets);
                 setAssignableAdmins(payload.assignableAdmins);
                 setTotal(payload.total);
                 setPageCount(payload.pages);
-                const hasPendingTicket =
-                    pendingTicketIdRef.current !== null &&
-                    payload.tickets.some((ticket) => ticket.id === pendingTicketIdRef.current);
+            },
+            settle: () => setLoading(false),
+        }),
+        []
+    );
 
-                setSelectedTicketId((current) => {
-                    if (hasPendingTicket) {
-                        return pendingTicketIdRef.current;
-                    }
-                    if (current && payload.tickets.some((ticket) => ticket.id === current)) {
-                        return current;
-                    }
-
-                    return payload.tickets[0]?.id ?? null;
-                });
-                if (hasPendingTicket) {
-                    pendingTicketIdRef.current = null;
-                }
-            } catch {
-                if (abort.signal.aborted) {
-                    return;
-                }
-                toast.error("Destek kuyruğu yüklenemedi.");
-            } finally {
-                if (!abort.signal.aborted) {
-                    setLoading(false);
-                }
-            }
-        }
-
-        void load();
-        return () => abort.abort();
-    }, [page, search, status]);
+    // A new page, status or search shows the loading state from the render it changes in.
+    const queueKey = `${page}|${status}|${search}`;
+    const [loadingQueueKey, setLoadingQueueKey] = useState(queueKey);
+    if (loadingQueueKey !== queueKey) {
+        setLoadingQueueKey(queueKey);
+        setLoading(true);
+    }
 
     useEffect(() => {
-        if (!selectedTicket) {
-            return;
-        }
+        const abort = new AbortController();
+        const cancel = startRequest(() => requestSupportQueue({ page, status, search }, abort.signal), {
+            ...queueHandlers,
+            fail: (error) => toast.error(supportQueueErrorMessage(error, "Destek kuyruğu yüklenemedi.")),
+        });
+        return () => {
+            cancel();
+            abort.abort();
+        };
+    }, [page, queueHandlers, search, status]);
 
+    // A new queue picks the selection: the ?ticketId= deep link once it is listed, then the
+    // current ticket if still listed, then the first ticket.
+    const [selectionTickets, setSelectionTickets] = useState(tickets);
+    if (selectionTickets !== tickets) {
+        setSelectionTickets(tickets);
+        const pendingListed = pendingTicketId !== null && tickets.some((ticket) => ticket.id === pendingTicketId);
+        if (pendingListed) {
+            setSelectedTicketId(pendingTicketId);
+            setPendingTicketId(null);
+        } else if (!selectedTicketId || !tickets.some((ticket) => ticket.id === selectedTicketId)) {
+            setSelectedTicketId(tickets[0]?.id ?? null);
+        }
+    }
+
+    // The edit form follows each new ticket value (after a selection or a reload).
+    const [formTicket, setFormTicket] = useState<SupportTicketView | null>(null);
+    if (selectedTicket && formTicket !== selectedTicket) {
+        setFormTicket(selectedTicket);
         setTicketStatus(selectedTicket.status);
         setTicketPriority(selectedTicket.priority);
         setAssignedAdminId(
@@ -236,55 +258,14 @@ export default function AdminSupportPage() {
         );
         setMessageMode("public");
         setMessageBody("");
-    }, [selectedTicket]);
+    }
 
     async function refreshCurrentPage() {
         setLoading(true);
-        try {
-            const params = new URLSearchParams({
-                page: String(page),
-                limit: "12",
-                status,
-            });
-            if (search) {
-                params.set("search", search);
-            }
-
-            const response = await fetch(`/api/admin/support/tickets?${params.toString()}`, {
-                cache: "no-store",
-            });
-            const payload = (await response.json()) as SupportAdminListResponse | { error?: string };
-            if (!response.ok || !("tickets" in payload)) {
-                toast.error(("error" in payload && payload.error) || "Destek kuyruğu yenilenemedi.");
-                return;
-            }
-
-            setTickets(payload.tickets);
-            setAssignableAdmins(payload.assignableAdmins);
-            setTotal(payload.total);
-            setPageCount(payload.pages);
-            const hasPendingTicket =
-                pendingTicketIdRef.current !== null &&
-                payload.tickets.some((ticket) => ticket.id === pendingTicketIdRef.current);
-
-            setSelectedTicketId((current) => {
-                if (hasPendingTicket) {
-                    return pendingTicketIdRef.current;
-                }
-                if (current && payload.tickets.some((ticket) => ticket.id === current)) {
-                    return current;
-                }
-
-                return payload.tickets[0]?.id ?? null;
-            });
-            if (hasPendingTicket) {
-                pendingTicketIdRef.current = null;
-            }
-        } catch {
-            toast.error("Destek kuyruğu yenilenemedi.");
-        } finally {
-            setLoading(false);
-        }
+        await runRequest(() => requestSupportQueue({ page, status, search }), {
+            ...queueHandlers,
+            fail: (error) => toast.error(supportQueueErrorMessage(error, "Destek kuyruğu yenilenemedi.")),
+        });
     }
 
     async function saveTicketChanges() {

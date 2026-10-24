@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     AlertTriangle,
     Coins,
@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isAutomaticBrandingPreviewUrl } from "@/lib/branding/assets";
 import { dispatchBrandingUpdated } from "@/lib/branding/events";
 import type { SystemSettingsResponse } from "@/types/system-settings";
+import { runRequest, startRequest } from "@/lib/run-request";
 
 const inputClassName = "w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition focus:border-blue-500";
 const helperClassName = "text-xs text-muted-foreground";
@@ -203,6 +204,14 @@ function BrandingAssetField({
     );
 }
 
+async function requestSystemSettings(): Promise<SystemSettingsResponse> {
+    const response = await fetch("/api/admin/system-settings", { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error("Sistem ayarları yüklenemedi.");
+    }
+    return (await response.json()) as SystemSettingsResponse;
+}
+
 export default function SystemSettingsPage() {
     const isProductionBuild = process.env.NODE_ENV === "production";
     const [payload, setPayload] = useState<SystemSettingsResponse | null>(null);
@@ -216,27 +225,23 @@ export default function SystemSettingsPage() {
     >("branding");
     const [activeEconomyPanel, setActiveEconomyPanel] = useState<"base" | "guard" | "group">("base");
 
+    const settingsHandlers = useMemo(
+        () => ({
+            apply: setPayload,
+            fail: (loadError: unknown) =>
+                setError(loadError instanceof Error ? loadError.message : "Sistem ayarları yüklenemedi."),
+            settle: () => setLoading(false),
+        }),
+        []
+    );
+
+    useEffect(() => startRequest(requestSystemSettings, settingsHandlers), [settingsHandlers]);
+
     const loadSettings = useCallback(async () => {
         setLoading(true);
         setError("");
-        try {
-            const response = await fetch("/api/admin/system-settings", { cache: "no-store" });
-            if (!response.ok) {
-                throw new Error("Sistem ayarları yüklenemedi.");
-            }
-
-            const nextPayload = (await response.json()) as SystemSettingsResponse;
-            setPayload(nextPayload);
-        } catch (loadError) {
-            setError(loadError instanceof Error ? loadError.message : "Sistem ayarları yüklenemedi.");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        void loadSettings();
-    }, [loadSettings]);
+        await runRequest(requestSystemSettings, settingsHandlers);
+    }, [settingsHandlers]);
 
     const updatePayload = <TSection extends keyof SystemSettingsResponse["settings"], TKey extends keyof SystemSettingsResponse["settings"][TSection]>(
         section: TSection,

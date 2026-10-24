@@ -22,6 +22,15 @@ import { AdminEmptyState, AdminTableShell } from "@/components/admin/admin-table
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CoinGrantCampaignView, CoinGrantCodeView } from "@/types/coin-grants";
+import { runRequest, startRequest } from "@/lib/run-request";
+
+async function requestCampaigns(): Promise<CoinGrantCampaignView[]> {
+    const response = await fetch("/api/admin/coin-grants/campaigns", { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error("Coin grant campaigns could not be loaded.");
+    }
+    return (await response.json()) as CoinGrantCampaignView[];
+}
 
 interface CampaignFormState {
     code: string;
@@ -201,46 +210,42 @@ export default function AdminCoinGrantsPage() {
     const [campaignForm, setCampaignForm] = useState<CampaignFormState>(emptyCampaignForm);
     const [codeForm, setCodeForm] = useState<CodeFormState>(emptyCodeForm);
 
+    const campaignHandlers = useMemo(
+        () => ({
+            apply: (payload: CoinGrantCampaignView[]) => {
+                setCampaigns(payload);
+                setCodeForm((current) => {
+                    const currentStillEligible = payload.some(
+                        (campaign) =>
+                            String(campaign.id) === current.campaignId &&
+                            campaign.isActive &&
+                            !campaign.archivedAt
+                    );
+                    const nextEligible = payload.find((campaign) => campaign.isActive && !campaign.archivedAt);
+
+                    return {
+                        ...current,
+                        campaignId: currentStillEligible
+                            ? current.campaignId
+                            : nextEligible
+                                ? String(nextEligible.id)
+                                : "",
+                    };
+                });
+            },
+            fail: () => setError("Coin grant verileri yüklenemedi."),
+            settle: () => setLoading(false),
+        }),
+        []
+    );
+
+    useEffect(() => startRequest(requestCampaigns, campaignHandlers), [campaignHandlers]);
+
     const loadCampaigns = useCallback(async () => {
         setLoading(true);
         setError(null);
-        try {
-            const response = await fetch("/api/admin/coin-grants/campaigns", { cache: "no-store" });
-            if (!response.ok) {
-                setError("Coin grant verileri yüklenemedi.");
-                return;
-            }
-
-            const payload = (await response.json()) as CoinGrantCampaignView[];
-            setCampaigns(payload);
-            setCodeForm((current) => {
-                const currentStillEligible = payload.some(
-                    (campaign) =>
-                        String(campaign.id) === current.campaignId &&
-                        campaign.isActive &&
-                        !campaign.archivedAt
-                );
-                const nextEligible = payload.find((campaign) => campaign.isActive && !campaign.archivedAt);
-
-                return {
-                    ...current,
-                    campaignId: currentStillEligible
-                        ? current.campaignId
-                        : nextEligible
-                            ? String(nextEligible.id)
-                            : "",
-                };
-            });
-        } catch {
-            setError("Coin grant verileri yüklenemedi.");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        void loadCampaigns();
-    }, [loadCampaigns]);
+        await runRequest(requestCampaigns, campaignHandlers);
+    }, [campaignHandlers]);
 
     const searchNeedle = useMemo(() => search.trim().toLowerCase(), [search]);
 

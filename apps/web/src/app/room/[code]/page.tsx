@@ -68,6 +68,13 @@ interface ActiveRoomGuardState {
     requiresHostReturn: boolean;
 }
 
+const READY_ACTIVE_ROOM_GUARD: ActiveRoomGuardState = {
+    status: "ready",
+    roomCode: null,
+    pendingAdminHandoff: null,
+    requiresHostReturn: false,
+};
+
 const ROOM_SWITCH_TEAM_EVENT = "takim_degistir";
 const ROOM_START_GAME_EVENT = "oyun_baslat";
 const ROOM_GAME_CONTROL_EVENT = "oyun_kontrol";
@@ -169,12 +176,12 @@ export default function RoomPage() {
     const [identitySaving, setIdentitySaving] = useState(false);
     const [identityError, setIdentityError] = useState("");
     const [storedUsername, setStoredUsername] = useState<string | null>(null);
-    const [activeRoomGuard, setActiveRoomGuard] = useState<ActiveRoomGuardState>({
-        status: "checking",
-        roomCode: null,
-        pendingAdminHandoff: null,
-        requiresHostReturn: false,
-    });
+    // The guard result is keyed by room code; "ready" for guests and "checking" for a code
+    // without a result yet are derived, so the effect only writes after the request.
+    const [activeRoomGuardResult, setActiveRoomGuardResult] = useState<{
+        roomCode: string;
+        guard: ActiveRoomGuardState;
+    } | null>(null);
     const isRoomClientReady = storedUsername !== null;
     const isAuthenticatedRoomUser = Boolean(session?.user?.id);
     const normalizedRoomCode = roomCode.trim().toUpperCase();
@@ -197,24 +204,39 @@ export default function RoomPage() {
     const allCategoryIds = flattenCategoryIds(categories);
     const brandLabel = branding.siteName.trim() || "Hushle";
     const brandShortLabel = branding.siteShortName.trim() || "H";
+    const activeRoomGuard: ActiveRoomGuardState = !isAuthenticatedRoomUser
+        ? READY_ACTIVE_ROOM_GUARD
+        : activeRoomGuardResult?.roomCode === normalizedRoomCode
+          ? activeRoomGuardResult.guard
+          : { ...(activeRoomGuardResult?.guard ?? READY_ACTIVE_ROOM_GUARD), status: "checking" };
     const isActiveRoomGuardReady = !isAuthenticatedRoomUser || activeRoomGuard.status === "ready";
 
-    useEffect(() => {
-        if (!isAuthenticatedRoomUser) {
-            setActiveRoomGuard({
-                status: "ready",
-                roomCode: null,
-                pendingAdminHandoff: null,
-                requiresHostReturn: false,
-            });
-            return;
+    // Adjusted during render instead of in effects (React's "store the previous value" pattern).
+    const [identityDraftSource, setIdentityDraftSource] = useState<string | null>(null);
+    if (identityDraftSource !== currentVisibleName) {
+        setIdentityDraftSource(currentVisibleName);
+        setIdentityDraftName(currentVisibleName);
+    }
+    const [identityEditorView, setIdentityEditorView] = useState(view);
+    if (identityEditorView !== view) {
+        setIdentityEditorView(view);
+        if (view !== GameView.LOBBY) {
+            setShowIdentityEditor(false);
+            setIdentityError("");
         }
+    }
+    const [utilityMenuIsMobile, setUtilityMenuIsMobile] = useState(isMobile);
+    if (utilityMenuIsMobile !== isMobile) {
+        setUtilityMenuIsMobile(isMobile);
+        if (!isMobile) setShowUtilityMenu(false);
+    }
+
+    useEffect(() => {
+        if (!isAuthenticatedRoomUser) return;
 
         let cancelled = false;
-        setActiveRoomGuard((current) => ({
-            ...current,
-            status: "checking",
-        }));
+        const setActiveRoomGuard = (guard: ActiveRoomGuardState) =>
+            setActiveRoomGuardResult({ roomCode: normalizedRoomCode, guard });
 
         async function loadActiveRoomGuard() {
             try {
@@ -346,9 +368,6 @@ export default function RoomPage() {
         };
     }, [activeRoomPresenceKey, roomCode]);
 
-    useEffect(() => {
-        setIdentityDraftName(currentVisibleName);
-    }, [currentVisibleName]);
 
     useEffect(() => {
         if (isRoomClientReady && currentVisibleName.trim().length > 0) {
@@ -356,18 +375,6 @@ export default function RoomPage() {
         }
     }, [currentVisibleName, isRoomClientReady]);
 
-    useEffect(() => {
-        if (view !== GameView.LOBBY) {
-            setShowIdentityEditor(false);
-            setIdentityError("");
-        }
-    }, [view]);
-
-    useEffect(() => {
-        if (!isMobile) {
-            setShowUtilityMenu(false);
-        }
-    }, [isMobile]);
 
     // Responsive check
     useEffect(() => {
@@ -651,6 +658,7 @@ export default function RoomPage() {
         selfOnline: isConnected && currentPlayer?.online === true,
     });
 
+    const sessionUserName = session?.user?.name;
     const handleIdentitySave = useCallback(async () => {
         const nextDisplayName = identityDraftName.trim();
 
@@ -698,7 +706,7 @@ export default function RoomPage() {
                 };
                 const persistedDisplayName =
                     payload.profile?.displayName?.trim() ||
-                    session?.user?.name ||
+                    sessionUserName ||
                     currentVisibleName;
 
                 window.localStorage.setItem("tabu_username", persistedDisplayName);
@@ -811,7 +819,7 @@ export default function RoomPage() {
         isAuthenticatedRoomUser,
         locale,
         myPlayerId,
-        session?.user?.name,
+        sessionUserName,
         t,
     ]);
 
