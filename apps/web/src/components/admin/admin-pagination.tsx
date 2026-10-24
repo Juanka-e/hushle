@@ -24,6 +24,7 @@ export function AdminPagination({
                 size="icon"
                 onClick={() => onPageChange(Math.max(1, page - 1))}
                 disabled={page <= 1}
+                aria-label="Önceki sayfa"
             >
                 <ChevronLeft size={16} />
             </Button>
@@ -36,6 +37,7 @@ export function AdminPagination({
                 size="icon"
                 onClick={() => onPageChange(Math.min(pageCount, page + 1))}
                 disabled={page >= pageCount}
+                aria-label="Sonraki sayfa"
             >
                 <ChevronRight size={16} />
             </Button>
