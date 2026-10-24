@@ -1,4 +1,6 @@
-import { Prisma as PrismaNamespace, PrismaClient } from "@prisma/client";
+import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { Prisma as PrismaNamespace, PrismaClient } from "./generated/prisma/client";
+import { resolveDatabasePoolConfig } from "./connection";
 export {
     CosmeticRenderMode,
     EmailMessageClass,
@@ -29,7 +31,7 @@ export {
     ShopItemType,
     UserAccountStatus,
     WalletLedgerSource,
-} from "@prisma/client";
+} from "./generated/prisma/client";
 export type {
     PaymentManualReviewCase,
     PaymentProviderRefundAttempt,
@@ -42,30 +44,47 @@ export type {
     PaymentReversal,
     PaymentReversalRequest,
     PaymentWebhookEvent,
-} from "@prisma/client";
+} from "./generated/prisma/client";
+export {
+    DEFAULT_DATABASE_CONNECTION_LIMIT,
+    resolveDatabasePoolConfig,
+    type DatabasePoolConfig,
+} from "./connection";
+export { getUniqueConstraintTarget, isRetryableWriteConflict } from "./errors";
 
 const globalForPrisma = globalThis as unknown as {
     prisma: PrismaClient | undefined;
 };
 
-let dbUrl = process.env.DATABASE_URL;
-if (dbUrl && !dbUrl.includes("connection_limit")) {
-    const configuredLimit = Number(process.env.DATABASE_CONNECTION_LIMIT);
-    const connectionLimit =
-        Number.isInteger(configuredLimit) &&
-        configuredLimit >= 1 &&
-        configuredLimit <= 100
-            ? configuredLimit
-            : 20;
-    dbUrl = `${dbUrl}${dbUrl.includes("?") ? "&" : "?"}connection_limit=${connectionLimit}`;
+type DriverAdapterFactory = PrismaNamespace.PrismaClientOptionsWithAdapter["adapter"];
+
+/**
+ * DATABASE_URL is read when Prisma first connects, as Prisma 6's engine did: a process without
+ * it (the image build, unit tests) can still import this package, and only its queries fail.
+ */
+function createMariaDbAdapter(): DriverAdapterFactory {
+    return {
+        provider: "mysql",
+        adapterName: "@prisma/adapter-mariadb",
+        connect: async () => {
+            const databaseUrl = process.env.DATABASE_URL;
+            if (!databaseUrl) {
+                throw new Error("DATABASE_URL is not set.");
+            }
+            return new PrismaMariaDb(resolveDatabasePoolConfig(databaseUrl)).connect();
+        },
+    };
 }
 
-export const prisma =
-    globalForPrisma.prisma ??
-    new PrismaClient({
+/** A client of its own, for scripts; the app shares `prisma`. */
+export function createPrismaClient(): PrismaClient {
+    return new PrismaClient({
+        adapter: createMariaDbAdapter(),
         log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
-        datasources: dbUrl ? { db: { url: dbUrl } } : undefined,
     });
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
     globalForPrisma.prisma = prisma;

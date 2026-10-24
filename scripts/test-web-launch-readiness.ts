@@ -8,6 +8,7 @@ interface ReadinessCheck {
 const checks: ReadinessCheck[] = [
     { area: "repository encoding", script: "test:encoding-integrity" },
     { area: "workspace boundaries", script: "test:package-boundaries" },
+    { area: "database driver adapter", script: "test:platform-db-adapter" },
     { area: "central observability", script: "test:observability" },
     { area: "request security", script: "test:request-security" },
     { area: "client IP trust", script: "test:client-ip-security" },

@@ -26,7 +26,9 @@ assert.match(packageJson, /"db:push:local": "npx prisma db push/);
 assert.match(packageJson, /"db:migrate:deploy": "npx prisma migrate deploy"/);
 assert.match(packageJson, /"db:migrate:baseline:existing"/);
 assert.match(baselineScript, /I_HAVE_A_VERIFIED_BACKUP/);
-assert.match(baselineScript, /--from-schema-datasource/);
+assert.match(baselineScript, /--from-config-datasource/);
+assert.match(baselineScript, /--to-schema"/);
+assert.doesNotMatch(baselineScript, /--from-schema-datasource|--to-schema-datamodel/);
 assert.match(baselineScript, /--exit-code/);
 assert.match(baselineScript, /migrate[\s\S]*resolve[\s\S]*--applied/);
 

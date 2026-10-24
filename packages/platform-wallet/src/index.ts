@@ -1,4 +1,4 @@
-import { Prisma, type WalletLedgerSource } from "@hushle/platform-db";
+import { Prisma, getUniqueConstraintTarget, type WalletLedgerSource } from "@hushle/platform-db";
 
 const MAX_COIN_BALANCE = 2_147_483_647;
 
@@ -240,8 +240,7 @@ async function findCommittedLedgerEntry(
 
 function isIdempotencyKeyConflict(error: unknown): boolean {
     return error instanceof Prisma.PrismaClientKnownRequestError
-        && error.code === "P2002"
-        && JSON.stringify(error.meta?.target ?? "").includes("idempotency");
+        && (getUniqueConstraintTarget(error)?.includes("idempotency") ?? false);
 }
 
 async function allocatePaymentCoinLotsForDebit(

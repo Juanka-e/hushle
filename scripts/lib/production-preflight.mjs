@@ -7,6 +7,13 @@ import {
     validateShopierAcceptanceManifest,
 } from "./payment-activation-evidence.mjs";
 
+/**
+ * DATABASE_URL query parameters the MariaDB driver adapter accepts; the app refuses any
+ * other at its first query. Kept equal to SUPPORTED_DATABASE_URL_PARAMETERS in
+ * packages/platform-db/src/connection.ts (checked by test:production-preflight).
+ */
+export const DATABASE_URL_PARAMETERS = ["connection_limit", "connect_timeout", "pool_timeout", "socket_timeout"];
+
 export function parseEnvFile(path) {
     const env = {};
     for (const rawLine of readFileSync(path, "utf8").split(/\r?\n/)) {
@@ -197,6 +204,11 @@ export function validateProductionEnvironment(env) {
             }
             if (decodeURIComponent(databaseUrl.password) !== env.MYSQL_PASSWORD) {
                 result.errors.push("DATABASE_URL password must match MYSQL_PASSWORD.");
+            }
+            for (const name of databaseUrl.searchParams.keys()) {
+                if (!DATABASE_URL_PARAMETERS.includes(name)) {
+                    result.errors.push(`DATABASE_URL parameter ${name} is not supported by the MariaDB driver adapter.`);
+                }
             }
         } catch {
             result.errors.push("DATABASE_URL is invalid.");
