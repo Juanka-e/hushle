@@ -346,6 +346,13 @@ jobs:
 
       - name: Load or pull scenario images
         run: bash scripts/ci/docker-image-cache.sh ~/backup-e2e-images < "$RUNNER_TEMP/backup-e2e-images.txt"
+        env:
+          # AWS publishes the same aws-cli build on Docker Hub; the manifest list
+          # digest is identical on both registries. Update it together with the
+          # BACKUP_AWS_CLI_IMAGE default in docker-compose.ops.yml (a stale entry
+          # no longer matches and is ignored).
+          DOCKER_IMAGE_MIRRORS: >-
+            public.ecr.aws/aws-cli/aws-cli:2.36.10=docker.io/amazon/aws-cli:2.36.10@sha256:1ce4fd2ea9b640019af76a94e91adeed901d20363b4bb2ed095b45c75e5565cc
 
       - name: Save image cache
         if: steps.image-cache.outputs.cache-hit != 'true'
