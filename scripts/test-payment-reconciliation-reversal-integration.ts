@@ -10,6 +10,7 @@ import {
     requestExternallyConfirmedPaymentReversal,
     resolvePaymentReconciliationCase,
 } from "@hushle/platform-payments";
+import { renderNotificationText } from "../apps/web/src/lib/notifications/templates";
 
 async function createOrder(input: {
     userId: number;
@@ -97,6 +98,10 @@ async function run(): Promise<void> {
         assert.equal(profile.frameItemId, unrelatedItem.id);
         assert.equal((await prisma.paymentOrder.findUniqueOrThrow({ where: { id: cosmeticOrder.id } })).status, "refunded");
         assert.equal(await prisma.notification.count({ where: { resourceId: cosmeticOrder.id } }), 1);
+        // Stored in Turkish, rendered in the reader's locale from metadata.template.
+        const refundNotice = await prisma.notification.findFirstOrThrow({ where: { resourceId: cosmeticOrder.id } });
+        assert.equal(refundNotice.title, "Ödeme iadesi işlendi");
+        assert.equal(renderNotificationText(refundNotice, refundNotice.metadata, "en").title, "Payment refund processed");
 
         const chargebackRequest = await requestExternallyConfirmedPaymentReversal({
             orderId: cosmeticOrder.id,
@@ -113,6 +118,13 @@ async function run(): Promise<void> {
         assert.equal(chargeback.removedInventoryItemIds.length, 0);
         assert.equal((await prisma.paymentOrder.findUniqueOrThrow({ where: { id: cosmeticOrder.id } })).status, "chargeback");
         assert.equal(await prisma.notification.count({ where: { resourceId: cosmeticOrder.id } }), 2);
+        const chargebackNotice = await prisma.notification.findFirstOrThrow({
+            where: { resourceId: cosmeticOrder.id },
+            orderBy: { id: "desc" },
+        });
+        const chargebackText = renderNotificationText(chargebackNotice, chargebackNotice.metadata, "en");
+        assert.equal(chargebackText.title, "Payment chargeback processed");
+        assert.match(chargebackText.body, /^The payment status of .+ was updated\.$/);
 
         const coinOrder = await createOrder({ userId: user.id, suffix: `${suffix}:coin`, status: "paid", kind: "coin_pack", grantSnapshot: { schemaVersion: 1, coinAmount: 500 } });
         await fulfillPaidPaymentOrder({ orderId: coinOrder.id });

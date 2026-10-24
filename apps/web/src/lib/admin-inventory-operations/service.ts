@@ -1,6 +1,7 @@
 import { ensureUserProfile, type Prisma } from "@hushle/platform-db";
 import { getInventory } from "@hushle/platform-inventory";
 import { createUserNotificationWithClient } from "@/lib/notifications/service";
+import { notificationTemplate } from "@/lib/notifications/templates";
 import { invalidateNotificationUnreadCountCache } from "@/lib/cache/application-cache";
 import { prisma } from "@/lib/prisma";
 import type {
@@ -243,6 +244,7 @@ export async function grantAdminInventoryItem(input: {
             actionLabel: "Envanteri Aç",
             actionHref: "/dashboard?tab=inventory",
             metadata: {
+                template: notificationTemplate("inventoryGranted", { item: item.name }),
                 kind: "admin_inventory_grant",
                 reason: input.reason,
                 shopItemId: item.id,
@@ -342,6 +344,7 @@ export async function revokeAdminInventoryItem(input: {
             resourceType: "inventory_item",
             resourceId: input.inventoryItemId,
             metadata: {
+                template: notificationTemplate("inventoryRevoked", { item: inventoryItem.shopItem.name }),
                 kind: "admin_inventory_revoke",
                 reason: input.reason,
                 shopItemId: inventoryItem.shopItem.id,

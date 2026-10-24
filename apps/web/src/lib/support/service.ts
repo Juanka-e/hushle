@@ -19,6 +19,7 @@ import {
     createUserNotificationWithClient,
     shouldCreateSupportStatusNotification,
 } from "@/lib/notifications/service";
+import { notificationTemplate } from "@/lib/notifications/templates";
 import { invalidateNotificationUnreadCountCache } from "@/lib/cache/application-cache";
 
 type SupportTicketRecord = {
@@ -524,6 +525,12 @@ export async function updateSupportTicketByAdmin(
             resourceType: "support_ticket",
             resourceId: ticket.id,
             actionLabel: "Yardım merkezinde aç",
+            metadata: {
+                template: notificationTemplate(
+                    input.status === "resolved" ? "supportResolved" : "supportClosed",
+                    { ticket: ticket.id }
+                ),
+            },
         });
     }
 
@@ -575,6 +582,8 @@ export async function addSupportMessageByAdmin(
                 resourceType: "support_ticket",
                 resourceId: ticketId,
                 actionLabel: "Yardım merkezinde aç",
+                // The body is the staff reply itself; only the title is localized.
+                metadata: { template: notificationTemplate("supportReply") },
             }, { deferCacheInvalidation: true });
         }
 

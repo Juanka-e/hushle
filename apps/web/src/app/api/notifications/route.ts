@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/session";
 import { notificationListQuerySchema } from "@/lib/notifications/schema";
 import { listNotificationsForUser } from "@/lib/notifications/service";
+import { LOCALE_COOKIE_NAME, normalizeAppLocale } from "@/lib/i18n/config";
 import {
     buildRateLimitHeaders,
     consumeRequestRateLimit,
@@ -37,7 +38,8 @@ export async function GET(request: NextRequest) {
             filter: request.nextUrl.searchParams.get("filter") ?? undefined,
         });
 
-        const result = await listNotificationsForUser(sessionUser.id, query);
+        const locale = normalizeAppLocale(request.cookies.get(LOCALE_COOKIE_NAME)?.value);
+        const result = await listNotificationsForUser(sessionUser.id, query, locale);
         return NextResponse.json(result, { headers: buildRateLimitHeaders(rateLimit) });
     } catch (error) {
         if (error instanceof z.ZodError) {

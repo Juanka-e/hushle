@@ -41,6 +41,11 @@ export async function createPaymentFulfillmentNotification(
                 metadata: {
                     provider,
                     productKind: fulfillment.order.productKind,
+                    // Rendered in the reader's locale by apps/web/src/lib/notifications/templates.ts.
+                    template: {
+                        id: "paymentFulfilled",
+                        params: { product: fulfillment.order.productNameSnapshot },
+                    },
                 },
             },
         });
