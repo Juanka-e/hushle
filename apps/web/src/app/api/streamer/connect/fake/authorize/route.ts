@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 import { isFakeStreamerPlatformEnabled, resolveConnectOrigin } from "@/lib/streamer/deps";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     const login = /^[a-z0-9_-]{1,25}$/.test(params.get("login") ?? "") ? (params.get("login") as string) : "denizoynuyor";
     const allowedPrefix = `${resolveConnectOrigin(request)}/api/streamer/connect/`;
     if (!redirectUri.startsWith(allowedPrefix) || !redirectUri.endsWith("/callback") || !state) {
-        return NextResponse.json({ error: "redirect_uri or state rejected" }, { status: 400 });
+        return NextResponse.json(playerError(PlayerErrorCode.INVALID_REQUEST), { status: 400 });
     }
     const target = new URL(redirectUri);
     if (params.get("deny") === "1") target.searchParams.set("error", "access_denied");
