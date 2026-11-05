@@ -151,6 +151,67 @@ function validateTurnstileHostnames(value, siteUrl, result) {
     if (normalized.size > 0) result.checks.push("Turnstile exact hostname allowlist");
 }
 
+// Streamer platform connections (Twitch/Kick OAuth). Off unless configured; when any
+// platform variable is set the pair, the token key and the public origin must be sound.
+function validateStreamerEnvironment(env, result) {
+    if (isTrue(env.STREAMER_FAKE_PLATFORM) || env.STREAMER_FAKE_PLATFORM?.trim() === "1") {
+        result.errors.push("STREAMER_FAKE_PLATFORM must not be set in production.");
+    }
+    if (env.HUSHLE_E2E_SMOKE?.trim()) {
+        result.errors.push("HUSHLE_E2E_SMOKE must not be set in production.");
+    }
+    const platforms = [
+        ["Twitch", "STREAMER_TWITCH_CLIENT_ID", "STREAMER_TWITCH_CLIENT_SECRET"],
+        ["Kick", "STREAMER_KICK_CLIENT_ID", "STREAMER_KICK_CLIENT_SECRET"],
+    ];
+    const configured = platforms.filter(([, idKey, secretKey]) => env[idKey]?.trim() || env[secretKey]?.trim());
+    if (configured.length === 0) {
+        if (env.STREAMER_TOKEN_KEY?.trim()) {
+            result.warnings.push("STREAMER_TOKEN_KEY is set but no streamer platform is configured.");
+        }
+        result.warnings.push("Streamer platform connections are not configured; Twitch/Kick linking stays off.");
+        return;
+    }
+    for (const [name, idKey, secretKey] of configured) {
+        requireConfiguredValue(env, idKey, result);
+        validateSecret(env, secretKey, 24, result);
+        result.checks.push(`${name} streamer app credentials`);
+    }
+    const tokenKey = env.STREAMER_TOKEN_KEY?.trim() ?? "";
+    const decoded = /^[A-Za-z0-9+/=_-]+$/.test(tokenKey) ? Buffer.from(tokenKey, "base64") : Buffer.alloc(0);
+    if (!tokenKey || isPlaceholder(tokenKey) || decoded.length !== 32) {
+        result.errors.push("STREAMER_TOKEN_KEY must be 32 random bytes encoded as base64 (openssl rand -base64 32).");
+    } else if (new Set(decoded).size < 12) {
+        result.errors.push("STREAMER_TOKEN_KEY does not look random enough.");
+    } else {
+        const authSecret = env.AUTH_SECRET?.trim() ?? "";
+        if (tokenKey === authSecret || decoded.equals(Buffer.from(authSecret.slice(0, 32))) || Buffer.from(authSecret).toString("base64") === tokenKey) {
+            result.errors.push("STREAMER_TOKEN_KEY must be generated independently from AUTH_SECRET.");
+        } else {
+            result.checks.push("STREAMER_TOKEN_KEY strength");
+        }
+    }
+    for (const key of ["STREAMER_TOKEN_KEY_VERSION", "STREAMER_TOKEN_KEY_PREVIOUS_VERSION"]) {
+        const value = env[key]?.trim();
+        if (value && !/^[1-9][0-9]{0,5}$/.test(value)) result.errors.push(`${key} must be an integer >= 1.`);
+    }
+    if (Boolean(env.STREAMER_TOKEN_KEY_PREVIOUS?.trim()) !== Boolean(env.STREAMER_TOKEN_KEY_PREVIOUS_VERSION?.trim())) {
+        result.errors.push("STREAMER_TOKEN_KEY_PREVIOUS and STREAMER_TOKEN_KEY_PREVIOUS_VERSION must be set together.");
+    }
+    const publicOrigin = env.STREAMER_OAUTH_PUBLIC_ORIGIN?.trim();
+    if (publicOrigin) {
+        try {
+            const url = new URL(publicOrigin);
+            if (url.protocol !== "https:" || url.origin !== publicOrigin.replace(/\/+$/, "")) {
+                result.errors.push("STREAMER_OAUTH_PUBLIC_ORIGIN must be an https origin without a path.");
+            }
+        } catch {
+            result.errors.push("STREAMER_OAUTH_PUBLIC_ORIGIN must be an https origin without a path.");
+        }
+    }
+    result.checks.push("Streamer platform connections configured");
+}
+
 export function validateProductionEnvironment(env) {
     const result = { errors: [], warnings: [], checks: [] };
     if (env.NODE_ENV !== "production") result.errors.push("NODE_ENV must be production.");
@@ -170,6 +231,9 @@ export function validateProductionEnvironment(env) {
         "MYSQL_ROOT_PASSWORD",
         "MYSQL_PASSWORD",
         "OBSERVABILITY_EXPORT_TOKEN",
+        "STREAMER_TOKEN_KEY",
+        "STREAMER_TWITCH_CLIENT_SECRET",
+        "STREAMER_KICK_CLIENT_SECRET",
     ];
     const populatedSecrets = secretKeys.map((key) => env[key]?.trim()).filter(Boolean);
     if (new Set(populatedSecrets).size !== populatedSecrets.length) {
@@ -394,6 +458,8 @@ export function validateProductionEnvironment(env) {
     } else {
         result.errors.push("PRODUCTION_OAUTH_POLICY must be google or disabled_risk_accepted.");
     }
+
+    validateStreamerEnvironment(env, result);
 
     const observabilityPolicy = env.PRODUCTION_OBSERVABILITY_POLICY;
     if (observabilityPolicy === "http") {

@@ -57,6 +57,7 @@ assert.match(dockerfile, /packages\/platform-observability\/package\.json/);
 assert.match(dockerfile, /packages\/platform-player\/package\.json/);
 assert.match(dockerfile, /packages\/platform-payments\/package\.json/);
 assert.match(dockerfile, /packages\/platform-store\/package\.json/);
+assert.match(dockerfile, /packages\/platform-streamer\/package\.json/);
 assert.match(dockerfile, /packages\/platform-wallet\/package\.json/);
 assert.match(dockerfile, /apps\/web\/package\.json/);
 assert.match(dockerfile, /SKIP_DATABASE_DURING_BUILD=true npm run build/);

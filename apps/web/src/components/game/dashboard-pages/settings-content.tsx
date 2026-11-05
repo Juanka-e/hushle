@@ -16,6 +16,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { DashboardPageShell, DashboardSection } from "@/components/game/dashboard-page-shell";
+import { StreamerConnectionsSection } from "@/components/game/dashboard-pages/streamer-connections-section";
 import { useHydrated } from "@/hooks/use-hydrated";
 import {
   defaultDashboardSettings,
@@ -613,6 +614,7 @@ export function SettingsContent() {
               ) : null}
             </div>
           </DashboardSection> : null}
+          <StreamerConnectionsSection />
 
           <DashboardSection
             title={t("settings.account")}

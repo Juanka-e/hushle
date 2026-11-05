@@ -10,6 +10,7 @@ payment source of truth; Redis provides the cross-host lease and PII-free heartb
 | --- | --- | --- |
 | `payment-webhook` | every 60 seconds | 180 seconds |
 | `payment-reconciliation` | every 15 minutes | 1800 seconds |
+| `streamer-connection-hygiene` | daily at 03:40 | not health-gated (see docs/stream/platform-connections-guide.md) |
 
 Systemd prevents overlap for the same local service. The Redis global lease protects
 against a second host or manual invocation, and the database claim/idempotency layer

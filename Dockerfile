@@ -18,6 +18,7 @@ COPY packages/platform-observability/package.json ./packages/platform-observabil
 COPY packages/platform-player/package.json ./packages/platform-player/package.json
 COPY packages/platform-payments/package.json ./packages/platform-payments/package.json
 COPY packages/platform-store/package.json ./packages/platform-store/package.json
+COPY packages/platform-streamer/package.json ./packages/platform-streamer/package.json
 COPY packages/platform-wallet/package.json ./packages/platform-wallet/package.json
 RUN npm ci --no-audit
 

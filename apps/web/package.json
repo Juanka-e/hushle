@@ -24,6 +24,7 @@
     "@hushle/platform-player": "0.1.0",
     "@hushle/platform-payments": "0.1.0",
     "@hushle/platform-store": "0.1.0",
+    "@hushle/platform-streamer": "0.1.0",
     "@hushle/platform-wallet": "0.1.0",
     "@next/env": "^16.4.3",
     "@prisma/client": "^7.10.1",

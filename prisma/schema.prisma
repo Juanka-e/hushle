@@ -125,6 +125,17 @@ enum MobileAuthTokenKind {
   refresh
 }
 
+enum StreamerPlatform {
+  twitch
+  kick
+}
+
+enum StreamerConnectionStatus {
+  active
+  needs_reconnect
+  revoked
+}
+
 enum UserAccountStatus {
   active
   pending_email_verification
@@ -329,6 +340,7 @@ model User {
   emailOutboxMessages      EmailOutboxMessage[]
   emailSuppressions        EmailSuppression[]
   oauthAccounts            OAuthAccount[]
+  streamerConnections      StreamerConnection[]
   paymentOrders            PaymentOrder[]
   paymentReversalsAuthored PaymentReversal[] @relation("PaymentReversalActor")
   paymentReversalRequestsAuthored PaymentReversalRequest[] @relation("PaymentReversalRequestActor")
@@ -672,6 +684,37 @@ model OAuthAccount {
   @@unique([userId, provider])
   @@index([userId, createdAt])
   @@map("oauth_accounts")
+}
+
+model StreamerConnection {
+  id                   String                  @id @default(uuid()) @db.Char(36)
+  userId               Int                     @map("user_id")
+  platform             StreamerPlatform
+  platformUserId       String                  @map("platform_user_id") @db.VarChar(64)
+  login                String                  @db.VarChar(64)
+  displayName          String                  @map("display_name") @db.VarChar(100)
+  avatarUrl            String?                 @map("avatar_url") @db.VarChar(500)
+  channelUrl           String                  @map("channel_url") @db.VarChar(255)
+  scopes               String                  @db.VarChar(255)
+  accessTokenEnc       String?                 @map("access_token_enc") @db.Text
+  refreshTokenEnc      String?                 @map("refresh_token_enc") @db.Text
+  tokenKeyVersion      Int?                    @map("token_key_version")
+  accessTokenExpiresAt DateTime?               @map("access_token_expires_at")
+  status               StreamerConnectionStatus @default(active)
+  statusReason         String?                 @map("status_reason") @db.VarChar(32)
+  lastValidatedAt      DateTime?               @map("last_validated_at")
+  lastUsedAt           DateTime?               @map("last_used_at")
+  connectedAt          DateTime                @default(now()) @map("connected_at")
+  revokedAt            DateTime?               @map("revoked_at")
+  createdAt            DateTime                @default(now()) @map("created_at")
+  updatedAt            DateTime                @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, platformUserId])
+  @@unique([userId, platform])
+  @@index([status, lastUsedAt])
+  @@map("streamer_connections")
 }
 
 model MobileAuthSession {
