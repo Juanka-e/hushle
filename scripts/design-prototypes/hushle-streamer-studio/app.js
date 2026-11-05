@@ -32,11 +32,12 @@ const sessionId = crypto.randomUUID();
 const channel = new BroadcastChannel('hushle-preview-' + sessionId);
 const publicUrl = new URL('public.html',location.href); publicUrl.searchParams.set('session',sessionId);
 $('public-link').href = publicUrl.href;
-$('public-preview').src = publicUrl.href;
+const previewUrl = new URL(publicUrl); previewUrl.searchParams.set('preview','1'); $('public-preview').src = previewUrl.href;
 const overlayUrl = new URL(publicUrl); overlayUrl.searchParams.set('overlay','1'); $('overlay-link').href = overlayUrl.href;
 channel.onmessage = ({data}) => { if (data?.type === 'preview-ready') publish(); };
 function publish(){
-  channel.postMessage(publicSnapshot(state, ++revision));
+  // The current card goes along, but the projection only reveals it once its round is over.
+  channel.postMessage(publicSnapshot(state, ++revision, word()));
 }
 function toast(message){$('toast').textContent=message; $('toast').hidden=false; clearTimeout(toast.timeout); toast.timeout=setTimeout(()=>{$('toast').hidden=true;},4000);}
 function art(collection,back){
@@ -91,7 +92,7 @@ document.querySelectorAll('[data-provider]').forEach(button=>button.addEventList
   if(['running','paused'].includes(state.phase))return;state.chosenProvider=button.dataset.provider;const info=providerInfo[state.chosenProvider];
   $('connect-title').textContent=info.name+' ile bağlan.';$('connect-description').textContent=info.description;$('connect-scopes').textContent=info.scopes;$('broadcast-picker').hidden=state.chosenProvider!=='youtube';$('connect-dialog').showModal();
 }));
-$('connect-confirm').addEventListener('click',()=>{state.provider=state.chosenProvider;state.connected=true;$('connect-dialog').close();toast('Demo kanal bağlandı. Gerçek OAuth bağlantısı yapılmadı.');render();});
+$('connect-confirm').addEventListener('click',()=>{state.provider=state.chosenProvider;state.connected=true;state.channel={platform:state.provider,name:'denizoynuyor'};$('connect-dialog').close();toast('Demo kanal bağlandı. Gerçek OAuth bağlantısı yapılmadı.');render();});
 $('start').addEventListener('click',()=>{
   if(!state.connected){toast('Önce bir demo kanal bağla.');return;}if(['running','paused'].includes(state.phase))return;
   beginRound(state);render();
@@ -102,7 +103,7 @@ $('pause').addEventListener('click',()=>{
   else if(state.phase==='paused')resume(state);render();
 });
 $('skip').addEventListener('click',()=>{
-  if(!skipRound(state))return;log('Kelime pas geçildi. Son bilen bilgisi korunuyor.');render();
+  const passed=word();if(!skipRound(state,Date.now(),passed))return;log('Kelime pas geçildi: '+passed.target+'. Son bilen bilgisi korunuyor.');render();
 });
 function submitGuess(value){
   lastInput={messageId:crypto.randomUUID(),roundId:state.round,playerId:$('demo-player').value,name:$('demo-name').value,text:value,target:word().target};
@@ -127,7 +128,23 @@ $('settings-form').addEventListener('submit',event=>{
   state.language=$('word-language').value;state.category=$('category').value;state.duration=Number($('duration').value);state.remaining=state.duration;state.index=0;state.phase='ready';state.winner=null;$('settings-dialog').close();render();toast('Kelime paketi güncellendi. Arayüz dili değişmedi.');
 });
 $('theme-toggle').addEventListener('click',()=>{const dark=document.body.classList.toggle('dark');$('theme-toggle').setAttribute('aria-label',dark?'Paneli açık temaya geçir':'Paneli koyu temaya geçir');});
-$('broadcast-theme').addEventListener('change',()=>{state.broadcastTheme=$('broadcast-theme').value;publish();});
+$('broadcast-theme').addEventListener('change',()=>{state.broadcastTheme=$('broadcast-theme').value;renderObs();publish();});
+$('stream-card').addEventListener('change',()=>{const value=$('stream-card').value;state.streamCard=value==='theme'?null:Number(value);publish();});
+// The same hole geometry as public.js, so the panel's OBS numbers never disagree with the page.
+const CAMERA_SIZES={s:[480,270],m:[560,315],l:[640,360]};
+function cameraRect(slot,size){const [w,h]=CAMERA_SIZES[size]||CAMERA_SIZES.m;return {tl:{x:70,y:70,w,h},tr:{x:1850-w,y:70,w,h},bl:{x:70,y:1010-h,w,h},br:{x:1850-w,y:1010-h,w,h},left:{x:0,y:0,w:960,h:1080},right:{x:960,y:0,w:960,h:1080}}[slot]||null;}
+function renderObs(){
+  const rect=cameraRect(state.camera,state.cameraSize);
+  $('camera-size').disabled=!['tl','tr','bl','br'].includes(state.camera);
+  $('obs-camera').textContent=rect?`Kamera kaynağı (1080p): konum ${rect.x}, ${rect.y} · boyut ${rect.w} × ${rect.h} — 720p: ${Math.round(rect.x*2/3)}, ${Math.round(rect.y*2/3)} · ${Math.round(rect.w*2/3)} × ${Math.round(rect.h*2/3)}`:'Kamera alanı yok; yayın ekranı bütün kaynağı kullanır.';
+  $('obs-copy').disabled=!rect;
+  for(const [id,query] of [['public-link',''],['overlay-link','overlay=bottom'],['overlay-top-link','overlay=top'],['half-link','layout=half']]){const url=new URL(publicUrl);if(query){const [k,v]=query.split('=');url.searchParams.set(k,v);}url.searchParams.set('theme',state.broadcastTheme);url.searchParams.set('camera',state.camera);url.searchParams.set('size',state.cameraSize);$(id).href=url.href;}
+}
+$('camera-slot').addEventListener('change',()=>{state.camera=$('camera-slot').value;renderObs();publish();});
+$('camera-size').addEventListener('change',()=>{state.cameraSize=$('camera-size').value;renderObs();publish();});
+$('obs-copy').addEventListener('click',()=>{const rect=cameraRect(state.camera,state.cameraSize);if(!rect)return;navigator.clipboard?.writeText(`${rect.x},${rect.y} ${rect.w}x${rect.h}`).then(()=>toast('Kamera ölçüleri kopyalandı: '+rect.x+','+rect.y+' '+rect.w+'×'+rect.h),()=>toast('Panoya yazılamadı.'));});
+$('camera-slot').value=state.camera;$('camera-size').value=state.cameraSize;renderObs();
+$('show-card-name').addEventListener('change',()=>{state.showCardName=$('show-card-name').checked;publish();});
 $('demo-player').addEventListener('change',()=>{$('demo-name').value={deniz:'Deniz',luna:'Luna',mert:'Mert',newcomer:'YeniOyuncu'}[$('demo-player').value];});
 $('replay').addEventListener('click',()=>{if(!lastInput)return;acceptGuess(state,lastInput);render();toast('Aynı mesaj yeniden denendi. Yeni puan yazılmadı.');});
 for(const [id,scenario] of [['sample-race','race'],['sample-tie','tie']])$(id).addEventListener('click',()=>{
@@ -162,7 +179,7 @@ $('face-toggle').addEventListener('click',()=>{state.back=!state.back;renderLab(
 $('safe-toggle').addEventListener('change',renderLab);$('long-toggle').addEventListener('change',renderLab);
 $('purchase').addEventListener('click',()=>{state.owned.add(state.collection);renderLab();toast('Demo set açıldı. Üç renk de kullanılabilir. Ödeme yapılmadı.');});
 $('equip').addEventListener('click',()=>{
-  if(!state.owned.has(state.collection))return;state.equipped={collection:state.collection,variant:state.variant};setArt($('host-card'),state.collection,false,state.variant);renderLab();publish();toast('Kart önü özel panelde, arka yüzü yayın ekranında uygulandı.');
+  if(!state.owned.has(state.collection))return;state.equipped={collection:state.collection,variant:state.variant};state.streamCard=state.collection;$('stream-card').value=String(state.collection);setArt($('host-card'),state.collection,false,state.variant);renderLab();publish();toast('Kart önü özel panelde, arka yüzü yayın ekranında uygulandı.');
 });
 setArt($('host-card'),0,false);render();renderLab();
 if(location.hash==='#cards')document.querySelector('[data-tab="cards"]').click();

@@ -5,7 +5,7 @@ const root = __dirname;
 const port = Number(process.argv[2] || process.env.HUSHLE_PROTOTYPE_PORT || 4318);
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid prototype port.');
 const mime = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.png':'image/png','.md':'text/plain; charset=utf-8'};
-const allowed = new Set(['index.html','styles.css','app.js','session.mjs','public.html','public.css','public.js','reference-cards.png','analysis.md','test-notes.md']);
+const allowed = new Set(['index.html','themes.html','styles.css','app.js','session.mjs','public.html','public.css','public.js','reference-cards.png','analysis.md','test-notes.md']);
 const server = http.createServer((request,response)=>{
   if(!['GET','HEAD'].includes(request.method)){response.writeHead(405);response.end();return;}
   let file;try{file=decodeURIComponent(new URL(request.url,'http://127.0.0.1').pathname).replace(/^\//,'')||'index.html';}catch{response.writeHead(400);response.end();return;}

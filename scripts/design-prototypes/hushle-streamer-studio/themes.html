@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hushle / Yayın ekranı taslağı</title>
+  <style>
+    body { margin: 0; background: #121116; color: #e9e6ef; font: 15px/1.5 system-ui, sans-serif; }
+    header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 26px; padding: 16px 28px; border-bottom: 1px solid #2a2832; }
+    h1 { margin: 0; font-size: 20px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .controls span { color: #9a96a6; margin-right: 4px; }
+    button, select { font: inherit; color: inherit; background: #1d1b23; border: 1px solid #36333f; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+    button[aria-pressed="true"] { background: #e9e6ef; color: #121116; border-color: #e9e6ef; }
+    button:disabled { opacity: .4; cursor: default; }
+    button:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid #7aa7ff; outline-offset: 2px; }
+    main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; padding: 22px 28px 40px; }
+    main[data-layout="half"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    figure { margin: 0; }
+    .frame { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #000; }
+    main[data-layout="half"] .frame { aspect-ratio: 8 / 9; }
+    main[data-layout="strip"] .frame { aspect-ratio: 1920 / 220; }
+    iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    figcaption { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; color: #b9b5c4; }
+    figcaption a { color: #a9c4ff; }
+    .note { padding: 0 28px 30px; color: #9a96a6; max-width: 90ch; }
+    @media (max-width: 1100px) { main, main[data-layout="half"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 700px) { main, main[data-layout="half"] { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Yayın ekranı temaları</h1>
+    <div class="controls" id="states" aria-label="Oyun anı"><span>An:</span></div>
+    <div class="controls"><label><span>Kamera:</span>
+      <select id="camera">
+        <option value="br">Sağ alt köşe</option><option value="bl">Sol alt köşe</option><option value="tr">Sağ üst köşe</option><option value="tl">Sol üst köşe</option>
+        <option value="right">Sağ yarı</option><option value="left">Sol yarı</option><option value="none">Yok</option>
+      </select></label>
+      <label><span>Boy:</span><select id="size"><option value="s">Küçük</option><option value="m" selected>Orta</option><option value="l">Büyük</option></select></label></div>
+    <div class="controls"><label><span>Zamanlayıcı:</span>
+      <select id="clock">
+        <option value="theme">Temanın şablonu</option>
+        <option value="hourglass">Kum saati</option><option value="candle">Mum</option><option value="bulbs">Işıklı pano</option><option value="incense">Tütsü</option><option value="ring">Halka</option><option value="counter">Sayaç</option>
+      </select></label></div>
+    <div class="controls"><label><span>Kart:</span>
+      <select id="card">
+        <option value="theme">Temanın kartı</option>
+        <option value="-1">Hushle Klasik</option>
+        <option value="0">Gece Altını</option><option value="1">Parşömen</option><option value="2">Gece Mavisi</option><option value="3">Prizma</option>
+        <option value="4">Rüya Tozu</option><option value="5">Sakura</option><option value="6">Ejderha</option><option value="7">Bastet</option>
+      </select></label></div>
+    <div class="controls"><span>Kaynak:</span><button data-layout="scene" aria-pressed="true">Tam ekran 1920×1080</button><button data-layout="half" aria-pressed="false">Yarım ekran 960×1080</button><button data-layout="strip-bottom" aria-pressed="false">Alt şerit</button><button data-layout="strip-top" aria-pressed="false">Üst şerit</button></div>
+  </header>
+  <main id="grid"></main>
+  <p class="note">Tasarım taslağı. Kart görselleri lisansı kontrol edilmemiş referans çizimlerdir; yalnız deneme içindir. "Canlı akış" bir turu, doğru cevabı, pas geçmeyi, süre bitişini ve oyun sonunu sırayla oynatır. Kamera alanı damalı gösterilir; OBS'de o alan saydamdır ve altındaki kamera kaynağı görünür. Her temanın hazır bir zamanlayıcısı vardır (Oyun Gecesi: kum saati, Stüdyo: ışıklı pano, Gece Altını: mum, Sakura: tütsü, Sade: sayaç); "Zamanlayıcı" seçimi başka bir şablonun o temada nasıl durduğunu gösterir.</p>
+  <script>
+    const THEMES = [['oyun-gecesi', 'Oyun Gecesi'], ['studyo', 'Yarışma Stüdyosu'], ['gece-altini', 'Gece Altını'], ['sakura', 'Sakura'], ['sade', 'Sade']];
+    const STATES = [['play', 'Canlı akış'], ['empty', 'İlk açılış'], ['running', 'Tur sürüyor'], ['low', 'Son 10 saniye'], ['solved', 'Bildi'], ['timeout', 'Süre doldu'], ['paused', 'Ara'], ['offline', 'Bağlantı yok'], ['ended', 'Oyun bitti'], ['longnames', 'Uzun adlar']];
+    const view = {state: 'play', camera: 'br', size: 'm', card: 'theme', clock: 'theme', layout: 'scene'};
+    const states = document.getElementById('states');
+    for (const [key, label] of STATES) {
+      const button = document.createElement('button'); button.dataset.state = key; button.textContent = label;
+      states.append(button);
+    }
+    function url(theme) {
+      const query = new URLSearchParams({demo: view.state, theme, camera: view.camera, size: view.size, card: view.card});
+      if (view.clock !== 'theme') query.set('clock', view.clock);
+      if (view.layout === 'half') query.set('layout', 'half');
+      if (view.layout.startsWith('strip')) query.set('overlay', view.layout.split('-')[1]);
+      return 'public.html?' + query;
+    }
+    function render() {
+      const grid = document.getElementById('grid'); grid.replaceChildren();
+      grid.dataset.layout = view.layout.startsWith('strip') ? 'strip' : view.layout;
+      for (const [theme, name] of THEMES) {
+        const figure = document.createElement('figure');
+        const frame = document.createElement('div'); frame.className = 'frame';
+        const iframe = document.createElement('iframe'); iframe.title = name + ' teması'; iframe.src = url(theme);
+        frame.append(iframe);
+        const caption = document.createElement('figcaption');
+        const title = document.createElement('strong'); title.textContent = name;
+        const link = document.createElement('a'); link.href = url(theme); link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Tam boyutta aç';
+        caption.append(title, link); figure.append(frame, caption); grid.append(figure);
+      }
+      for (const button of document.querySelectorAll('[data-state]')) button.setAttribute('aria-pressed', String(button.dataset.state === view.state));
+      for (const button of document.querySelectorAll('[data-layout]')) button.setAttribute('aria-pressed', String(button.dataset.layout === view.layout));
+      document.getElementById('camera').disabled = view.layout !== 'scene';
+      document.getElementById('size').disabled = view.layout !== 'scene' || !['tl', 'tr', 'bl', 'br'].includes(view.camera);
+    }
+    document.addEventListener('click', event => {
+      const button = event.target.closest('button'); if (!button) return;
+      if (button.dataset.state) view.state = button.dataset.state;
+      if (button.dataset.layout) view.layout = button.dataset.layout;
+      render();
+    });
+    for (const id of ['camera', 'size', 'card', 'clock']) document.getElementById(id).addEventListener('change', event => { view[id] = event.target.value; render(); });
+    render();
+  </script>
+</body>
+</html>
