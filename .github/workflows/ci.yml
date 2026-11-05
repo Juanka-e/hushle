@@ -79,6 +79,7 @@ jobs:
           npm run test:streamer-session-foundation
           npm run test:streamer-socket-integration
           npm run test:stream-screen
+          npm run test:streamer-panel
 
   # ─── 2. Build Check ───────────────────────────────────────────────
   build:

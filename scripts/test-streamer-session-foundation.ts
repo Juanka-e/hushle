@@ -143,6 +143,7 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     const pkg = read("package.json");
     for (const [name, command] of [
         ["test:stream-screen", "tsx scripts/test-stream-screen.ts"],
+        ["test:streamer-panel", "tsx scripts/test-streamer-panel.ts"],
         ["test:streamer-stream-screen-e2e", "playwright test --workers=1 tests/streamer-stream-screen.spec.ts"],
         ["test:streamer-session-e2e", "playwright test --workers=1 tests/streamer-session.spec.ts"],
     ] as const) {
@@ -160,6 +161,7 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         "test:streamer-session-foundation",
         "test:streamer-socket-integration",
         "test:stream-screen",
+        "test:streamer-panel",
     ]) {
         assert.ok(lintStep.includes(`npm run ${script}`), `CI streamer unit step must run ${script}`);
     }
