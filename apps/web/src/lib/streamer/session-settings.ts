@@ -24,12 +24,22 @@ const screenFields = {
     showCardName: z.boolean(),
 };
 
+/** The values in first-seen order, each once. */
+function distinct<T>(values: T[]): T[] {
+    return [...new Set(values)];
+}
+
+const categoryId = z.number().int().positive();
+const difficulty = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+
+// Lists are stored deduplicated. Repeated categories collapse before the cap, so the cap counts
+// distinct ones; difficulties have three values, so more than three entries is never a choice.
 export const createSessionInputSchema = z
     .object({
         platform: z.enum(["twitch", "kick"]),
         language: z.enum(["tr", "en"]),
-        categoryIds: z.array(z.number().int().positive()).min(1).max(MAX_STREAM_CATEGORIES),
-        difficulties: z.array(z.union([z.literal(1), z.literal(2), z.literal(3)])).min(1),
+        categoryIds: z.array(categoryId).min(1).transform(distinct).pipe(z.array(categoryId).max(MAX_STREAM_CATEGORIES)),
+        difficulties: z.array(difficulty).min(1).max(3).transform(distinct),
         duration: z.number().int().min(STREAM_ROUND_DURATION.min).max(STREAM_ROUND_DURATION.max),
         tolerance: z.enum(["strict", "normal"]),
         ...screenFields,

@@ -346,6 +346,45 @@ async function main(): Promise<void> {
         assert.equal(h.sessions.rows.length, 0);
     });
 
+    await test("CreateSessionInput dedupes categories and difficulties: at most 3 difficulties and 20 distinct categories", async () => {
+        for (const difficulties of [[1, 2, 3, 1], [1, 1, 1, 1], [1, 2, 3, 3, 2, 1]]) {
+            const parsed = createSessionInputSchema.safeParse({ ...INPUT, difficulties });
+            assert.equal(parsed.success, false, `${difficulties.length} difficulties must be rejected`);
+        }
+        const twice = createSessionInputSchema.safeParse({ ...INPUT, difficulties: [1, 1, 2] });
+        assert.ok(twice.success, "[1, 1, 2] is accepted");
+        assert.deepEqual(twice.data.difficulties, [1, 2]);
+        // 25 ids, 20 distinct: repeats collapse before the cap of 20, first-seen order kept.
+        const twenty = Array.from({ length: 20 }, (_, index) => index + 1);
+        const repeated = [...twenty, 5, 1, 20, 5, 3];
+        assert.equal(repeated.length, 25);
+        const collapsed = createSessionInputSchema.safeParse({ ...INPUT, categoryIds: repeated });
+        assert.ok(collapsed.success, "25 ids with 20 distinct are accepted");
+        assert.deepEqual(collapsed.data.categoryIds, twenty);
+        assert.deepEqual(createSessionInputSchema.parse({ ...INPUT, categoryIds: [7, 7, 7, 7] }).categoryIds, [7]);
+        const tooMany = Array.from({ length: 21 }, (_, index) => index + 1);
+        assert.equal(createSessionInputSchema.safeParse({ ...INPUT, categoryIds: tooMany }).success, false, "21 distinct ids must be rejected");
+        assert.equal(
+            createSessionInputSchema.safeParse({ ...INPUT, categoryIds: [...tooMany, 1, 21] }).success,
+            false,
+            "21 distinct ids with repeats must be rejected",
+        );
+        // The stored row, the session view, the word filters and the next form's prefill all get the deduplicated lists.
+        const h = harness();
+        const { session } = await opened(h, 1, { ...INPUT, categoryIds: repeated, difficulties: [2, 2, 1] });
+        const stored = h.sessions.rows[0].settings as CreateSessionInput;
+        assert.deepEqual(stored.categoryIds, twenty);
+        assert.deepEqual(stored.difficulties, [2, 1]);
+        assert.deepEqual(session.settings?.categoryIds, twenty);
+        assert.deepEqual(session.settings?.difficulties, [2, 1]);
+        await h.runtime.start(session.id);
+        assert.deepEqual(h.source.calls[0].filters, { categoryIds: twenty, difficulties: [2, 1], locale: "tr" });
+        await h.runtime.end(session.id, "ended");
+        const last = await lastSettings(h.deps, 1);
+        assert.deepEqual(last?.categoryIds, twenty);
+        assert.deepEqual(last?.difficulties, [2, 1]);
+    });
+
     await test("card back: an owned item opens the session; the public snapshot carries the resolved theme", async () => {
         const h = harness();
         const { session } = await opened(h, 1, { ...INPUT, cardBack: { itemId: 10 } });
