@@ -27,6 +27,16 @@ assert.equal(
     systemSettingsWriteSchema.safeParse({ ...defaults, features: { ...defaults.features, streamerModeEnabled: true } }).success,
     true
 );
+// Showcase switch: the stream screen may show every store card back, off by default.
+assert.equal(defaults.features.streamerShowcaseAllCosmetics, false);
+assert.equal(
+    normalizeSystemSettings({ features: { ...defaults.features, streamerShowcaseAllCosmetics: true } }).features.streamerShowcaseAllCosmetics,
+    true
+);
+assert.equal(
+    systemSettingsWriteSchema.safeParse({ ...defaults, features: { ...defaults.features, streamerShowcaseAllCosmetics: true } }).success,
+    true
+);
 assert.equal(getFeatureDisabledMessage("store"), "Mağaza şu anda kullanıma kapalı.");
 assert.equal(getFeatureDisabledMessage("register"), "Kayıtlar şu anda kapalı.");
 assert.equal(getFeatureDisabledErrorCode("store"), "STORE_DISABLED");

@@ -4,6 +4,7 @@ import {
     CAMERA_SIZES,
     CAMERA_SLOTS,
     TIMER_STYLES,
+    type StreamCardBack,
     type StreamScreenSettings,
 } from "@hushle/domain-streamer";
 
@@ -19,7 +20,7 @@ const screenFields = {
     camera: z.enum(CAMERA_SLOTS),
     cameraSize: z.enum(CAMERA_SIZES),
     clock: z.enum(TIMER_STYLES).nullable(),
-    cardBack: z.object({ collection: z.number().int().min(-1) }).strict().nullable(),
+    cardBack: z.object({ itemId: z.number().int().positive() }).strict().nullable(),
     showCardName: z.boolean(),
 };
 
@@ -51,13 +52,20 @@ export function wordFiltersOf(input: CreateSessionInput): WordFilters {
     return { categoryIds: [...input.categoryIds], difficulties: [...input.difficulties], locale: input.language };
 }
 
-export function toScreenSettings(input: CreateSessionInput, channel: StreamScreenSettings["channel"]): StreamScreenSettings {
+/** A live patch whose card back the caller already resolved (and checked) into what the screen shows. */
+export type ResolvedScreenPatch = Omit<ScreenSettingsPatch, "cardBack"> & { cardBack?: StreamCardBack | null };
+
+export function toScreenSettings(
+    input: CreateSessionInput,
+    channel: StreamScreenSettings["channel"],
+    cardBack: StreamCardBack | null = null,
+): StreamScreenSettings {
     return {
         theme: input.theme,
         camera: input.camera,
         cameraSize: input.cameraSize,
         clock: input.clock,
-        cardBack: input.cardBack ? { collection: input.cardBack.collection } : null,
+        cardBack: input.cardBack ? cardBack : null,
         showCardName: input.showCardName,
         duration: input.duration,
         language: input.language,
@@ -68,14 +76,22 @@ export function toScreenSettings(input: CreateSessionInput, channel: StreamScree
 
 export type ScreenFields = Pick<StreamScreenSettings, keyof ScreenSettingsPatch>;
 
+/** The stored form of a resolved patch (the session row keeps the choice, not the resolved theme). */
+export function screenPatchInput(patch: ResolvedScreenPatch): Partial<ScreenSettingsPatch> {
+    const { cardBack, ...rest } = patch;
+    const stored: Partial<ScreenSettingsPatch> = { ...rest };
+    if (cardBack !== undefined) stored.cardBack = cardBack ? { itemId: cardBack.itemId } : null;
+    return stored;
+}
+
 /** The fields a live patch sets, ready to spread over the session's settings; absent keys stay as they were. */
-export function screenPatchFields(patch: ScreenSettingsPatch): Partial<ScreenFields> {
+export function screenPatchFields(patch: ResolvedScreenPatch): Partial<ScreenFields> {
     const fields: Partial<ScreenFields> = {};
     if (patch.theme !== undefined) fields.theme = patch.theme;
     if (patch.camera !== undefined) fields.camera = patch.camera;
     if (patch.cameraSize !== undefined) fields.cameraSize = patch.cameraSize;
     if (patch.clock !== undefined) fields.clock = patch.clock;
-    if (patch.cardBack !== undefined) fields.cardBack = patch.cardBack ? { collection: patch.cardBack.collection } : null;
+    if (patch.cardBack !== undefined) fields.cardBack = patch.cardBack;
     if (patch.showCardName !== undefined) fields.showCardName = patch.showCardName;
     return fields;
 }

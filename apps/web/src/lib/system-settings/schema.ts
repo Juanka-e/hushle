@@ -55,6 +55,7 @@ const featureSettingsSchema = z.object({
     roomJoinEnabled: z.boolean().default(true),
     storeEnabled: z.boolean().default(true),
     streamerModeEnabled: z.boolean().default(false),
+    streamerShowcaseAllCosmetics: z.boolean().default(false),
 });
 
 const economySettingsSchema = z.object({

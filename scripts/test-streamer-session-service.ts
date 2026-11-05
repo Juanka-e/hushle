@@ -25,6 +25,7 @@ import {
     rotateViewKey,
     type StreamerSessionServiceDeps,
 } from "../apps/web/src/lib/streamer/session-service";
+import type { CardBackCatalogItem, CardBackLoaders } from "../apps/web/src/lib/streamer/card-backs";
 import { createViewKey, hashViewKey } from "../apps/web/src/lib/streamer/view-key";
 
 // Streamer session runtime and service (phase 2, Task 4): memory stores, a fake word source
@@ -110,6 +111,22 @@ function connection(userId: number, platform: StreamerPlatform, status: Streamer
     };
 }
 
+function cardBackItem(id: number, name: string): CardBackCatalogItem {
+    return {
+        id, name, type: "card_back", rarity: "epic", renderMode: "template", renderSpecVersion: 1, imageUrl: `/cosmetics/${id}.svg`, thumbnailUrl: null,
+        templateKey: "ember", templateConfig: { surfaceColor: "#102030", borderColor: "#405060", pattern: "grid" }, isActive: true,
+    };
+}
+
+// User 1 owns card back 10; the catalogue also has 11 and 12.
+const CARD_BACK_LOADERS: CardBackLoaders = {
+    inventory: async () => ({
+        profile: { cardBackItemId: 10 },
+        items: [{ shopItemId: 10, ...cardBackItem(10, "Kor") }],
+    }),
+    catalog: async () => [cardBackItem(10, "Kor"), cardBackItem(11, "Buz"), cardBackItem(12, "Orman")],
+};
+
 interface Harness {
     clock: { now: number };
     advance(ms: number): void;
@@ -118,6 +135,7 @@ interface Harness {
     source: FakeSource;
     runtime: StreamerSessionRuntime;
     deps: StreamerSessionServiceDeps;
+    features: { streamerShowcaseAllCosmetics: boolean };
     emitted: Array<{ sessionId: string; kind: "host" | "public"; payload: HostStreamSnapshot | PublicStreamSnapshot }>;
     ended: Array<{ sessionId: string; reason: string }>;
     rotated: string[];
@@ -132,6 +150,7 @@ function harness(options: { source?: FakeSource; sessions?: MemoryStreamSessionS
     const sessions = options.sessions ?? createMemoryStreamSessionStore();
     const connections = createMemoryStreamerConnectionStore();
     const source = options.source ?? cyclingSource();
+    const features = { streamerShowcaseAllCosmetics: false };
     const emitted: Harness["emitted"] = [];
     const ended: Harness["ended"] = [];
     const rotated: string[] = [];
@@ -159,7 +178,8 @@ function harness(options: { source?: FakeSource; sessions?: MemoryStreamSessionS
         connections,
         source,
         runtime,
-        deps: { sessions, connections, runtime, now: () => clock.now },
+        deps: { sessions, connections, runtime, now: () => clock.now, getFeatureFlags: async () => features, cardBackLoaders: CARD_BACK_LOADERS },
+        features,
         emitted,
         ended,
         rotated,
@@ -292,7 +312,7 @@ async function main(): Promise<void> {
 
     await test("CreateSessionInput is strict and bounded", async () => {
         assert.equal(createSessionInputSchema.safeParse(INPUT).success, true);
-        assert.equal(createSessionInputSchema.safeParse({ ...INPUT, clock: "ring", cardBack: { collection: -1 } }).success, true);
+        assert.equal(createSessionInputSchema.safeParse({ ...INPUT, clock: "ring", cardBack: { itemId: 10 } }).success, true);
         const bad: Array<[string, unknown]> = [
             ["unknown key", { ...INPUT, extra: true }],
             ["youtube platform", { ...INPUT, platform: "youtube" }],
@@ -311,8 +331,9 @@ async function main(): Promise<void> {
             ["camera unknown", { ...INPUT, camera: "center" }],
             ["camera size xl", { ...INPUT, cameraSize: "xl" }],
             ["clock unknown", { ...INPUT, clock: "sundial" }],
-            ["card back -2", { ...INPUT, cardBack: { collection: -2 } }],
-            ["card back extra key", { ...INPUT, cardBack: { collection: 1, variant: 2 } }],
+            ["card back 0", { ...INPUT, cardBack: { itemId: 0 } }],
+            ["card back old collection", { ...INPUT, cardBack: { collection: 1 } }],
+            ["card back extra key", { ...INPUT, cardBack: { itemId: 1, variant: 2 } }],
             ["showCardName string", { ...INPUT, showCardName: "yes" }],
             ["missing theme", { ...INPUT, theme: undefined }],
         ];
@@ -323,6 +344,31 @@ async function main(): Promise<void> {
         h.connections.seed(connection(1, "twitch"));
         await assert.rejects(() => createSession(h.deps, { userId: 1, settings: { ...INPUT, duration: 500 } }));
         assert.equal(h.sessions.rows.length, 0);
+    });
+
+    await test("card back: an owned item opens the session; the public snapshot carries the resolved theme", async () => {
+        const h = harness();
+        const { session } = await opened(h, 1, { ...INPUT, cardBack: { itemId: 10 } });
+        assert.deepEqual(session.settings?.cardBack, { itemId: 10 });
+        const back = h.lastPublic().cardBack;
+        assert.equal(back?.itemId, 10);
+        assert.equal(back?.name, "Kor");
+        assert.equal(typeof back?.theme.surfaceColor, "string");
+        assert.equal(h.sessions.rows[0].settings && (h.sessions.rows[0].settings as { cardBack: unknown }).cardBack !== null, true);
+    });
+
+    await test("card back: a non-owned item is refused while the showcase switch is off, accepted when on", async () => {
+        const h = harness();
+        h.connections.seed(connection(1, "twitch"));
+        await rejectsWith(() => createSession(h.deps, { userId: 1, settings: { ...INPUT, cardBack: { itemId: 11 } } }), "card_not_allowed");
+        assert.equal(h.sessions.rows.length, 0);
+        assert.ok(!h.runtime.forUser(1));
+        h.features.streamerShowcaseAllCosmetics = true;
+        const { session } = await createSession(h.deps, { userId: 1, settings: { ...INPUT, cardBack: { itemId: 11 } } });
+        assert.equal(session.settings?.cardBack?.itemId, 11);
+        const back = h.lastPublic().cardBack;
+        assert.equal(back?.itemId, 11);
+        assert.equal(typeof back?.theme.surfaceColor, "string");
     });
 
     // ------------------------------------------------------------ rounds

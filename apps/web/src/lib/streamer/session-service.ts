@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createStreamSession } from "@hushle/domain-streamer";
 import type { StreamerConnectionStore, StreamerPlatform } from "@hushle/platform-streamer";
+import { resolveCardBackSelection, type CardBackLoaders } from "./card-backs";
 import { createSessionInputSchema, toScreenSettings, type CreateSessionInput } from "./session-settings";
 import { StreamerSessionError, type StreamerSessionRuntime } from "./session-runtime";
 import type { StreamSessionRecord, StreamSessionStatusValue, StreamSessionStore, StreamSessionSummary } from "./session-store";
@@ -54,6 +55,10 @@ export interface StreamerSessionServiceDeps {
     sessions: StreamSessionStore;
     connections: Pick<StreamerConnectionStore, "findByUserAndPlatform">;
     runtime: StreamerSessionRuntime;
+    /** The owner switches that decide what a session may choose. */
+    getFeatureFlags(): Promise<{ streamerShowcaseAllCosmetics: boolean }>;
+    /** Inventory and catalogue loaders for card backs; the real ones when absent (tests inject fakes). */
+    cardBackLoaders?: CardBackLoaders;
     now?: () => number;
 }
 
@@ -105,6 +110,10 @@ export async function createSession(
         const connection = await deps.connections.findByUserAndPlatform(userId, settings.platform);
         if (!connection || connection.status !== "active") throw new StreamerSessionError("connection_required");
 
+        const cardBack = settings.cardBack
+            ? await resolveCardBackSelection(userId, settings.cardBack.itemId, await deps.getFeatureFlags(), deps.cardBackLoaders)
+            : null;
+
         const now = clock(deps);
         const { viewKey, hash } = createViewKey();
         const session = await deps.sessions.create({
@@ -115,7 +124,7 @@ export async function createSession(
             viewKeyHash: hash,
             startedAt: new Date(now),
         });
-        const state = createStreamSession(toScreenSettings(settings, { platform: connection.platform, name: connection.login }), now);
+        const state = createStreamSession(toScreenSettings(settings, { platform: connection.platform, name: connection.login }, cardBack), now);
         try {
             deps.runtime.open(session, state);
         } catch (error) {

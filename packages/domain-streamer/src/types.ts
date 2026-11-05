@@ -32,12 +32,43 @@ export interface ChatGuess {
     sentAt: number;
 }
 
+/** Public-safe card back look: a structural copy of the web app's ResolvedCardBackTheme. */
+export interface ResolvedCardThemeLike {
+    renderSpecVersion: number;
+    requestedRenderSpecVersion: number;
+    usedRenderSpecFallback: boolean;
+    surfaceColor: string;
+    borderColor: string;
+    accentColor: string;
+    secondaryColor: string;
+    titleColor: string;
+    detailColor: string;
+    pattern: string;
+    patternOpacity: number;
+    patternScale: number;
+    motionPreset: string;
+    motionSpeedMs: number;
+    glowColor: string;
+    glowBlur: number;
+    glowOpacity: number;
+    overlayImageUrl: string | null;
+    overlayOpacity: number;
+}
+
+/** A real cosmetic card back, resolved server-side for the stream screen. */
+export interface StreamCardBack {
+    itemId: number;
+    name: string;
+    theme: ResolvedCardThemeLike;
+    imageUrl: string | null;
+}
+
 export interface StreamScreenSettings {
     theme: BroadcastTheme;
     camera: CameraSlot;
     cameraSize: CameraSize;
     clock: ClockStyle | null;
-    cardBack: { collection: number } | null;
+    cardBack: StreamCardBack | null;
     showCardName: boolean;
     /** Round length in seconds. */
     duration: number;
@@ -113,7 +144,7 @@ export interface PublicStreamSnapshot {
     pack: "TR" | "EN";
     scores: Array<{ name: string; points: number; rank: number; tied: boolean }>;
     lastCorrect: LastCorrect | null;
-    cardBack: { collection: number; variant: 0 } | null;
+    cardBack: StreamCardBack | null;
     connected: boolean;
     reveal: { target: string; taboos: string[]; solved: boolean } | null;
 }

@@ -27,7 +27,7 @@ const INPUT = {
     camera: "br" as const,
     cameraSize: "m" as const,
     clock: "ring" as const,
-    cardBack: { collection: 4 },
+    cardBack: { itemId: 4 },
     showCardName: true,
 };
 

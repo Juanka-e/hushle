@@ -288,7 +288,7 @@ test("theme, camera and channel fall back to safe values", () => {
     assert.equal(publicSnapshot(s, 1).camera, "br");
     assert.equal(publicSnapshot(s, 1).cameraSize, "m");
     assert.equal(publicSnapshot(s, 1).channel, null);
-    Object.assign(loose, { theme: "<img src=x>", camera: "top", cameraSize: "xl", showCardName: "yes", cardBack: { collection: "3" }, channel: { platform: "tiktok", name: "x" } });
+    Object.assign(loose, { theme: "<img src=x>", camera: "top", cameraSize: "xl", showCardName: "yes", cardBack: { itemId: "3" }, channel: { platform: "tiktok", name: "x" } });
     const dto = publicSnapshot(s, 2);
     assert.equal(dto.theme, "oyun-gecesi");
     assert.equal(dto.camera, "none");
@@ -303,8 +303,13 @@ test("theme, camera and channel fall back to safe values", () => {
     loose.channel = { platform: "twitch", name: "x".repeat(40) };
     assert.equal(publicSnapshot(s, 4).channel?.name.length, 25);
     loose.theme = "sakura";
-    loose.cardBack = { collection: 7 };
-    assert.deepEqual(publicSnapshot(s, 3).cardBack, { collection: 7, variant: 0 });
+    const theme = {
+        renderSpecVersion: 1, requestedRenderSpecVersion: 1, usedRenderSpecFallback: false, surfaceColor: "#112233", borderColor: "#445566",
+        accentColor: "#778899", secondaryColor: "#aabbcc", titleColor: "#ffffff", detailColor: "#dddddd", pattern: "grid", patternOpacity: 0.2,
+        patternScale: 1, motionPreset: "none", motionSpeedMs: 0, glowColor: "#ffffff", glowBlur: 4, glowOpacity: 0.3, overlayImageUrl: null, overlayOpacity: 0,
+    };
+    loose.cardBack = { itemId: 7, name: "Ember", theme, imageUrl: "/cosmetics/ember.svg" };
+    assert.deepEqual(publicSnapshot(s, 3).cardBack, { itemId: 7, name: "Ember", theme, imageUrl: "/cosmetics/ember.svg" });
     assert.equal(publicSnapshot(s, 3).theme, "sakura");
     loose.theme = "sade";
     assert.equal(publicSnapshot(s, 4).theme, "sade");

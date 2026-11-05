@@ -21,9 +21,10 @@ import type { StreamerPlatform } from "@hushle/platform-streamer";
 import {
     createSessionInputSchema,
     screenPatchFields,
+    screenPatchInput,
     wordFiltersOf,
     type CreateSessionInput,
-    type ScreenSettingsPatch,
+    type ResolvedScreenPatch,
     type WordFilters,
 } from "./session-settings";
 import type {
@@ -129,7 +130,7 @@ export interface StreamerSessionRuntime {
     pass(sessionId: string): Promise<void>;
     next(sessionId: string): Promise<void>;
     end(sessionId: string, reason: StreamSessionEndReason): Promise<StreamSessionSummary>;
-    applySettings(sessionId: string, patch: ScreenSettingsPatch): Promise<void>;
+    applySettings(sessionId: string, patch: ResolvedScreenPatch): Promise<void>;
     guess(sessionId: string, guess: ChatGuess): Promise<GuessResult>;
     rotateViewKey(sessionId: string): Promise<{ viewKey: string }>;
     /** Ticks every live session now (the interval does this on its own; tests call it directly). */
@@ -439,7 +440,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             hostAction(sessionId, async (entry) => {
                 const fields = screenPatchFields(patch);
                 entry.state.settings = { ...entry.state.settings, ...fields };
-                entry.input = { ...entry.input, ...fields };
+                entry.input = { ...entry.input, ...screenPatchInput(patch) };
                 emitState(entry);
                 const settings = entry.input;
                 await persist("streamer_session.settings_failed", () => deps.store.update(entry.id, { settings }));

@@ -1,5 +1,6 @@
 import { emitObservabilityEvent, reportError } from "@hushle/platform-observability";
 import { prismaStreamerConnectionStore } from "@hushle/platform-streamer";
+import { getSystemSettings } from "@/lib/system-settings/service";
 import { clearWordPool, getNextWord } from "@/lib/socket/word-service";
 import { createStreamerSessionRuntime, type StreamerSessionRuntime, type WordSource } from "./session-runtime";
 import type { StreamerSessionServiceDeps } from "./session-service";
@@ -66,5 +67,9 @@ export function createSessionServiceDeps(): StreamerSessionServiceDeps {
         sessions: prismaStreamSessionStore,
         connections: prismaStreamerConnectionStore,
         runtime: getStreamerSessionRuntime(),
+        async getFeatureFlags() {
+            const { features } = await getSystemSettings();
+            return { streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics === true };
+        },
     };
 }

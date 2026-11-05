@@ -8,6 +8,7 @@ import {
     type ClockStyle,
     type HostStreamSnapshot,
     type PublicStreamSnapshot,
+    type StreamCardBack,
     type StreamSessionState,
 } from "./types";
 
@@ -18,6 +19,17 @@ export interface SnapshotOptions {
 
 function pick<T extends string>(allowed: readonly T[], value: unknown, fallback: T): T {
     return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+// The card back is already public-safe (server-resolved theme); only a malformed one is dropped.
+function publicCardBack(cardBack: StreamCardBack | null | undefined): StreamCardBack | null {
+    if (!cardBack || !Number.isInteger(cardBack.itemId) || !cardBack.theme || typeof cardBack.theme !== "object") return null;
+    return {
+        itemId: cardBack.itemId,
+        name: String(cardBack.name ?? "").slice(0, 80),
+        theme: { ...cardBack.theme },
+        imageUrl: typeof cardBack.imageUrl === "string" ? cardBack.imageUrl : null,
+    };
 }
 
 // The card is revealed only once its round is over (guessed or out of time); while a round
@@ -39,7 +51,6 @@ function baseSnapshot(
 ): Omit<PublicStreamSnapshot, "type"> {
     const settings = state.settings;
     const channel = settings.channel;
-    const collection = settings.cardBack?.collection;
     // Explicit projection: no live answers, chat bodies or account credentials.
     return {
         schemaVersion: 4,
@@ -65,7 +76,7 @@ function baseSnapshot(
             .slice(0, 3)
             .map((player) => ({ name: player.name, points: player.points, rank: player.rank, tied: player.tied })),
         lastCorrect: state.lastCorrect ? { ...state.lastCorrect } : null,
-        cardBack: Number.isInteger(collection) ? { collection: collection as number, variant: 0 } : null,
+        cardBack: publicCardBack(settings.cardBack),
         connected: options.connected !== false,
         reveal: revealedCard(state),
     };

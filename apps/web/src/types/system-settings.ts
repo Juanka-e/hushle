@@ -49,6 +49,7 @@ export interface FeatureSettings {
     roomJoinEnabled: boolean;
     storeEnabled: boolean;
     streamerModeEnabled: boolean;
+    streamerShowcaseAllCosmetics: boolean;
 }
 
 export interface EconomySettings {

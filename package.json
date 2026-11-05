@@ -133,6 +133,7 @@
     "test:streamer-connection-foundation": "tsx scripts/test-streamer-connection-foundation.ts",
     "test:streamer-session-foundation": "tsx scripts/test-streamer-session-foundation.ts",
     "test:streamer-session-service": "tsx scripts/test-streamer-session-service.ts",
+    "test:streamer-card-backs": "tsx scripts/test-streamer-card-backs.ts",
     "test:streamer-token-crypto": "tsx scripts/test-streamer-token-crypto.ts",
     "test:streamer-platform-clients": "tsx scripts/test-streamer-platform-clients.ts",
     "test:streamer-token-service": "tsx scripts/test-streamer-token-service.ts",

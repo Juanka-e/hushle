@@ -731,6 +731,7 @@ export default function SystemSettingsPage() {
                     <ToggleField checked={payload.settings.features.roomJoinEnabled} label="Odaya Katılım" description="Mevcut odalara yeni oyuncu katılımını kontrol eder." onChange={(checked) => updatePayload("features", "roomJoinEnabled", checked)} />
                     <ToggleField checked={payload.settings.features.storeEnabled} label="Mağaza Açık" description="Store catalog, purchase, bundle ve equip akışını kontrol eder." onChange={(checked) => updatePayload("features", "storeEnabled", checked)} />
                     <ToggleField checked={payload.settings.features.streamerModeEnabled} label="Yayıncı Modu" description="Twitch/Kick kanal bağlama ve yayıncı panelini açar. Kapalıyken bağlama düğmeleri gizlenir ve /streamer sayfası yakında der." onChange={(checked) => updatePayload("features", "streamerModeEnabled", checked)} />
+                    <ToggleField checked={payload.settings.features.streamerShowcaseAllCosmetics} label="Yayın vitrini: bütün kart arkaları" description="Açıkken yayıncı yayın ekranı için mağazadaki bütün kart arkalarını seçebilir; kapalıyken yalnız envanterindekileri. Oyunun kendisi her zaman yalnız sahip olunanları kullanır." onChange={(checked) => updatePayload("features", "streamerShowcaseAllCosmetics", checked)} />
                 </CardContent>
             </Card>
             ) : null}
