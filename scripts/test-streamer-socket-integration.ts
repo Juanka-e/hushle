@@ -30,6 +30,7 @@ import {
 } from "../apps/web/src/lib/streamer/session-runtime";
 import { createSession, type StreamerSessionServiceDeps } from "../apps/web/src/lib/streamer/session-service";
 import { hashViewKey } from "../apps/web/src/lib/streamer/view-key";
+import { disconnectUserSockets, registerSocketServer, userSessionRoom } from "../apps/web/src/lib/socket/user-session-control";
 
 // Streamer socket layer (phase 2, Task 6): host and public Socket.IO rooms on an in-process
 // server. Memory stores, a fake word source, a fake clock shared by the runtime and the socket
@@ -81,17 +82,26 @@ const DECK: StreamCard[] = [
     { wordId: 106, target: "TELESKOP", taboos: ["Yıldız", "Gökyüzü", "Mercek", "Gözlemevi", "Uzaklık"] },
 ];
 
+// Cards a check deals on purpose. LANTERN's taboos hold DECK[2]'s word; DOOR is a filler.
+const LANTERN: StreamCard = { wordId: 201, target: "FENER", taboos: [DECK[2].target, "Işık", "Karanlık", "Liman", "Gemici"] };
+const DOOR: StreamCard = { wordId: 202, target: "KAPI", taboos: ["Kilit", "Anahtar", "Tokmak", "Menteşe", "Eşik"] };
+
 interface FakeSource extends WordSource {
     empty: boolean;
     draws: number;
+    /** Dealt before the deck, first in first out; they do not move the deck. */
+    forced: StreamCard[];
 }
 
 function deckSource(): FakeSource {
     const source: FakeSource = {
         empty: false,
         draws: 0,
+        forced: [],
         async next() {
             if (source.empty) return null;
+            const forced = source.forced.shift();
+            if (forced) return { ...forced, taboos: [...forced.taboos] };
             const card = DECK[source.draws % DECK.length];
             source.draws += 1;
             return { ...card, taboos: [...card.taboos] };
@@ -344,6 +354,7 @@ async function main(): Promise<void> {
         assert.ok(card, "the live session has a card");
         return card;
     };
+    const liveRound = (): number => runtime.get(sessionId)?.hostSnapshot().round ?? 0;
 
     try {
         const owner = await connect(url, "owner");
@@ -535,6 +546,75 @@ async function main(): Promise<void> {
             assertNoWords(next, DECK[2], "public state of the new round");
         });
 
+        await test("a passed word that is a taboo of the next card stays face up; the public states keep flowing", async () => {
+            const passedWord = liveCard().target;
+            assert.ok(LANTERN.taboos.includes(passedWord), "the next card's taboos hold the passed word");
+            const blocked = socketErrors.length;
+            const round = liveRound() + 1;
+            source.forced.push(LANTERN);
+            const afterPass = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.round === round);
+            assertOk(await ask(owner, "streamer:host:pass"), "pass");
+            const pub = await afterPass;
+            assert.equal(liveCard().target, LANTERN.target);
+            assert.equal(pub.passed?.target, passedWord, "the passed card is turned face up");
+            assertNoWords(pub, { ...LANTERN, taboos: LANTERN.taboos.filter((word) => word !== passedWord) }, "public state after the pass");
+            const ticked = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.round === round && s.remaining < pub.remaining);
+            clock.now += 1_000;
+            await runtime.tickAll();
+            assert.equal((await ticked).passed?.target, passedWord, "the next tick reaches the stream screen too");
+            const reload = await connect(url);
+            const ack = await ask(reload, "streamer:public:join", { viewKey });
+            assertOk(ack, "a reload of the stream screen");
+            assertPublicShape(ack.state, "reload ack");
+            assert.equal(ack.state.passed?.target, passedWord);
+            assert.equal(socketErrors.length, blocked, "no public state was blocked");
+        });
+
+        await test("a pass that deals the passed word again drops the passed card; the public states keep flowing", async () => {
+            const word = liveCard();
+            const blocked = socketErrors.length;
+            const round = liveRound() + 1;
+            source.forced.push(word);
+            const afterPass = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.round === round);
+            assertOk(await ask(owner, "streamer:host:pass"), "pass");
+            const pub = await afterPass;
+            assert.equal(liveCard().target, word.target, "the pool dealt the passed word again");
+            assert.equal(pub.passed, null, "the passed card would show the live word");
+            assert.equal(pub.passedRound, round - 1);
+            assertNoWords(pub, word, "public state after the pass");
+            const ticked = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.round === round && s.remaining < pub.remaining);
+            clock.now += 1_000;
+            await runtime.tickAll();
+            assertNoWords(await ticked, word, "the next tick");
+            assert.equal(socketErrors.length, blocked, "no public state was blocked");
+        });
+
+        await test("next dealing the passed word again drops the passed card; the public states keep flowing", async () => {
+            const word = liveCard();
+            const passRound = liveRound() + 1;
+            source.forced.push(DOOR);
+            const afterPass = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.round === passRound);
+            assertOk(await ask(owner, "streamer:host:pass"), "pass");
+            assert.equal((await afterPass).passed?.target, word.target);
+            const finished = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.phase === "finished");
+            clock.now += 61_000;
+            await runtime.tickAll();
+            assert.equal((await finished).reveal?.target, DOOR.target);
+            const blocked = socketErrors.length;
+            source.forced.push(word);
+            const running = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.phase === "running");
+            assertOk(await ask(owner, "streamer:host:next"), "next");
+            const pub = await running;
+            assert.equal(liveCard().target, word.target, "the pool dealt the passed word again");
+            assert.equal(pub.passed, null, "the passed card would show the live word");
+            assertNoWords(pub, word, "public state of the new round");
+            const ticked = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.phase === "running" && s.remaining < pub.remaining);
+            clock.now += 1_000;
+            await runtime.tickAll();
+            assertNoWords(await ticked, word, "the next tick");
+            assert.equal(socketErrors.length, blocked, "no public state was blocked");
+        });
+
         await test("host actions are limited to 10 per 10 s per socket (RATE_LIMITED), then the window resets", async () => {
             for (let action = 1; action <= 10; action++) {
                 assertError(await ask(owner, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", `action ${action}`);
@@ -636,26 +716,59 @@ async function main(): Promise<void> {
             const pub = live.publicSnapshot();
             assertNoSecret(pub, live);
             const source = { hostSnapshot: () => host };
-            const trips = (payload: unknown, label: string) =>
-                assert.throws(() => assertNoSecret(payload, source), /secret|host-only|public/i, label);
+            // A passed word that is a taboo of the live card is no leak: viewers never see the taboos.
+            assertNoSecret({ ...pub, passed: { round: 1, target: card.taboos[2] } }, source);
+            const trips = (payload: unknown, label: string, against: Parameters<typeof assertNoSecret>[1] = source) =>
+                assert.throws(() => assertNoSecret(payload, against), /secret|host-only|public/i, label);
             trips({ ...pub, card }, "card key");
             trips({ ...pub, type: "host-state" }, "host type");
             trips({ ...pub, players: [] }, "players key");
             trips({ ...pub, reveal: { target: card.target, taboos: card.taboos, solved: false } }, "reveal while running");
-            trips({ ...pub, pack: card.target }, "target in another field");
-            trips({ ...pub, passed: { round: 1, target: card.taboos[2] } }, "taboo in the passed card");
-            trips({ ...pub, extra: { nested: [card.taboos[4]] } }, "nested taboo");
             trips(null, "not an object");
-            // Viewer and channel names are chat text, never card data: a viewer named like a taboo is no leak.
+            // (a) The live word anywhere, in any letter case or padding.
+            trips({ ...pub, pack: card.target }, "target in another field");
+            trips({ ...pub, extra: { nested: [`  ${card.target.toLocaleLowerCase("tr")}! `] } }, "target, lower-cased and padded, nested");
+            // (c) The live word recycled into the passed card.
+            trips({ ...pub, passed: { round: 1, target: card.target } }, "the live word in the passed card");
+            const longWord = `${"UZUN".repeat(12)} KELİME`;
+            const longCard = { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: longWord, taboos: [] } }) };
+            trips({ ...pub, passed: { round: 1, target: longWord.slice(0, 40) } }, "a long live word, cut as the passed card shows it", longCard);
+            // (b) A taboo anywhere but the passed card's word.
+            trips({ ...pub, extra: { nested: [card.taboos[4]] } }, "nested taboo");
+            trips({ ...pub, lastCorrect: { eventId: card.taboos[0], name: "Luna", round: 1, pointsGranted: 1, solveMs: 900 } }, "taboo beside a name");
+            trips({ ...pub, passed: { round: 1, target: "BAŞKA", note: card.taboos[1] } }, "taboo in another field of the passed card");
+            trips({ ...pub, channel: { platform: card.taboos[3], name: "kanal" } }, "taboo as the channel platform");
+            // Viewer, channel and card-back names are chat or catalogue text, never card data: a viewer named like a taboo is no leak.
             const named = {
                 ...pub,
                 scores: [{ name: card.taboos[0], points: 3, rank: 1, tied: false }],
                 lastCorrect: { eventId: 1, name: card.target, round: 1, solveMs: 900 },
                 channel: { platform: "twitch", name: card.taboos[1] },
+                cardBack: { itemId: 10, name: card.taboos[3], theme: { pattern: "grid" }, imageUrl: null },
             };
             assertNoSecret(named, source);
+            // A finished round's reveal is on the stream screen by design; the word anywhere else still trips.
             const finished = { hostSnapshot: () => ({ ...host, phase: "finished" as const }) };
-            assertNoSecret({ ...pub, phase: "finished", reveal: { target: card.target, taboos: card.taboos, solved: true } }, finished);
+            const revealed = { ...pub, phase: "finished", reveal: { target: card.target, taboos: card.taboos, solved: true } };
+            assertNoSecret(revealed, finished);
+            trips({ ...revealed, pack: card.target }, "the live word outside the reveal of a finished round", finished);
+            // A field's fixed vocabulary (phase, theme, clock, pattern, ...) is no card data, even when a taboo is spelt
+            // the same; keys are never compared. Outside that vocabulary, the same field is checked.
+            const vocabulary = {
+                hostSnapshot: () => ({ ...host, card: { wordId: 1, target: "DOĞUM GÜNÜ", taboos: ["Candle", "Sakura", "Running", "Rings", "Round"] } }),
+            };
+            const styled = {
+                ...pub,
+                phase: "running",
+                theme: "sakura",
+                clock: "candle",
+                cardBack: { itemId: 10, name: "Kor", theme: { pattern: "rings", motionPreset: "pulse", surfaceColor: "#102030" }, imageUrl: null },
+            };
+            assertNoSecret(styled, vocabulary);
+            trips({ ...styled, theme: "Sakura" }, "a taboo outside the vocabulary of its field", vocabulary);
+            trips({ ...styled, cardBack: { ...styled.cardBack, theme: { pattern: "Rings" } } }, "a taboo as an unknown pattern", vocabulary);
+            // Fails closed: a live card without a word to compare against.
+            trips(pub, "a live card without a target", { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: " ", taboos: [] } }) });
         });
 
         await test("a public broadcast that fails the guard is dropped and reported", async () => {
@@ -669,6 +782,11 @@ async function main(): Promise<void> {
             assert.equal(received(viewer, "streamer:public:state", mark).length, 0, "the tampered state never left the server");
             assert.equal(socketErrors.length, errorsBefore + 1);
             assert.equal(socketErrors[errorsBefore].event, "streamer_socket.public_state_blocked");
+            // Fails closed: a public state with no live session and no host projection to check against.
+            wiredEmit(randomUUID(), "public", live.publicSnapshot());
+            assert.equal(socketErrors.length, errorsBefore + 2);
+            assert.equal(socketErrors[errorsBefore + 1].event, "streamer_socket.public_state_blocked");
+            assert.match((socketErrors[errorsBefore + 1].error as Error).message, /no host projection/);
         });
 
         await test("end: both rooms get the final state and streamer:ended { reason: ended }; both rooms are emptied", async () => {
@@ -702,6 +820,26 @@ async function main(): Promise<void> {
             assert.deepEqual((await endedPublic)[0], { reason: "idle" });
             assert.equal(io.sockets.adapter.rooms.get(streamerHostRoom(secondId)), undefined);
             assert.equal(io.sockets.adapter.rooms.get(streamerPublicRoom(secondId)), undefined);
+        });
+
+        await test("a host join puts the socket in its user's session room: a password reset or email change drops it", async () => {
+            const third = await createSession(deps, { userId: 1, settings: INPUT });
+            const thirdId = third.session.id;
+            const host = await connect(url, "owner");
+            const outsider = await connect(url, "stranger");
+            assertError(await ask(outsider, "streamer:host:join", { sessionId: thirdId }), "STREAMER_SESSION_NOT_OWNED", "stranger join");
+            assertOk(await ask(host, "streamer:host:join", { sessionId: thirdId }), "owner join");
+            const hostId = host.socket.id!;
+            const members = (await io.in(userSessionRoom(1)).fetchSockets()).map((socket) => socket.id);
+            assert.ok(members.includes(hostId), "the host socket is in the user-session room");
+            assert.equal((await io.in(userSessionRoom(2)).fetchSockets()).length, 0, "a refused host join joins no user-session room");
+            registerSocketServer(io);
+            const dropped = within(new Promise<string>((resolve) => host.socket.once("disconnect", (reason) => resolve(reason))), "host disconnect");
+            assert.equal(await disconnectUserSockets(1), true);
+            assert.equal(await dropped, "io server disconnect");
+            assert.equal((await io.in(userSessionRoom(1)).fetchSockets()).length, 0, "every socket of the user was dropped");
+            assert.ok(!roomOf(io, streamerHostRoom(thirdId)).has(hostId), "the host room lost the dropped socket");
+            assert.ok(outsider.socket.connected, "another user's socket stays");
         });
 
         await test("a socket from an untrusted origin is refused with ORIGIN_REJECTED and disconnected", async () => {

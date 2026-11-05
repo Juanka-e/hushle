@@ -125,13 +125,15 @@ previous one. Unexpected failures answer `UNKNOWN_ERROR`. Handlers live in
 
 Host actions (every `streamer:host:*` event but the join) share a burst limit of 10 per 10 s per
 socket and act only on the host room this socket joined; ownership is checked again on each one.
+A successful host join also puts the socket in its user's session room (`private:user-session:<userId>`),
+so a password reset or an email change disconnects it, as it does game sockets.
 
 ### Streamer server -> client events
 
 | Event Name | Room | Payload | Description |
 | :--- | :--- | :--- | :--- |
 | `streamer:host:state` | host | `HostStreamSnapshot` | Every state change, with the card (`card: { wordId, target, taboos }`), the tolerance and the full ranking. |
-| `streamer:public:state` | public | `PublicStreamSnapshot` (schema 4) | Every state change without the card; `reveal` carries the word only once the round is finished. A server guard drops any public state that has a host-only field, an early reveal or the live word. |
+| `streamer:public:state` | public | `PublicStreamSnapshot` (schema 4) | Every state change without the card; `reveal` carries the word only once the round is finished. A server guard drops any public state that has a host-only field, an early reveal, or a value equal to the live word or one of its taboos once normalized (names and fixed values such as the theme are not compared; the passed card's word is compared with the live word only). |
 | `streamer:ended` | host and public | `{ reason: "ended" \| "idle" }` | The session ended (the host, the end route, or 6 h idle); both rooms are emptied after it. |
 | `streamer:ended` | public | `{ reason: "view-key-rotated" }` | The view key was rotated: the old stream screens leave the room; the host room stays. |
 | `hata` | caller | `(message, { code })` | A failed streamer event sent without an ack, or `ORIGIN_REJECTED` just before the disconnect. |

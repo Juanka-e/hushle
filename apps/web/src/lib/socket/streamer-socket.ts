@@ -1,6 +1,17 @@
 import type { Server, Socket } from "socket.io";
 import { z } from "zod";
-import type { HostStreamSnapshot, StreamCardBack } from "@hushle/domain-streamer";
+import {
+    BROADCAST_THEMES,
+    CAMERA_SIZES,
+    CAMERA_SLOTS,
+    CHANNEL_PLATFORMS,
+    normalizeGuess,
+    PASSED_TARGET_MAX,
+    TIMER_STYLES,
+    type HostStreamSnapshot,
+    type StreamCardBack,
+    type StreamPhase,
+} from "@hushle/domain-streamer";
 import { reportError } from "@hushle/platform-observability";
 import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import { getSocketClientIp } from "@/lib/security/client-ip";
@@ -18,8 +29,10 @@ import type { StreamSessionStore } from "@/lib/streamer/session-store";
 import { STREAMER_SOCKET_EVENTS, type StreamerEndedPayload } from "@/lib/streamer/socket-contract";
 import { hashViewKey, VIEW_KEY_BYTES } from "@/lib/streamer/view-key";
 import { getSystemSettings } from "@/lib/system-settings/service";
+import type { CosmeticMotionPreset, CosmeticPattern } from "@/types/economy";
 import { getSocketAuthState, isTrustedSocketOrigin } from "./game-socket";
 import { emitPlayerError, playerErrorAck } from "./player-error-emit";
+import { joinUserSessionRoom } from "./user-session-control";
 
 // Streamer mode over Socket.IO (phase 2). The owner's host room carries the secret card; the
 // public room (the stream screen, opened with the view key) never does. One process runs every
@@ -67,28 +80,58 @@ export class StreamerSecretLeakError extends Error {
 
 const HOST_ONLY_FIELDS = ["card", "players", "tolerance", "pool"] as const;
 
+const STREAM_PHASES = ["ready", "running", "paused", "finished", "ended"] as const satisfies readonly StreamPhase[];
+const COSMETIC_PATTERNS = ["none", "grid", "dots", "diagonal", "chevrons", "rings", "noise"] as const satisfies readonly CosmeticPattern[];
+const COSMETIC_MOTION_PRESETS = ["none", "pulse", "drift", "shimmer"] as const satisfies readonly CosmeticMotionPreset[];
+
+// Fields filled from a fixed vocabulary: a member carries no card data, even when a taboo is
+// spelt the same (the taboo "Candle" and the candle clock). Any other value there is compared.
+const FIELD_VOCABULARY = new Map<string, readonly string[]>([
+    ["type", ["public-state"]],
+    ["phase", STREAM_PHASES],
+    ["theme", BROADCAST_THEMES],
+    ["camera", CAMERA_SLOTS],
+    ["cameraSize", CAMERA_SIZES],
+    ["clock", TIMER_STYLES],
+    ["pack", ["TR", "EN"]],
+    ["channel.platform", CHANNEL_PLATFORMS],
+    ["cardBack.theme.pattern", COSMETIC_PATTERNS],
+    ["cardBack.theme.motionPreset", COSMETIC_MOTION_PRESETS],
+]);
+
+// Viewer, channel and card-back names are chat or catalogue text, never card data: a viewer
+// whose name equals a taboo word is no leak, so those fields are not compared.
+const NAME_FIELDS = new Set(["scores.*.name", "lastCorrect.name", "channel.name", "cardBack.name"]);
+
+// The previous pass's word stays on the stream screen. A taboo of the live card may be spelt the
+// same (viewers never see the taboos); only the live word itself is a leak there.
+const PASSED_WORD_FIELD = "passed.target";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// Viewer, channel and card-back names are chat or catalogue text, never card data: a viewer
-// whose name equals a taboo word is no leak, so those fields are not searched.
-function withoutNames(state: Record<string, unknown>): Record<string, unknown> {
-    const blank = (value: unknown) => (isRecord(value) ? { ...value, name: "" } : value);
-    return {
-        ...state,
-        scores: Array.isArray(state.scores) ? state.scores.map(blank) : state.scores,
-        lastCorrect: blank(state.lastCorrect),
-        channel: blank(state.channel),
-        cardBack: blank(state.cardBack),
-    };
+function comparable(word: string): string {
+    return normalizeGuess(word, "strict");
+}
+
+/** Calls `visit` with every string value and its path ("scores.*.name": array items are `*`). */
+function eachString(value: unknown, path: string, visit: (path: string, text: string) => void): void {
+    if (typeof value === "string") visit(path, value);
+    else if (Array.isArray(value)) value.forEach((item) => eachString(item, path ? `${path}.*` : "*", visit));
+    else if (isRecord(value)) {
+        for (const [key, child] of Object.entries(value)) eachString(child, path ? `${path}.${key}` : key, visit);
+    }
 }
 
 /**
  * Throws unless `payload` may go to the public room of `live`: a public projection with no
- * host-only field, no reveal while the round is not over, and no string equal to the live card's
- * word or one of its taboos (an exact match on the serialized payload, names aside). Once a
- * round is finished its card is on the stream screen by design, so the words are not searched.
+ * host-only field, no reveal while the round is not over, and no string value equal to the live
+ * card's word or one of its taboos once both are normalized (strict tolerance). Keys are never
+ * compared, and neither are names or a field's fixed vocabulary. The passed card's word is
+ * compared with the live word only. A finished round's reveal is on the stream screen by
+ * design, so it is not compared; the rest of that payload is. Fails closed when the live card
+ * has no word to compare against.
  */
 export function assertNoSecret(payload: unknown, live: Pick<LiveStreamSession, "hostSnapshot">): void {
     if (!isRecord(payload) || payload.type !== "public-state") throw new StreamerSecretLeakError("not a public state");
@@ -96,16 +139,28 @@ export function assertNoSecret(payload: unknown, live: Pick<LiveStreamSession, "
         if (field in payload) throw new StreamerSecretLeakError(`host-only field "${field}"`);
     }
     const host = live.hostSnapshot();
-    if (host.phase === "finished") return;
-    if (payload.reveal !== null && payload.reveal !== undefined) throw new StreamerSecretLeakError("reveal before the round is over");
+    const finished = host.phase === "finished";
+    if (!finished && payload.reveal !== null && payload.reveal !== undefined) throw new StreamerSecretLeakError("reveal before the round is over");
     const card = host.card;
     if (!card) return;
-    const serialized = JSON.stringify(withoutNames(payload));
-    for (const word of [card.target, ...card.taboos]) {
-        if (typeof word === "string" && word.trim() !== "" && serialized.includes(JSON.stringify(word))) {
-            throw new StreamerSecretLeakError("a secret word in the payload");
+    const target = typeof card.target === "string" ? comparable(card.target) : "";
+    if (!target) throw new StreamerSecretLeakError("the live card has no word to compare against");
+    // The passed card cuts its word: the live word cut the same way is the same leak.
+    const shownTarget = comparable(card.target.slice(0, PASSED_TARGET_MAX));
+    const taboos = Array.isArray(card.taboos) ? card.taboos.filter((word) => typeof word === "string").map(comparable) : [];
+    const secrets = new Set([target, ...taboos].filter(Boolean));
+    eachString(payload, "", (path, text) => {
+        if (NAME_FIELDS.has(path)) return;
+        if (finished && (path === "reveal" || path.startsWith("reveal."))) return;
+        if (FIELD_VOCABULARY.get(path)?.includes(text)) return;
+        const word = comparable(text);
+        if (!word) return;
+        if (path === PASSED_WORD_FIELD) {
+            if (word === target || word === shownTarget) throw new StreamerSecretLeakError("the live word in the passed card");
+            return;
         }
-    }
+        if (secrets.has(word)) throw new StreamerSecretLeakError("a secret word in the payload");
+    });
 }
 
 // ---------------------------------------------------------------- payloads and replies
@@ -339,6 +394,8 @@ export function setupStreamerSocket(
             data.streamerHostSessionId = sessionId;
             data.streamerHostUserId = user.userId;
             void socket.join(streamerHostRoom(sessionId));
+            // As the game's room join does: a password reset or email change drops this socket too.
+            joinUserSessionRoom(socket, user.userId);
             return { state: live.hostSnapshot() };
         });
 
