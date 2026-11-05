@@ -108,6 +108,7 @@ import {
 import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import { getPlayerErrorMessage } from "@/lib/errors/player-error";
 import { emitPlayerError, playerErrorAck } from "./player-error-emit";
+import { shouldPlayerSeeCard } from "@/lib/socket/card-visibility";
 
 /** A failure whose code may be shown to the player; any other error becomes a generic code. */
 class PlayerFacingSocketError extends Error {
@@ -1246,12 +1247,7 @@ export function setupGameSocket(
             isPrimaryGozetmen = true;
         }
 
-        const shouldSeeCard =
-            rol === "Anlatıcı" ||
-            rol === "Gözetmen" ||
-            (player.takim !== null &&
-                narrator.takim !== null &&
-                player.takim !== narrator.takim);
+        const shouldSeeCard = shouldPlayerSeeCard(player, narrator, inspector);
 
         playerSocket.emit("yeniTurBilgisi", {
             rol,
@@ -1429,9 +1425,13 @@ export function setupGameSocket(
                 narratorSocket.emit("kartGuncelle", card);
             }
 
-            // Send card to opponent team (inspectors)
+            // Send card to opponent team (inspectors), never to spectators
             room.oyuncular.forEach((playerItem) => {
-                if (playerItem.online && playerItem.takim !== narrator.takim) {
+                if (
+                    playerItem.online &&
+                    playerItem.playerId !== narrator.playerId &&
+                    shouldPlayerSeeCard(playerItem, narrator, room.oyunDurumu.gozetmen ?? null)
+                ) {
                     const s = io.sockets.sockets.get(playerItem.id);
                     if (s) {
                         s.emit("kartGuncelle", card);

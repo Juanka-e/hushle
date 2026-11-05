@@ -11,6 +11,7 @@ const checks: ReadinessCheck[] = [
     { area: "database driver adapter", script: "test:platform-db-adapter" },
     { area: "central observability", script: "test:observability" },
     { area: "request security", script: "test:request-security" },
+    { area: "card visibility (spectators never see the word)", script: "test:card-visibility" },
     { area: "client IP trust", script: "test:client-ip-security" },
     { area: "auth redirects", script: "test:auth-redirect-security" },
     { area: "captcha policy", script: "test:captcha-security" },
