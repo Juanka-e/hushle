@@ -23,8 +23,7 @@ const identity = (login: string) => ({
     channelUrl: `https://twitch.tv/${login}`,
 });
 
-type Prisma = Awaited<ReturnType<typeof importDb>>["prisma"];
-const importDb = () => import("@hushle/platform-db");
+type Prisma = Awaited<ReturnType<() => Promise<typeof import("@hushle/platform-db")>>>["prisma"];
 
 async function createUser(prisma: Prisma, suffix: string): Promise<number> {
     const user = await prisma.user.create({
