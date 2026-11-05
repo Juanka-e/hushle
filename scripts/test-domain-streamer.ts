@@ -334,6 +334,60 @@ test("a pass names the passed round and turns the passed card face up", () => {
     assert.equal(publicSnapshot(s, 3).passed, null);
 });
 
+test("a pass that deals the passed word again drops the passed card", () => {
+    const s = fresh();
+    beginRound(s, card, 0);
+    skipRound(s, 1000, { ...card, wordId: 99, taboos: [...card.taboos] });
+    assert.equal(s.card?.target, card.target, "the pool dealt the passed word again");
+    assert.equal(s.passedCard, null, "the passed card would show the live word");
+    assert.equal(publicSnapshot(s, 1).passed, null);
+    assert.equal(s.passedRound, 1, "the pass itself is still recorded");
+    assert.equal(s.round, 2);
+    // The same word spelt another way (letter case, Turkish letters, punctuation) is the same word.
+    skipRound(s, 2000, otherCard);
+    assert.deepEqual(s.passedCard, { round: 2, target: card.target });
+    skipRound(s, 3000, { wordId: 13, target: "buzdolabi!", taboos: ["Soğuk"] });
+    assert.equal(s.passedCard, null, "Buzdolabı and buzdolabi! are one word");
+    // A word longer than the passed card shows is compared as the passed card shows it.
+    const long = { wordId: 14, target: `${"UZUN".repeat(12)} KELİME`, taboos: [] };
+    skipRound(s, 4000, long);
+    skipRound(s, 5000, { ...long, wordId: 15 });
+    assert.equal(s.passedCard, null, "a long word dealt again is dropped too");
+});
+
+test("a pass to a card whose taboos hold the passed word keeps the passed card", () => {
+    const s = fresh();
+    beginRound(s, card, 0);
+    skipRound(s, 1000, { wordId: 16, target: "AURORA", taboos: [card.target, "Kutup"] });
+    assert.deepEqual(s.passedCard, { round: 1, target: card.target }, "viewers never see the taboos");
+    skipRound(s, 2000, { wordId: 17, target: "AURORALAR", taboos: [] });
+    assert.deepEqual(s.passedCard, { round: 2, target: "AURORA" }, "a longer word is another word");
+});
+
+test("a round that deals the passed word again drops the passed card", () => {
+    const s = fresh();
+    beginRound(s, card, 0);
+    skipRound(s, 1000, otherCard);
+    tick(s, 62_000);
+    assert.equal(s.phase, "finished");
+    assert.deepEqual(s.passedCard, { round: 1, target: card.target });
+    beginRound(s, { wordId: 18, target: "Kutup isiklari", taboos: ["Kuzey"] }, 63_000);
+    assert.equal(s.passedCard, null, "the next round's word is the passed word");
+    assert.equal(publicSnapshot(s, 2).passed, null);
+    assert.equal(s.passedRound, 1, "the pass itself is still recorded");
+    assert.equal(s.round, 3);
+});
+
+test("a round whose taboos hold the passed word keeps the passed card", () => {
+    const s = fresh();
+    beginRound(s, card, 0);
+    skipRound(s, 1000, otherCard);
+    tick(s, 62_000);
+    beginRound(s, { wordId: 19, target: "AURORA", taboos: [card.target] }, 63_000);
+    assert.deepEqual(s.passedCard, { round: 1, target: card.target });
+    assert.deepEqual(publicSnapshot(s, 2).passed, { round: 1, target: card.target });
+});
+
 test("the timer look is a theme template until the streamer picks one", () => {
     const s = fresh();
     const loose = s.settings as unknown as Record<string, unknown>;

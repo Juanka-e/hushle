@@ -9,7 +9,8 @@ import type {
 } from "./types";
 
 const MAX_SEEN_MESSAGES = 256;
-const PASSED_TARGET_MAX = 40;
+/** The passed card shows its word cut to this many UTF-16 units. */
+export const PASSED_TARGET_MAX = 40;
 
 export function createStreamSession(settings: StreamScreenSettings, now: number): StreamSessionState {
     return {
@@ -46,6 +47,20 @@ export function ranking(state: StreamSessionState): RankedPlayer[] {
     });
 }
 
+/**
+ * The passed card stays face up until the next pass. When the card just dealt is that same word,
+ * it would show the live word: the passed card goes. Compared folded (the normal tolerance, the
+ * widest notion of one word) and cut as the passed card shows it.
+ */
+function dropRecycledPass(state: StreamSessionState): void {
+    const passed = state.passedCard;
+    const card = state.card;
+    if (!passed || !card || typeof card.target !== "string") return;
+    if (normalizeGuess(passed.target, "normal") === normalizeGuess(card.target.slice(0, PASSED_TARGET_MAX), "normal")) {
+        state.passedCard = null;
+    }
+}
+
 export function beginRound(state: StreamSessionState, card: StreamCard, now: number): boolean {
     if (state.phase === "running" || state.phase === "paused") return false;
     if (state.phase === "ended") {
@@ -60,6 +75,7 @@ export function beginRound(state: StreamSessionState, card: StreamCard, now: num
         state.round++;
     }
     state.card = card;
+    dropRecycledPass(state);
     state.remaining = state.duration;
     state.winner = null;
     state.phase = "running";
@@ -113,6 +129,7 @@ export function skipRound(
     state.passedCard = { round: state.round, target: passed.target.slice(0, PASSED_TARGET_MAX) };
     state.round++;
     state.card = nextCard;
+    dropRecycledPass(state);
     state.winner = null;
     state.remaining = state.duration;
     state.roundStartedAt = now;
