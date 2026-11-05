@@ -214,6 +214,9 @@ test.describe("stream screen", () => {
         await expect(screen).toHaveAttribute("data-layout", "left");
         await expect(screen).toHaveAttribute("data-clock", "ring");
         await expect(screen).toHaveClass(/preview/);
+        // The renderer builds the bulbs and segments once, however often React mounts it.
+        await expect(page.locator("#bulb-ring circle")).toHaveCount(36);
+        await expect(page.locator("#segment-bar rect")).toHaveCount(20);
         await page.screenshot({ path: path.join(SHOTS, "gece-altini-left-ring-running.png") });
     });
 });

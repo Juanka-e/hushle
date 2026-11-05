@@ -505,12 +505,19 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
     };
     const stage = $("stage");
     const timer = root.querySelector<HTMLElement>(".timer")!;
+    const card = $("card");
+    const verdict = $("verdict");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let previous: StreamState | null = null;
+    let previousLeader: string | null | undefined;
     let sceneryTheme = "";
     let cardSignature = "";
     let scoreSignature = "";
     let destroyed = false;
     let fontsWatched = false;
+    let secondaryTimer: ReturnType<typeof setTimeout> | undefined;
+    let transientTimer: ReturnType<typeof setTimeout> | undefined;
+    let flipTimer: ReturnType<typeof setTimeout> | undefined;
 
     function fit(): void {
         const [width, height] = CANVAS[view.mode];
@@ -552,6 +559,13 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
         }
     })();
 
+    function replay(node: Element | null, className: string): void {
+        if (!node || reducedMotion.matches) return;
+        node.classList.remove(className);
+        void (node as HTMLElement).offsetWidth;
+        node.classList.add(className);
+    }
+
     function applyLayout(state: StreamState): string {
         const layout = view.mode === "strip" ? "strip" : view.mode === "half" ? "half" : state.camera === "none" ? "full" : state.camera;
         root.dataset.layout = layout;
@@ -573,6 +587,8 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
         $("scene-art").innerHTML = SCENERY[theme];
     }
 
+    // ------------------------------------------------------------ text fitting
+
     // Shrink a one-line node's font until it fits its box; beyond the floor the CSS ellipsis takes over.
     function fitLine(node: HTMLElement, max: number, min: number): void {
         node.style.fontSize = `${max}px`;
@@ -582,6 +598,66 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
             node.style.fontSize = `${size}px`;
         }
     }
+
+    // The revealed word: shrink until its longest word fits and it takes at most three lines;
+    // a single word too long even at the smallest size breaks across lines.
+    function fitWord(node: HTMLElement, word: string): void {
+        const block = document.createElement("span");
+        block.className = "words";
+        word.split(/\s+/).forEach((part, i) => {
+            if (i) block.append(" ");
+            const span = document.createElement("span");
+            span.textContent = part;
+            block.append(span);
+        });
+        node.replaceChildren(block);
+        let size = 76;
+        const fits = () =>
+            Math.max(...[...block.children].map((span) => (span as HTMLElement).offsetWidth)) <= block.clientWidth &&
+            block.offsetHeight <= size * 1.08 * 3 + 2;
+        node.style.fontSize = `${size}px`;
+        while (size > 22 && !fits()) {
+            size -= 2;
+            node.style.fontSize = `${size}px`;
+        }
+        if (fits()) return;
+        block.classList.add("breakable");
+        size = 44;
+        node.style.fontSize = `${size}px`;
+        while (size > 24 && block.offsetHeight > size * 1.08 * 3 + 2) {
+            size -= 2;
+            node.style.fontSize = `${size}px`;
+        }
+    }
+
+    // The prompt keeps to two lines: it shrinks a little before it would wrap a third time.
+    function fitPrompt(node: HTMLElement, copy: string): void {
+        node.textContent = copy;
+        const max = parseFloat(getComputedStyle(root).getPropertyValue("--prompt-size")) || 44;
+        let size = max;
+        node.style.fontSize = `${size}px`;
+        while (size > 34 && node.scrollHeight > size * 1.3 * 2 + 4) {
+            size -= 2;
+            node.style.fontSize = `${size}px`;
+        }
+    }
+
+    // Long chat names shrink before they are cut (measured from the stylesheet size each time).
+    function fitScoreNames(): void {
+        for (const name of $("scores").querySelectorAll<HTMLElement>(".score-name")) {
+            name.style.removeProperty("font-size");
+            fitLine(name, parseFloat(getComputedStyle(name).fontSize), 28);
+        }
+    }
+
+    function fitLastName(): void {
+        const name = $("last-name");
+        if (!name.textContent) return;
+        name.style.removeProperty("font-size");
+        fitLine(name, parseFloat(getComputedStyle(name).fontSize), 32);
+    }
+
+    // ------------------------------------------------------------ card and scores
 
     function renderCard(cardBack: StreamCardBackView | null): void {
         const signature = cardBack ? JSON.stringify(cardBack) : "classic";
@@ -643,15 +719,44 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
             list.append(item);
         }
         fitScoreNames();
+        const leader = scores[0] && !scores[0].tied ? scores[0].name : null;
+        if (leader && previousLeader !== undefined && leader !== previousLeader && !reducedMotion.matches) {
+            list.querySelector('[data-slot="1"]')?.classList.add("new-leader");
+        }
+        previousLeader = leader;
     }
 
-    // Long chat names shrink before they are cut.
-    function fitScoreNames(): void {
-        for (const name of $("scores").querySelectorAll<HTMLElement>(".score-name")) {
-            name.style.removeProperty("font-size");
-            fitLine(name, parseFloat(getComputedStyle(name).fontSize), 28);
+    // ------------------------------------------------------------ verdict stamp
+
+    // Stamp in the timer slot: the verdict of a round, or a pass.
+    function showVerdict(kind: "solved" | "timeout" | "pass", word: string, detail: string): void {
+        verdict.dataset.kind = kind;
+        $("verdict-word").textContent = word;
+        $("verdict-detail").textContent = detail;
+        verdict.classList.add("show");
+        replay(verdict, "stamping");
+    }
+
+    function hideVerdict(): void {
+        verdict.classList.remove("show");
+    }
+
+    function petals(): void {
+        if (reducedMotion.matches) return;
+        const box = root.querySelector(".petals");
+        if (!box) return;
+        box.replaceChildren();
+        for (let i = 0; i < 18; i++) {
+            const petal = document.createElement("i");
+            petal.style.setProperty("--x", `${(120 + ((i * 97) % 760)).toFixed(0)}px`);
+            petal.style.setProperty("--drift", `${(((i * 53) % 220) - 60).toFixed(0)}px`);
+            petal.style.setProperty("--delay", `${(((i * 37) % 90) / 100).toFixed(2)}s`);
+            petal.style.setProperty("--spin", `${(((i * 71) % 540) - 270).toFixed(0)}deg`);
+            box.append(petal);
         }
     }
+
+    // ------------------------------------------------------------ render
 
     function renderPrimary(state: StreamState): { layout: string; low: boolean } {
         root.dataset.theme = state.theme;
@@ -688,6 +793,69 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
         $("seconds-note").textContent = state.phase === "ready" ? `${state.duration} sn` : state.phase === "paused" ? "durdu" : "";
         $("round").textContent = `${state.round}. tur`;
 
+        const started = previous !== null && state.phase === "running" && ["ready", "finished", "ended"].includes(previous.phase);
+        const passed = previous !== null && state.passedRound !== null && state.passedRound !== previous.passedRound;
+        if (started || passed) replay(timer, "turning");
+        // The sand turns over; the other timers light up again.
+        if (started) replay(timer, "relight");
+        if (passed) {
+            replay(card, "passing");
+            // The stamp names the passed card only when the snapshot still carries it (the
+            // server drops it once the pool deals the same word again): never from passedRound alone.
+            if (state.passed && state.passed.round === state.passedRound) {
+                showVerdict("pass", "Pas", state.passed.target);
+                clearTimeout(transientTimer);
+                transientTimer = setTimeout(() => {
+                    if (!previous?.reveal) hideVerdict();
+                }, 3200);
+            }
+        }
+        if (started && previous?.reveal) replay(card, "drawing");
+
+        // Reveal: the card turns over once its round is over. Its word leaves the page with it,
+        // because a later round may draw the same word again.
+        if (state.reveal) {
+            const taboos = $("reveal-taboos");
+            taboos.replaceChildren();
+            for (const word of state.reveal.taboos) {
+                const item = document.createElement("li");
+                item.textContent = word;
+                taboos.append(item);
+            }
+            fitWord($("reveal-target"), state.reveal.target);
+        } else {
+            clearTimeout(flipTimer);
+            $("reveal-target").replaceChildren();
+            $("reveal-taboos").replaceChildren();
+            if (card.classList.contains("flipped")) {
+                card.classList.add("instant");
+                card.classList.remove("flipped");
+                void card.offsetWidth;
+                card.classList.remove("instant");
+            }
+        }
+        const entering = state.reveal !== null && !previous?.reveal;
+        if (state.reveal && !entering) card.classList.add("flipped");
+        if (state.reveal && entering) {
+            const solver = state.reveal.solved && state.lastCorrect ? state.lastCorrect : null;
+            showVerdict(
+                state.reveal.solved ? "solved" : "timeout",
+                state.reveal.solved ? "Bildi!" : "Süre doldu",
+                solver ? solver.name + (solver.solveMs !== null ? ` · ${seconds(solver.solveMs)} sn` : "") : ""
+            );
+            // Stamp first, then the card.
+            if (reducedMotion.matches) card.classList.add("flipped");
+            else
+                flipTimer = setTimeout(() => {
+                    if (previous?.reveal) card.classList.add("flipped");
+                }, 420);
+            replay(root.querySelector(".scene"), "celebrate");
+            if (state.reveal.solved && state.theme === "sakura") petals();
+        }
+        const passStampShowing =
+            previous !== null && state.passedRound === previous.passedRound && verdict.dataset.kind === "pass" && verdict.classList.contains("show");
+        if (!state.reveal && !passed && !passStampShowing) hideVerdict();
+
         // Finale: the winner takes the card's place, the hourglass lies down.
         const winner = $("winner");
         const leader = state.scores[0];
@@ -704,26 +872,8 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
         return { layout, low };
     }
 
-    // The prompt keeps to two lines: it shrinks a little before it would wrap a third time.
-    function fitPrompt(node: HTMLElement, copy: string): void {
-        node.textContent = copy;
-        const max = parseFloat(getComputedStyle(root).getPropertyValue("--prompt-size")) || 44;
-        let size = max;
-        node.style.fontSize = `${size}px`;
-        while (size > 34 && node.scrollHeight > size * 1.3 * 2 + 4) {
-            size -= 2;
-            node.style.fontSize = `${size}px`;
-        }
-    }
-
-    function fitLastName(): void {
-        const name = $("last-name");
-        if (!name.textContent) return;
-        name.style.removeProperty("font-size");
-        fitLine(name, parseFloat(getComputedStyle(name).fontSize), 32);
-    }
-
-    function renderSecondary(state: StreamState, low: boolean): void {
+    // Scores, the last-solver note and the prompt: on a solve these wait for the flip.
+    function renderSecondary(state: StreamState, low: boolean, before: StreamState | null): void {
         fitPrompt($("prompt"), promptFor(state, low));
         renderScores(state);
         $("participants").textContent = state.participants ? `${state.participants} kişi tahmin etti` : "Henüz tahmin yok";
@@ -737,6 +887,7 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
             : "İlk doğru tahmin buraya yazılır.";
         // "+1" means a point was just given: only while the solved round is still on screen.
         $("last-points").hidden = !(last && state.phase === "finished" && state.reveal?.solved && last.round === state.round);
+        if (last && before && last.eventId !== before.lastCorrect?.eventId) replay($("last"), "celebrate");
 
         // The overlay strip gets the reveal as a chip, since it has no card.
         const chip = $("strip-chip");
@@ -746,6 +897,9 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
                 (state.reveal.solved ? "Bildi! · " : "Süre doldu · ") +
                 state.reveal.target +
                 (state.reveal.taboos.length ? " · yasaklar: " + state.reveal.taboos.join(", ") : "");
+        } else if (state.passed && state.passedRound === state.passed.round && before && state.passedRound !== before.passedRound) {
+            chip.dataset.kind = "pass";
+            chip.textContent = "Pas · " + state.passed.target;
         } else {
             chip.dataset.kind = "info";
             chip.textContent = promptFor(state, low).split("\n")[0];
@@ -755,6 +909,7 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
     // Text fitting measures glyphs: once the theme's faces arrive, measure again.
     function refit(): void {
         if (destroyed || !previous) return;
+        if (previous.reveal) fitWord($("reveal-target"), previous.reveal.target);
         fitScoreNames();
         fitLastName();
         if (!$("winner").hidden) fitLine($("winner-name"), 72, 36);
@@ -775,9 +930,17 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
     return {
         render(state) {
             if (destroyed) return;
+            clearTimeout(secondaryTimer);
+            const before = previous;
+            const entering = state.reveal !== null && !before?.reveal;
             const { low } = renderPrimary(state);
-            renderSecondary(state, low);
             previous = state;
+            if (entering && !reducedMotion.matches) {
+                // Stamp first, then the card, then who scored.
+                secondaryTimer = setTimeout(() => renderSecondary(state, false, before), 1200);
+            } else {
+                renderSecondary(state, low, before);
+            }
             root.dataset.ready = "true";
             watchFonts();
         },
@@ -786,6 +949,9 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
         },
         destroy() {
             destroyed = true;
+            clearTimeout(secondaryTimer);
+            clearTimeout(transientTimer);
+            clearTimeout(flipTimer);
             window.removeEventListener("resize", fit);
             document.fonts.removeEventListener("loadingdone", refit);
         },
@@ -796,7 +962,8 @@ export function createStreamRenderer(root: HTMLElement, view: StreamView): Strea
 
 /**
  * Built-in sample scenes for screenshots and the theme gallery (only while the fake platform
- * is on). Demo words only; nothing from a session. Returns a stop function.
+ * is on): the prototype's demo states and its `play` loop. Demo words only; nothing from a
+ * session. Returns a stop function.
  */
 export function startDemo(renderer: StreamRenderer, name: string, params: URLSearchParams): () => void {
     const theme = pick(BROADCAST_THEMES, params.get("theme")) ?? BROADCAST_THEMES[0];
@@ -809,7 +976,18 @@ export function startDemo(renderer: StreamRenderer, name: string, params: URLSea
         { name: "Deniz", points: 6, rank: 2 },
         { name: "Mert_TR", points: 4, rank: 3 },
     ];
-    const base = {
+    const after = [
+        { name: "Deniz", points: 7, rank: 1, tied: true },
+        { name: "Luna", points: 7, rank: 1, tied: true },
+        { name: "Mert_TR", points: 4, rank: 3 },
+    ];
+    const longNames = [
+        { name: "xXx_KaraSavasci_2004_xXx", points: 12, rank: 1 },
+        { name: "Ahmet Yılmaz | Günlük Vlog ve Oyun", points: 11, rank: 2 },
+        { name: "bir_ismin_tam_yirmi_bes_k", points: 9, rank: 3 },
+    ];
+    const card = { target: "MANDALİNA", taboos: ["Portakal", "Kış", "Kabuk", "Turuncu", "Meyve"] };
+    const base: Bag = {
         type: "public-state",
         schemaVersion: 4,
         theme,
@@ -817,7 +995,7 @@ export function startDemo(renderer: StreamRenderer, name: string, params: URLSea
         cameraSize,
         clock,
         showCardName: true,
-        // A shop card back needs a session; the demo shows the plain Hushle card.
+        // A shop card back needs a session (?card= selects nothing): the demo shows the plain Hushle card.
         cardBack: null,
         connected: true,
         channel,
@@ -832,9 +1010,81 @@ export function startDemo(renderer: StreamRenderer, name: string, params: URLSea
         reveal: null,
     };
     const states: Record<string, Bag> = {
+        empty: { ...base, phase: "ready", round: 1, participants: 0, scores: [], lastCorrect: null },
+        ready: { ...base, phase: "ready" },
         running: { ...base, phase: "running", remaining: 38 },
+        low: { ...base, phase: "running", remaining: 7 },
+        paused: { ...base, phase: "paused", remaining: 38 },
+        offline: { ...base, phase: "paused", remaining: 38, connected: false },
+        solved: {
+            ...base,
+            phase: "finished",
+            remaining: 51,
+            scores: after,
+            participants: 24,
+            lastCorrect: { eventId: "demo-7", name: "Deniz", round: 7, solveMs: 8400 },
+            reveal: { ...card, solved: true },
+        },
+        timeout: { ...base, phase: "finished", remaining: 0, reveal: { ...card, solved: false } },
+        passed: { ...base, phase: "running", remaining: 60, round: 8, passedRound: 7, passed: { round: 7, target: "MANDALİNA" } },
+        ended: { ...base, phase: "ended", scores: after, participants: 31 },
+        longnames: {
+            ...base,
+            phase: "running",
+            remaining: 38,
+            scores: longNames,
+            participants: 212,
+            lastCorrect: { eventId: "demo-6", name: "Ahmet Yılmaz | Günlük Vlog ve Oyun", round: 6, solveMs: 14200 },
+            channel: { platform: "youtube", name: "ahmetyilmazgunlukvlogoyun" },
+        },
     };
-    const state = readSnapshot({ ...(states[name] ?? states.running), revision: 1 });
-    if (state) renderer.render(state);
-    return () => undefined;
+    let revision = 1;
+    const show = (data: Bag) => {
+        const state = readSnapshot({ ...data, revision: revision++ });
+        if (state) renderer.render(state);
+    };
+    if (name !== "play") {
+        show(states[name] ?? states.running);
+        return () => undefined;
+    }
+
+    // A short scripted round loop so the motion can be judged: count down, a correct guess,
+    // the next round, a pass, a round that runs out of time, and the finale.
+    let state: Bag = { ...states.ready };
+    const round = () => state.round as number;
+    const steps: Array<[number, () => Bag]> = [];
+    const at = (delay: number, change: () => Bag) => steps.push([delay, change]);
+    at(1200, () => ({ ...state, phase: "running", remaining: 60 }));
+    for (let s = 59; s >= 52; s--) at(1000, () => ({ ...state, remaining: s }));
+    at(700, () => ({
+        ...state,
+        ...states.solved,
+        remaining: 52,
+        lastCorrect: { eventId: `play-${revision}`, name: "Deniz", round: round(), solveMs: 8400 },
+    }));
+    at(4800, () => ({ ...state, phase: "running", round: round() + 1, remaining: 60, reveal: null }));
+    for (let s = 59; s >= 55; s--) at(1000, () => ({ ...state, remaining: s }));
+    at(1000, () => ({ ...state, round: round() + 1, passedRound: round(), passed: { round: round(), target: "KUM SAATİ" }, remaining: 60 }));
+    for (let s = 59; s >= 50; s--) at(1000, () => ({ ...state, remaining: s }));
+    at(600, () => ({ ...state, remaining: 11 }));
+    for (let s = 10; s >= 0; s--) {
+        at(1000, () => ({ ...state, remaining: s, phase: s === 0 ? "finished" : "running", reveal: s === 0 ? { ...card, solved: false } : null }));
+    }
+    at(4200, () => ({ ...state, phase: "ended" }));
+    at(5000, () => ({ ...states.ready, round: round() + 1, scores: state.scores }));
+    let index = 0;
+    let handle: ReturnType<typeof setTimeout> | undefined;
+    const next = () => {
+        const [delay, change] = steps[index];
+        handle = setTimeout(() => {
+            state = change();
+            show(state);
+            index = (index + 1) % steps.length;
+            if (index === 0) state = { ...states.ready };
+            next();
+        }, delay);
+    };
+    show(state);
+    next();
+    return () => clearTimeout(handle);
 }

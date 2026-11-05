@@ -621,7 +621,9 @@ main.hushle-stream[data-layout="strip"] .channel { font-size: 22px; max-width: 2
 .hushle-stream[data-theme="studyo"] .verdict[data-kind="timeout"], .hushle-stream[data-theme="studyo"] .verdict[data-kind="pass"] { color: #fff; background: var(--pink); box-shadow: 0 0 40px rgba(255, 79, 159, .7); }
 .hushle-stream[data-theme="studyo"] .verdict[data-kind="timeout"] .verdict-word { font-size: 46px; }
 .hushle-stream[data-theme="studyo"] .hero::before { content: ''; position: absolute; left: 50%; top: 50%; width: 1100px; height: 1100px; margin: -550px 0 0 -550px; border-radius: 50%; opacity: 0; background: repeating-conic-gradient(rgba(255, 209, 102, .22) 0 6deg, transparent 6deg 18deg); -webkit-mask: radial-gradient(closest-side, #000 30%, transparent); mask: radial-gradient(closest-side, #000 30%, transparent); transition: opacity .5s .5s; pointer-events: none; z-index: -1; }
-.hushle-stream[data-theme="studyo"] .hero:has(.card.flipped) ::before { opacity: 0; }
+/* Port: the prototype wrote ".hero:has(.card.flipped) ::before" (a descendant ::before), which also hid the
+   classic front's word band; only the sunburst is meant. */
+.hushle-stream[data-theme="studyo"] .hero:has(.card.flipped)::before { opacity: 0; }
 .hushle-stream[data-theme="studyo"][data-phase="finished"] .hero:has(.card.flipped)::before { opacity: 1; }
 .hushle-stream[data-theme="studyo"] .pause-sign { font-weight: 900; font-size: 48px; text-transform: uppercase; color: #fff; background: var(--pink); border-radius: 10px; transform: rotate(-4deg); }
 .hushle-stream[data-theme="studyo"] .strip-chip { background: rgba(13, 7, 32, .9); border: 2px solid var(--cyan); font-weight: 700; line-height: 60px; }
