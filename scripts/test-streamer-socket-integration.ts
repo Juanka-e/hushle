@@ -180,15 +180,26 @@ type RateLimitOptions = Parameters<RateLimit>[0];
 function countingLimiter() {
     const calls: RateLimitOptions[] = [];
     const counts = new Map<string, number>();
+    // A bucket capped here refuses after that many calls per key, below its own maxRequests.
+    const caps = new Map<string, number>();
     const consume: RateLimit = async (options) => {
         calls.push(options);
         const key = `${options.bucket}|${options.key}`;
         const used = (counts.get(key) ?? 0) + 1;
         counts.set(key, used);
-        const allowed = used <= options.maxRequests;
-        return { allowed, limit: options.maxRequests, remaining: Math.max(0, options.maxRequests - used), retryAfterSeconds: allowed ? 0 : 60 };
+        const max = Math.min(options.maxRequests, caps.get(options.bucket) ?? Infinity);
+        const allowed = used <= max;
+        return { allowed, limit: options.maxRequests, remaining: Math.max(0, max - used), retryAfterSeconds: allowed ? 0 : 60 };
     };
-    return { calls, consume, reset: () => counts.clear() };
+    return {
+        calls,
+        consume,
+        refuseAfter: (bucket: string, allowed: number) => caps.set(bucket, allowed),
+        reset: () => {
+            counts.clear();
+            caps.clear();
+        },
+    };
 }
 
 // ---------------------------------------------------------------- client helpers
@@ -676,6 +687,45 @@ async function main(): Promise<void> {
             viewKey = rotated;
             assertOk(await ask(viewer, "streamer:public:join", { viewKey }), "new key");
             assert.ok(roomOf(io, publicRoom).has(viewer.socket.id!));
+        });
+
+        await test("rotate-key is limited per user in the HTTP route's streamer-view-key bucket (10 / 15 min); a refusal rotates nothing", async () => {
+            limiter.reset();
+            // The fake limiter refuses the view-key bucket after two rotations (the real one after ten).
+            limiter.refuseAfter("streamer-view-key", 2);
+            const before = limiter.calls.length;
+            assertError(await ask(stranger, "streamer:host:rotate-key"), "STREAMER_SESSION_NOT_FOUND", "stranger rotate");
+            assert.equal(limiter.calls.length, before, "a caller outside the host room uses nothing of the owner's bucket");
+            for (let rotation = 1; rotation <= 2; rotation++) {
+                const ack = await ask(owner, "streamer:host:rotate-key");
+                assertOk(ack, `rotation ${rotation}`);
+                assert.notEqual(ack.viewKey, viewKey);
+                viewKey = ack.viewKey as string;
+            }
+            assertOk(await ask(viewer, "streamer:public:join", { viewKey }), "the viewer on the current key");
+            const keyHash = runtime.get(sessionId)?.viewKeyHash;
+            const mark = viewer.events.length;
+            assertError(await ask(owner, "streamer:host:rotate-key"), "RATE_LIMITED", "third rotation");
+            // Per user, not per socket: another tab of the same user, with a fresh burst window, is refused too.
+            const ownerTab = await connect(url, "owner");
+            assertOk(await ask(ownerTab, "streamer:host:join", { sessionId }), "another owner tab");
+            assertError(await ask(ownerTab, "streamer:host:rotate-key"), "RATE_LIMITED", "rotation from another tab");
+            assert.equal(runtime.get(sessionId)?.viewKeyHash, keyHash, "no rotation happened");
+            await pause(50);
+            assert.equal(received(viewer, "streamer:ended", mark).length, 0, "the stream screen was not closed");
+            assert.ok(roomOf(io, publicRoom).has(viewer.socket.id!), "the viewer stays in the public room");
+            const reload = await connect(url);
+            assertOk(await ask(reload, "streamer:public:join", { viewKey }), "the old key still opens the stream screen");
+            const calls = limiter.calls.slice(before).filter((call) => call.bucket === "streamer-view-key");
+            assert.equal(calls.length, 4, "every rotate of a joined host consumed the bucket once");
+            for (const call of calls) {
+                assert.equal(call.key, "user:1");
+                assert.equal(call.windowMs, 15 * 60_000);
+                assert.equal(call.maxRequests, 10);
+            }
+            // The per-socket burst is apart: the owner socket used 3 of its 10 actions, so the next one still runs.
+            assertError(await ask(owner, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "a host action after the refusal");
+            limiter.reset();
         });
 
         const second = await createSession(deps, { userId: 3, settings: INPUT });

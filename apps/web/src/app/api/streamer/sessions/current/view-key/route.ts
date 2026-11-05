@@ -7,6 +7,7 @@ import { publicOriginFor } from "@/lib/streamer/redirects";
 import { createSessionServiceDeps } from "@/lib/streamer/session-deps";
 import { buildStreamUrls, streamerSessionErrorResponse } from "@/lib/streamer/session-http";
 import { rotateViewKey } from "@/lib/streamer/session-service";
+import { STREAMER_VIEW_KEY_LIMIT } from "@/lib/streamer/view-key";
 import type { RotateViewKeyResponse } from "@/types/streamer-session";
 
 export const dynamic = "force-dynamic";
@@ -20,10 +21,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
     const limit = await consumeDistributedRequestRateLimit({
-        bucket: "streamer-view-key",
+        ...STREAMER_VIEW_KEY_LIMIT,
         key: `user:${sessionUser.id}`,
-        windowMs: 15 * 60_000,
-        maxRequests: 10,
     });
     if (!limit.allowed) {
         return NextResponse.json(playerError(PlayerErrorCode.RATE_LIMITED), { status: 429, headers: buildRateLimitHeaders(limit) });

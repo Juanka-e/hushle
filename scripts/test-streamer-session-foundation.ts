@@ -95,7 +95,8 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     const postRoutes: Array<[string, string, number, string]> = [
         ["collection", "streamer-session-create", 10, "15 * 60_000"],
         ["end", "", 0, ""],
-        ["viewKey", "streamer-view-key", 10, "15 * 60_000"],
+        // The view-key limit is a shared constant (checked below with the socket path).
+        ["viewKey", "", 0, ""],
         ["testGuess", "streamer-test-guess", 120, "60_000"],
     ];
     for (const [name, bucket, max, windowMs] of postRoutes) {
@@ -114,6 +115,27 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
 
     assert.match(sources.testGuess, /isFakeStreamerPlatformEnabled/);
     assert.match(sources.collection, /STREAMER_MODE_DISABLED/);
+
+    // One view-key limit for both paths: the HTTP route and streamer:host:rotate-key take the
+    // same exported bucket, window and maximum, per user, so the two together stay within it.
+    assert.match(
+        read("apps/web/src/lib/streamer/view-key.ts"),
+        /export const STREAMER_VIEW_KEY_LIMIT = \{ bucket: "streamer-view-key", windowMs: 15 \* 60_000, maxRequests: 10 \} as const;/,
+        "view-key.ts must export the view-key rotation limit",
+    );
+    const streamerSocket = read("apps/web/src/lib/socket/streamer-socket.ts");
+    for (const [label, source] of [["view-key route", sources.viewKey], ["streamer socket", streamerSocket]]) {
+        assert.match(source, /import \{[^}]*\bSTREAMER_VIEW_KEY_LIMIT\b[^}]*\} from "@\/lib\/streamer\/view-key";/, `${label} must import STREAMER_VIEW_KEY_LIMIT`);
+        assert.ok(!source.includes('"streamer-view-key"'), `${label} must not spell the view-key bucket itself`);
+    }
+    const viewKeyPost = sources.viewKey.split("export async function POST")[1] ?? "";
+    const viewKeyLimitAt = viewKeyPost.search(/consumeDistributedRequestRateLimit\(\{\s*\.\.\.STREAMER_VIEW_KEY_LIMIT,\s*key: `user:\$\{sessionUser\.id\}`,?\s*\}\)/);
+    assert.ok(viewKeyLimitAt > viewKeyPost.indexOf("getSessionUser()"), "viewKey: session before the shared view-key limit");
+    assert.ok(viewKeyLimitAt < viewKeyPost.indexOf("rotateViewKey("), "viewKey: the limit before the rotation");
+    const rotateHandler = streamerSocket.split("hostAction(EVENTS.hostRotateKey")[1]?.split("handle(socket, EVENTS.publicJoin")[0] ?? "";
+    const socketLimitAt = rotateHandler.indexOf("rateLimit({ ...STREAMER_VIEW_KEY_LIMIT, key: `user:${live.userId}` })");
+    assert.ok(socketLimitAt >= 0, "streamer:host:rotate-key must consume the shared view-key limit per user");
+    assert.ok(socketLimitAt < rotateHandler.indexOf("runtime.rotateViewKey("), "rotate-key: the limit before the rotation");
 
     const get = sources.collection.split("export async function GET")[1]?.split("export async function POST")[0] ?? sources.collection.split("export async function GET")[1];
     assert.ok(get, "collection route must export GET");

@@ -27,7 +27,7 @@ import {
 import { screenSettingsPatchSchema, type ResolvedScreenPatch } from "@/lib/streamer/session-settings";
 import type { StreamSessionStore } from "@/lib/streamer/session-store";
 import { STREAMER_SOCKET_EVENTS, type StreamerEndedPayload } from "@/lib/streamer/socket-contract";
-import { hashViewKey, VIEW_KEY_BYTES } from "@/lib/streamer/view-key";
+import { hashViewKey, STREAMER_VIEW_KEY_LIMIT, VIEW_KEY_BYTES } from "@/lib/streamer/view-key";
 import { getSystemSettings } from "@/lib/system-settings/service";
 import type { CosmeticMotionPreset, CosmeticPattern } from "@/types/economy";
 import { getSocketAuthState, isTrustedSocketOrigin } from "./game-socket";
@@ -413,7 +413,10 @@ export function setupStreamerSocket(
             await runtime.applySettings(live.id, patch);
         });
         // The new key goes back in this ack only; the rotation hook above closes the old screens.
+        // Past the per-socket burst, the owner's view-key limit applies: the bucket the HTTP route uses.
         hostAction(EVENTS.hostRotateKey, noPayloadSchema, async (live) => {
+            const limit = await rateLimit({ ...STREAMER_VIEW_KEY_LIMIT, key: `user:${live.userId}` });
+            if (!limit.allowed) throw new Refusal(PlayerErrorCode.RATE_LIMITED);
             const { viewKey } = await runtime.rotateViewKey(live.id);
             return { viewKey };
         });

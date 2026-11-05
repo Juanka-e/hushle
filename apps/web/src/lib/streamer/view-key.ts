@@ -6,6 +6,10 @@ import { hashOpaqueToken } from "@hushle/platform-auth";
 
 export const VIEW_KEY_BYTES = 32;
 
+// One limit for every rotation path (POST /api/streamer/sessions/current/view-key and the host
+// panel's streamer:host:rotate-key), keyed `user:<id>`: both draw on the same bucket.
+export const STREAMER_VIEW_KEY_LIMIT = { bucket: "streamer-view-key", windowMs: 15 * 60_000, maxRequests: 10 } as const;
+
 export function hashViewKey(viewKey: string): string {
     return hashOpaqueToken(viewKey);
 }
