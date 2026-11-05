@@ -131,6 +131,7 @@
     "test:oauth-account-foundation": "tsx scripts/test-oauth-account-foundation.ts",
     "test:oauth-login-ui": "playwright test tests/oauth-login-ui.spec.ts",
     "test:streamer-connection-foundation": "tsx scripts/test-streamer-connection-foundation.ts",
+    "test:streamer-token-crypto": "tsx scripts/test-streamer-token-crypto.ts",
     "test:account-recovery-integration": "tsx scripts/test-account-recovery-integration.ts",
     "test:email-delivery-operations-integration": "tsx scripts/test-email-delivery-operations-integration.ts",
     "test:email-delivery-operations": "tsx scripts/test-email-delivery-operations.ts",
