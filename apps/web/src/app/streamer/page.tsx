@@ -1,18 +1,61 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { StreamerConfigError } from "@hushle/platform-streamer";
+import { StreamerPanel } from "@/components/streamer/streamer-panel";
+import type { AppLocale } from "@/lib/i18n/config";
 import { translate } from "@/lib/i18n/dictionaries";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { getSessionUser } from "@/lib/session";
+import { getVisibleCategories } from "@/lib/socket/category-service";
+import { listCardBacksForUser } from "@/lib/streamer/card-backs";
 import { verifyActiveConnections } from "@/lib/streamer/connections-view";
 import { createConnectFlowDeps } from "@/lib/streamer/deps";
+import { createSessionServiceDeps } from "@/lib/streamer/session-deps";
+import { currentSession, isStreamerSessionError, lastSettings } from "@/lib/streamer/session-service";
+import { getSystemSettings } from "@/lib/system-settings/service";
 import type { StreamerConnectionsResponse } from "@/types/streamer";
+import type { StreamerPanelCategory, StreamerPanelChannel, StreamerPanelInitial } from "@/types/streamer-session";
 
 export const dynamic = "force-dynamic";
 export const metadata = { robots: { index: false, follow: false } };
 
-// The streamer panel's door. The panel itself arrives in the next phase; this page only
-// decides which of four states the streamer is in and points them to the right place.
+type VisibleCategory = Awaited<ReturnType<typeof getVisibleCategories>>[number];
+
+function panelCategories(roots: VisibleCategory[]): StreamerPanelCategory[] {
+    return roots.map((root) => ({
+        id: root.id,
+        name: root.name,
+        children: root.children.map((child) => ({ id: child.id, name: child.name })),
+    }));
+}
+
+// The same body GET /api/streamer/sessions answers, plus what the form needs: the first paint
+// has the session, the prefill, the card backs and both category packs (the session's word
+// language picks one), so the panel never starts on a spinner.
+async function loadPanel(userId: number, locale: AppLocale, channels: StreamerPanelChannel[]): Promise<StreamerPanelInitial> {
+    const { features } = await getSystemSettings();
+    const deps = createSessionServiceDeps();
+    const [session, last, cardBacks, tr, en] = await Promise.all([
+        currentSession(deps, userId),
+        lastSettings(deps, userId),
+        // An unreachable catalogue leaves the theme's card as the only choice.
+        listCardBacksForUser(userId, { streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics }).catch((error: unknown) => {
+            if (isStreamerSessionError(error)) return [];
+            throw error;
+        }),
+        getVisibleCategories("tr"),
+        getVisibleCategories("en"),
+    ]);
+    return {
+        data: { enabled: true, session, lastSettings: last, cardBacks },
+        channels,
+        categories: { tr: panelCategories(tr), en: panelCategories(en) },
+        locale,
+    };
+}
+
+// The streamer panel's door: decides which of four states the streamer is in. A linked channel
+// (`ready`) opens the host panel; the others point to the right place.
 export default async function StreamerPage() {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
@@ -31,22 +74,27 @@ export default async function StreamerPage() {
     const broken = view.platforms.find((entry) => entry.connection?.status === "needs_reconnect");
 
     const state = !view.enabled ? "coming-soon" : active ? "ready" : broken ? "reconnect" : "not-linked";
+    if (state === "ready") {
+        const channels: StreamerPanelChannel[] = view.platforms.flatMap((entry) =>
+            entry.connection?.status === "active"
+                ? [{ platform: entry.platform, label: entry.label, displayName: entry.connection.displayName }]
+                : []
+        );
+        const initial = await loadPanel(sessionUser.id, locale, channels);
+        return (
+            <main className="min-h-screen bg-slate-100 px-4 py-10 dark:bg-slate-950">
+                <StreamerPanel initial={initial} />
+            </main>
+        );
+    }
     const title =
-        state === "coming-soon"
-            ? t("streamer.comingSoon")
-            : state === "ready"
-              ? t("streamer.ready")
-              : state === "reconnect"
-                ? t("streamer.reconnect")
-                : t("streamer.notLinked");
+        state === "coming-soon" ? t("streamer.comingSoon") : state === "reconnect" ? t("streamer.reconnect") : t("streamer.notLinked");
     const help =
         state === "coming-soon"
             ? t("streamer.comingSoonHelp")
-            : state === "ready"
-              ? t("streamer.readyHelp", { name: active!.connection!.displayName, platform: active!.label })
-              : state === "reconnect"
-                ? t("streamer.reconnectHelp", { platform: broken!.label })
-                : t("streamer.notLinkedHelp");
+            : state === "reconnect"
+              ? t("streamer.reconnectHelp", { platform: broken!.label })
+              : t("streamer.notLinkedHelp");
 
     return (
         <main className="min-h-screen bg-slate-100 px-4 py-16 dark:bg-slate-950">
@@ -55,7 +103,7 @@ export default async function StreamerPage() {
                 <h1 className="mt-3 text-2xl font-black text-slate-900 dark:text-white">{title}</h1>
                 <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{help}</p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                    {state !== "coming-soon" && state !== "ready" ? (
+                    {state !== "coming-soon" ? (
                         <Link
                             href="/dashboard?tab=settings"
                             className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900"
