@@ -15,6 +15,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hushle/auth-policy": "0.1.0",
     "@hushle/domain-game": "0.1.0",
+    "@hushle/domain-streamer": "0.1.0",
     "@hushle/platform-cache": "0.1.0",
     "@hushle/platform-auth": "0.1.0",
     "@hushle/platform-db": "0.1.0",

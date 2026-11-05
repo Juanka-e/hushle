@@ -157,6 +157,7 @@
     "typecheck:packages": "tsc -p packages/api-contracts/tsconfig.json && tsc -p packages/auth-policy/tsconfig.json && tsc -p packages/domain-game/tsconfig.json && tsc -p packages/platform-cache/tsconfig.json && tsc -p packages/platform-db/tsconfig.json && tsc -p packages/platform-auth/tsconfig.json && tsc -p packages/platform-email/tsconfig.json && tsc -p packages/platform-observability/tsconfig.json && tsc -p packages/platform-player/tsconfig.json && tsc -p packages/platform-inventory/tsconfig.json && tsc -p packages/platform-store/tsconfig.json && tsc -p packages/platform-wallet/tsconfig.json && tsc -p packages/platform-payments/tsconfig.json && tsc -p apps/api/tsconfig.json && tsc -p apps/jobs/tsconfig.json",
     "test:package-boundaries": "tsx scripts/test-package-boundaries.ts",
     "test:domain-game": "tsx scripts/test-domain-game.ts",
+    "test:domain-streamer": "tsx scripts/test-domain-streamer.ts",
     "test:jobs-runtime": "tsx scripts/test-jobs-runtime.ts",
     "test:jobs-runtime-integration": "tsx scripts/test-jobs-runtime-integration.ts",
     "lint": "eslint",

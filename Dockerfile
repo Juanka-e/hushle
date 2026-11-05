@@ -9,6 +9,7 @@ COPY packages/api-contracts/package.json ./packages/api-contracts/package.json
 COPY packages/auth-policy/package.json ./packages/auth-policy/package.json
 COPY packages/domain-economy/package.json ./packages/domain-economy/package.json
 COPY packages/domain-game/package.json ./packages/domain-game/package.json
+COPY packages/domain-streamer/package.json ./packages/domain-streamer/package.json
 COPY packages/platform-auth/package.json ./packages/platform-auth/package.json
 COPY packages/platform-cache/package.json ./packages/platform-cache/package.json
 COPY packages/platform-db/package.json ./packages/platform-db/package.json

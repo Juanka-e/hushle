@@ -49,6 +49,7 @@ assert.match(dockerfile, /packages\/api-contracts\/package\.json/);
 assert.match(dockerfile, /packages\/auth-policy\/package\.json/);
 assert.match(dockerfile, /packages\/domain-economy\/package\.json/);
 assert.match(dockerfile, /packages\/domain-game\/package\.json/);
+assert.match(dockerfile, /packages\/domain-streamer\/package\.json/);
 assert.match(dockerfile, /packages\/platform-auth\/package\.json/);
 assert.match(dockerfile, /packages\/platform-cache\/package\.json/);
 assert.match(dockerfile, /packages\/platform-db\/package\.json/);
