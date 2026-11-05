@@ -74,4 +74,67 @@ assert.doesNotMatch(migration, /DROP TABLE|ALTER TABLE `oauth_accounts`/);
 
 assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scripts\/test-streamer-session-foundation.ts"/);
 
+// --- Task 5: HTTP routes ----------------------------------------------------
+
+{
+    const base = "apps/web/src/app/api/streamer/sessions";
+    const routeFiles = {
+        collection: `${base}/route.ts`,
+        end: `${base}/current/end/route.ts`,
+        viewKey: `${base}/current/view-key/route.ts`,
+        testGuess: `${base}/current/test-guess/route.ts`,
+    };
+    const sources: Record<string, string> = {};
+    for (const [name, path] of Object.entries(routeFiles)) {
+        assert.ok(existsSync(path), `${path} must exist`);
+        sources[name] = read(path);
+        assert.match(sources[name], /export const dynamic = "force-dynamic"/, `${name} route must be force-dynamic`);
+        assert.doesNotMatch(sources[name], /instanceof StreamerSessionError/, `${name} route must use isStreamerSessionError`);
+    }
+
+    const postRoutes: Array<[string, string, number, string]> = [
+        ["collection", "streamer-session-create", 10, "15 * 60_000"],
+        ["end", "", 0, ""],
+        ["viewKey", "streamer-view-key", 10, "15 * 60_000"],
+        ["testGuess", "streamer-test-guess", 120, "60_000"],
+    ];
+    for (const [name, bucket, max, windowMs] of postRoutes) {
+        const post = sources[name].split("export async function POST")[1];
+        assert.ok(post, `${name} route must export POST`);
+        const origin = post.indexOf("isTrustedStateChangeRequest(request)");
+        const sessionAt = post.indexOf("getSessionUser()");
+        assert.ok(origin >= 0 && origin < sessionAt, `${name}: origin check before session`);
+        if (bucket) {
+            const limitAt = post.indexOf(`bucket: "${bucket}"`);
+            assert.ok(sessionAt < limitAt, `${name}: session before rate limit bucket ${bucket}`);
+            assert.match(post, new RegExp(`maxRequests: ${max},`), `${name}: ${max} requests`);
+            assert.ok(post.includes(`windowMs: ${windowMs}`), `${name}: window ${windowMs}`);
+        }
+    }
+
+    assert.match(sources.testGuess, /isFakeStreamerPlatformEnabled/);
+    assert.match(sources.collection, /STREAMER_MODE_DISABLED/);
+
+    const get = sources.collection.split("export async function GET")[1]?.split("export async function POST")[0] ?? sources.collection.split("export async function GET")[1];
+    assert.ok(get, "collection route must export GET");
+    for (const forbidden of ["viewKeyHash", "target", "taboos"]) {
+        assert.ok(!get.includes(forbidden), `GET must never touch ${forbidden}`);
+    }
+
+    const http = read("apps/web/src/lib/streamer/session-http.ts");
+    for (const code of [
+        "STREAMER_SESSION_ACTIVE",
+        "STREAMER_CONNECTION_REQUIRED",
+        "STREAMER_SESSION_NOT_FOUND",
+        "STREAMER_ACTION_INVALID_PHASE",
+        "STREAMER_WORD_POOL_EMPTY",
+        "STREAMER_CARD_NOT_ALLOWED",
+        "STREAMER_CARD_CATALOGUE_UNAVAILABLE",
+    ]) {
+        assert.ok(http.includes(code), `session-http must map ${code}`);
+        assert.ok(read("apps/web/src/lib/errors/player-error-codes.ts").includes(`${code}:`), `${code} must be a player error code`);
+    }
+    assert.ok(existsSync("apps/web/src/types/streamer-session.ts"));
+}
+
 console.log("PASS streamer session foundation contract");
