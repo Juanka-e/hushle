@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import type { PublicStreamSnapshot } from "@hushle/domain-streamer";
-import { cameraRect, offlineState, readSnapshot, urlLookSnapshot } from "@/components/stream/stream-renderer";
+import { cameraRect, offlineState, readSnapshot, urlLookSnapshot, type StreamState } from "@/components/stream/stream-renderer";
+import {
+    connectStreamTransport,
+    createRevisionGuard,
+    isViewKey,
+    type StreamSocketLike,
+    type StreamTimers,
+} from "@/components/stream/stream-transport";
+import type { StreamerEndedReason } from "@/lib/streamer/socket-contract";
 
-// The stream screen's pure parts: the snapshot reader (the screen's allowlist) and the camera
-// hole geometry. The DOM side is covered by tests/streamer-stream-screen.spec.ts.
+// The stream screen's pure parts: the snapshot reader (the screen's allowlist), the camera hole
+// geometry, the revision guard and the transport (against a fake socket and a fake clock). The
+// DOM side is covered by tests/streamer-stream-screen.spec.ts.
 
 let count = 0;
 async function test(name: string, run: () => void | Promise<void>): Promise<void> {
@@ -69,6 +78,99 @@ const cardBack = {
         overlayOpacity: 0,
     },
 };
+
+// ---------------------------------------------------------------- transport harness
+
+const KEY = "Ab3_-".repeat(8) + "xyz";
+
+type Listener = (...args: unknown[]) => void;
+
+class FakeSocket implements StreamSocketLike {
+    connected = false;
+    connectCalls = 0;
+    disconnectCalls = 0;
+    emits: Array<{ event: string; payload: unknown; ack: (reply: unknown) => void }> = [];
+    private listeners = new Map<string, Listener[]>();
+
+    on(event: string, listener: Listener): this {
+        this.listeners.set(event, [...(this.listeners.get(event) ?? []), listener]);
+        return this;
+    }
+    emit(event: string, payload: unknown, ack: (reply: unknown) => void): this {
+        this.emits.push({ event, payload, ack });
+        return this;
+    }
+    connect(): this {
+        this.connectCalls += 1;
+        return this;
+    }
+    disconnect(): this {
+        this.disconnectCalls += 1;
+        this.connected = false;
+        return this;
+    }
+    fire(event: string, ...args: unknown[]): void {
+        for (const listener of this.listeners.get(event) ?? []) listener(...args);
+    }
+    up(): void {
+        this.connected = true;
+        this.fire("connect");
+    }
+    down(): void {
+        this.connected = false;
+        this.fire("disconnect", "transport close");
+    }
+}
+
+function fakeClock(): StreamTimers & { advance(ms: number): void } {
+    let now = 0;
+    let next = 0;
+    const timers = new Map<number, { at: number; run: () => void }>();
+    return {
+        setTimeout(run, ms) {
+            next += 1;
+            timers.set(next, { at: now + ms, run });
+            return next;
+        },
+        clearTimeout(handle) {
+            timers.delete(handle as number);
+        },
+        advance(ms) {
+            const end = now + ms;
+            for (;;) {
+                const due = [...timers.entries()].filter(([, timer]) => timer.at <= end).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+                if (!due) break;
+                timers.delete(due[0]);
+                now = due[1].at;
+                due[1].run();
+            }
+            now = end;
+        },
+    };
+}
+
+function harness(viewKey = KEY) {
+    const socket = new FakeSocket();
+    const clock = fakeClock();
+    const events: string[] = [];
+    const states: StreamState[] = [];
+    const transport = connectStreamTransport({
+        viewKey,
+        socket,
+        timers: clock,
+        onState(state) {
+            states.push(state);
+            events.push(`state:${state.revision}`);
+        },
+        onOffline() {
+            events.push("offline");
+        },
+        onEnded(reason: StreamerEndedReason) {
+            events.push(`ended:${reason}`);
+        },
+    });
+    return { socket, clock, events, states, transport };
+}
 
 async function main(): Promise<void> {
     await test("a v4 public snapshot reads into a screen state", () => {
@@ -243,6 +345,164 @@ async function main(): Promise<void> {
         assert.deepEqual(cameraRect("left", "s"), { x: 0, y: 0, w: 960, h: 1080 });
         assert.deepEqual(cameraRect("right", "l"), { x: 960, y: 0, w: 960, h: 1080 });
         assert.equal(cameraRect("none", "m"), null);
+    });
+
+    await test("the revision guard takes only newer states; a reset starts it again", () => {
+        const guard = createRevisionGuard();
+        assert.equal(guard.accept(0), true);
+        assert.equal(guard.accept(3), true);
+        assert.equal(guard.accept(3), false);
+        assert.equal(guard.accept(2), false);
+        assert.equal(guard.accept(4), true);
+        // After a reconnect the join ack's revision is the new floor, even a lower one.
+        guard.reset(1);
+        assert.equal(guard.accept(1), false);
+        assert.equal(guard.accept(2), true);
+    });
+
+    await test("only a 43-character base64url key is a view key", () => {
+        assert.equal(isViewKey(KEY), true);
+        for (const bad of ["", "short", KEY + "A", KEY.slice(1) + "/", KEY.slice(1) + "=", KEY.slice(1) + " "]) {
+            assert.equal(isViewKey(bad), false, JSON.stringify(bad));
+        }
+    });
+
+    await test("a malformed key goes offline at once and never connects", () => {
+        const { socket, events } = harness("not-a-real-key");
+        assert.deepEqual(events, ["offline"]);
+        assert.equal(socket.connectCalls, 0);
+        assert.equal(socket.emits.length, 0);
+    });
+
+    await test("the join ack draws at once and settles the offline timer", () => {
+        const { socket, clock, events, states } = harness();
+        assert.equal(socket.connectCalls, 1);
+        socket.up();
+        assert.equal(socket.emits.length, 1);
+        assert.equal(socket.emits[0].event, "streamer:public:join");
+        assert.deepEqual(socket.emits[0].payload, { viewKey: KEY });
+        socket.emits[0].ack({ ok: true, state: snapshot({ revision: 9 }) });
+        assert.deepEqual(events, ["state:9"]);
+        assert.equal(states[0].phase, "running");
+        clock.advance(20_000);
+        assert.deepEqual(events, ["state:9"], "no offline after a state");
+    });
+
+    await test("broadcasts pass the revision guard; unreadable ones are dropped", () => {
+        const { socket, events } = harness();
+        socket.up();
+        socket.emits[0].ack({ ok: true, state: snapshot({ revision: 5 }) });
+        socket.fire("streamer:public:state", snapshot({ revision: 6 }));
+        socket.fire("streamer:public:state", snapshot({ revision: 6 }));
+        socket.fire("streamer:public:state", snapshot({ revision: 4 }));
+        socket.fire("streamer:public:state", snapshot({ revision: 8, schemaVersion: 3 }));
+        socket.fire("streamer:public:state", { revision: 9 });
+        socket.fire("streamer:public:state", snapshot({ revision: 7 }));
+        assert.deepEqual(events, ["state:5", "state:6", "state:7"]);
+    });
+
+    await test("five seconds without a state show the offline scene, once", () => {
+        const { socket, clock, events } = harness();
+        clock.advance(4_999);
+        assert.deepEqual(events, []);
+        clock.advance(1);
+        assert.deepEqual(events, ["offline"]);
+        clock.advance(30_000);
+        assert.deepEqual(events, ["offline"]);
+        // A late connection still joins and draws.
+        socket.up();
+        socket.emits[0].ack({ ok: true, state: snapshot({ revision: 2 }) });
+        assert.deepEqual(events, ["offline", "state:2"]);
+    });
+
+    await test("a refused key goes offline and stops for good", () => {
+        for (const code of ["STREAMER_VIEW_KEY_INVALID", "INVALID_REQUEST"]) {
+            const { socket, clock, events } = harness();
+            socket.up();
+            socket.emits[0].ack({ ok: false, code, error: "x" });
+            assert.deepEqual(events, ["offline"], code);
+            assert.equal(socket.disconnectCalls, 1);
+            socket.up();
+            clock.advance(60_000);
+            socket.fire("streamer:public:state", snapshot({ revision: 50 }));
+            assert.equal(socket.emits.length, 1, "no second join");
+            assert.deepEqual(events, ["offline"]);
+        }
+    });
+
+    await test("a passing refusal (rate limit, server error, bad state) asks again with backoff", () => {
+        const { socket, clock, events } = harness();
+        socket.up();
+        socket.emits[0].ack({ ok: false, code: "RATE_LIMITED", error: "x" });
+        assert.deepEqual(events, ["offline"]);
+        clock.advance(4_999);
+        assert.equal(socket.emits.length, 1);
+        clock.advance(1);
+        assert.equal(socket.emits.length, 2);
+        socket.emits[1].ack({ ok: true, state: { type: "public-state", schemaVersion: 99 } });
+        clock.advance(9_999);
+        assert.equal(socket.emits.length, 2, "the second wait is longer");
+        clock.advance(1);
+        assert.equal(socket.emits.length, 3);
+        socket.emits[2].ack({ ok: true, state: snapshot({ revision: 1 }) });
+        assert.deepEqual(events, ["offline", "offline", "state:1"]);
+    });
+
+    await test("a lost connection goes offline after five seconds; the rejoin resets the guard", () => {
+        const { socket, clock, events } = harness();
+        socket.up();
+        socket.emits[0].ack({ ok: true, state: snapshot({ revision: 40 }) });
+        socket.down();
+        clock.advance(5_000);
+        assert.deepEqual(events, ["state:40", "offline"]);
+        socket.up();
+        assert.equal(socket.emits.length, 2);
+        assert.deepEqual(socket.emits[1].payload, { viewKey: KEY });
+        // The server's count may be lower now: the ack is taken anyway and becomes the floor.
+        socket.emits[1].ack({ ok: true, state: snapshot({ revision: 3 }) });
+        socket.fire("streamer:public:state", snapshot({ revision: 3 }));
+        socket.fire("streamer:public:state", snapshot({ revision: 4 }));
+        assert.deepEqual(events, ["state:40", "offline", "state:3", "state:4"]);
+    });
+
+    await test("a quick reconnect never flashes offline, and a stale ack is ignored", () => {
+        const { socket, clock, events } = harness();
+        socket.up();
+        const first = socket.emits[0];
+        socket.down();
+        socket.up();
+        first.ack({ ok: true, state: snapshot({ revision: 7 }) });
+        assert.deepEqual(events, [], "the ack of the lost connection is dropped");
+        socket.emits[1].ack({ ok: true, state: snapshot({ revision: 8 }) });
+        clock.advance(20_000);
+        assert.deepEqual(events, ["state:8"]);
+    });
+
+    await test("streamer:ended closes the screen for good, whatever the reason", () => {
+        for (const reason of ["ended", "idle", "view-key-rotated", "interrupted", "bogus"]) {
+            const { socket, clock, events } = harness();
+            socket.up();
+            socket.emits[0].ack({ ok: true, state: snapshot({ revision: 1 }) });
+            socket.fire("streamer:ended", { reason });
+            assert.deepEqual(events, ["state:1", `ended:${reason === "bogus" ? "interrupted" : reason}`]);
+            assert.equal(socket.disconnectCalls, 1);
+            socket.fire("streamer:public:state", snapshot({ revision: 2 }));
+            socket.up();
+            clock.advance(60_000);
+            assert.equal(socket.emits.length, 1);
+            assert.equal(events.length, 2);
+        }
+    });
+
+    await test("close() stops every timer and callback", () => {
+        const { socket, clock, events, transport } = harness();
+        transport.close();
+        assert.equal(socket.disconnectCalls, 1);
+        clock.advance(60_000);
+        socket.up();
+        socket.fire("streamer:public:state", snapshot({ revision: 2 }));
+        assert.deepEqual(events, []);
+        assert.equal(socket.emits.length, 0);
     });
 
     console.log(`${count} checks passed.`);

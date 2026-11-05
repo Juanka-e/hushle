@@ -1,15 +1,20 @@
 "use client";
 
+import { useParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { streamFontClassName } from "./stream-fonts";
-import { createStreamRenderer, startDemo, urlLookSnapshot, viewFromParams } from "./stream-renderer";
+import { createStreamRenderer, offlineState, startDemo, urlLookSnapshot, viewFromParams } from "./stream-renderer";
+import { connectStreamTransport, createStreamSocket } from "./stream-transport";
 import "./stream-screen.css";
 
 // The public stream screen (OBS browser source): the V4 prototype's public.html. React draws
-// this markup once; stream-renderer.ts drives it from the snapshots, as public.js did.
+// this markup once; stream-renderer.ts drives it from the snapshots, as public.js did, and
+// stream-transport.ts brings them from the public room. Until the first state arrives the look
+// chosen in the URL shows; without one for a while, the offline scene does.
 
 export function StreamScreen({ demoAllowed }: { demoAllowed: boolean }) {
     const rootRef = useRef<HTMLElement>(null);
+    const viewKey = useParams<{ viewKey: string }>()?.viewKey ?? "";
 
     useEffect(() => {
         const root = rootRef.current;
@@ -24,9 +29,24 @@ export function StreamScreen({ demoAllowed }: { demoAllowed: boolean }) {
                 renderer.destroy();
             };
         }
-        renderer.render(urlLookSnapshot(params));
-        return () => renderer.destroy();
-    }, [demoAllowed]);
+        const look = urlLookSnapshot(params);
+        renderer.render(look);
+        const showOffline = () => renderer.render(offlineState(renderer.current() ?? look));
+        const transport = connectStreamTransport({
+            viewKey,
+            socket: createStreamSocket(),
+            onState: (state) => renderer.render(state),
+            onOffline: showOffline,
+            // A session that ended drew its finale just before; anything else goes dark.
+            onEnded: () => {
+                if (renderer.current()?.phase !== "ended") showOffline();
+            },
+        });
+        return () => {
+            transport.close();
+            renderer.destroy();
+        };
+    }, [demoAllowed, viewKey]);
 
     return (
         <main

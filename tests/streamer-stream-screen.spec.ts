@@ -1,9 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
+import bcryptjs from "bcryptjs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { prisma } from "@hushle/platform-db";
 
 // The public stream screen (/stream/[viewKey], the OBS browser source). The demo scenes
 // (?demo=) need the server started with STREAMER_FAKE_PLATFORM=1. Screenshots land in
-// test-results/stream-screen/ (git-ignored) for an eye check against the V4 prototype.
+// test-results/stream-screen/ (git-ignored) for an eye check against the V4 prototype. The live
+// session test also needs STREAMER_TOKEN_KEY (server and here) and the test database.
 
 const enabled = process.env.STREAMER_FAKE_PLATFORM === "1";
 const THEMES = ["oyun-gecesi", "studyo", "gece-altini", "sakura", "sade"] as const;
@@ -269,5 +273,153 @@ test.describe("stream screen motion", () => {
         await expect(screen).toHaveAttribute("data-phase", "ended", { timeout: 10_000 });
         await expect(page.locator("#winner")).toBeVisible();
         await page.screenshot({ path: path.join(SHOTS, "play-ended.png") });
+    });
+});
+
+test.describe("stream screen live session", () => {
+    const live = enabled && Boolean(process.env.STREAMER_TOKEN_KEY);
+    test.skip(!live, "set STREAMER_FAKE_PLATFORM=1 and STREAMER_TOKEN_KEY (and start the server with them) to run");
+    test.describe.configure({ mode: "serial" });
+
+    const suffix = randomUUID().slice(0, 8);
+    const username = `stream_screen_${suffix}`;
+    const password = `Stream-screen-${suffix}!`;
+    // A login of its own, so no other run's fake channel holds the same platform account.
+    const channelLogin = `screen-${suffix}`;
+    let userId: number | null = null;
+    let originalFeatures: unknown = undefined;
+
+    async function setStreamerMode(on: boolean): Promise<void> {
+        const current = await prisma.systemSetting.findUnique({ where: { key: "features" } });
+        const value = { ...((current?.value as Record<string, unknown> | null) ?? {}), streamerModeEnabled: on };
+        await prisma.systemSetting.upsert({ where: { key: "features" }, update: { value }, create: { key: "features", value } });
+    }
+
+    // Same-origin fetch from the signed-in page, so the origin check sees the app's own origin.
+    async function post(page: Page, url: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
+        return page.evaluate(
+            async ({ url, body }) => {
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: body === undefined ? undefined : JSON.stringify(body),
+                });
+                return { status: response.status, json: (await response.json()) as Record<string, unknown> };
+            },
+            { url, body }
+        );
+    }
+
+    test.beforeAll(async () => {
+        const existing = await prisma.systemSetting.findUnique({ where: { key: "features" } });
+        originalFeatures = existing ? existing.value : undefined;
+        const user = await prisma.user.create({
+            data: { username, password: await bcryptjs.hash(password, 10) },
+            select: { id: true },
+        });
+        userId = user.id;
+        await setStreamerMode(true);
+    });
+
+    test.afterAll(async () => {
+        if (originalFeatures === undefined) {
+            await prisma.systemSetting.deleteMany({ where: { key: "features" } });
+        } else {
+            await prisma.systemSetting.update({ where: { key: "features" }, data: { value: originalFeatures as object } });
+        }
+        if (userId !== null) {
+            await prisma.auditLog.deleteMany({ where: { actorUserId: userId } });
+            await prisma.user.deleteMany({ where: { id: userId } });
+        }
+        await prisma.$disconnect();
+    });
+
+    test("joins with the view key, follows the session, goes dark on rotation and keeps the finale", async ({ page, browser }) => {
+        // The settings cache (15 s TTL) is waited out once.
+        test.setTimeout(150_000);
+        await page.goto("/login");
+        await page.getByPlaceholder(/Kullanıcı Adı/i).fill(username);
+        await page.getByPlaceholder(/Parola/i).fill(password);
+        await page.getByRole("button", { name: /^Giriş Yap$/i }).click();
+        await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
+        await expect
+            .poll(
+                async () => {
+                    const response = await page.request.get("/api/streamer/connections");
+                    return response.ok() ? ((await response.json()) as { enabled: boolean }).enabled : false;
+                },
+                { timeout: 40_000, intervals: [1_000] }
+            )
+            .toBe(true);
+
+        // Link a fake Twitch channel under this run's own login.
+        const start = await page.request.get("/api/streamer/connect/twitch/start", { maxRedirects: 0 });
+        expect(start.status()).toBe(302);
+        const authorize = new URL(start.headers().location, page.url());
+        authorize.searchParams.set("login", channelLogin);
+        await page.goto(authorize.toString());
+        await page.waitForURL(/streamer=linked/, { timeout: 30_000 });
+
+        const created = await post(page, "/api/streamer/sessions", {
+            platform: "twitch",
+            language: "tr",
+            categoryIds: [1],
+            difficulties: [1, 2, 3],
+            duration: 60,
+            tolerance: "normal",
+            theme: "sade",
+            camera: "none",
+            cameraSize: "m",
+            clock: null,
+            cardBack: null,
+            showCardName: false,
+        });
+        expect(created.status).toBe(201);
+        const viewKey = created.json.viewKey as string;
+        expect(viewKey).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+        // OBS: a browser source without the streamer's cookies.
+        const obs = await browser.newContext({ viewport: { width: 1920, height: 1080 }, reducedMotion: "reduce" });
+        const screen = await obs.newPage();
+        await screen.goto(`/stream/${viewKey}?theme=gece-altini`);
+        const root = screen.locator("main.hushle-stream");
+        // The join ack replaces the URL look with the session's own.
+        await expect(root).toHaveAttribute("data-theme", "sade", { timeout: 10_000 });
+        await expect(root).toHaveAttribute("data-phase", "ready");
+        await expect(root).not.toHaveClass(/preview/);
+        await expect(screen.locator("#channel")).toHaveText(`@${channelLogin} · Twitch`);
+        await expect(screen.locator("#seconds")).toHaveText("Hazır");
+        expect(await screen.title()).not.toContain(viewKey);
+        expect(await screen.locator("body").innerText()).not.toContain(viewKey);
+        await screen.screenshot({ path: path.join(SHOTS, "live-ready.png") });
+
+        // A rotated key closes the old screen; the new key opens the same session.
+        const rotated = await post(page, "/api/streamer/sessions/current/view-key");
+        expect(rotated.status).toBe(200);
+        const nextKey = rotated.json.viewKey as string;
+        expect(nextKey).not.toBe(viewKey);
+        await expect(root).toHaveAttribute("data-phase", "paused", { timeout: 10_000 });
+        await expect(screen.locator("#pause-sign")).toHaveText("Bağlantı bekleniyor");
+        await screen.screenshot({ path: path.join(SHOTS, "live-rotated-offline.png") });
+
+        const second = await obs.newPage();
+        await second.goto(`/stream/${nextKey}`);
+        const secondRoot = second.locator("main.hushle-stream");
+        await expect(secondRoot).toHaveAttribute("data-phase", "ready", { timeout: 10_000 });
+        await expect(secondRoot).toHaveAttribute("data-theme", "sade");
+
+        // Ending draws the finale; the closed room does not turn it into the offline scene.
+        const ended = await post(page, "/api/streamer/sessions/current/end");
+        expect(ended.status).toBe(200);
+        await expect(secondRoot).toHaveAttribute("data-phase", "ended", { timeout: 10_000 });
+        await expect(second.locator("#prompt")).toHaveText("Oyun bitti. Bir sonrakinde görüşürüz.");
+        await second.waitForTimeout(6_000);
+        await expect(secondRoot).toHaveAttribute("data-phase", "ended");
+        await second.screenshot({ path: path.join(SHOTS, "live-ended.png") });
+
+        // The old key stays dead after a reload.
+        await screen.reload();
+        await expect(root).toHaveAttribute("data-phase", "paused", { timeout: 10_000 });
+        await obs.close();
     });
 });
