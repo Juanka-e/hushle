@@ -5,6 +5,7 @@ import { StreamerConfigError } from "./token-crypto";
 import { createTwitchPlatformClient, type TwitchEnvironment } from "./twitch-client";
 
 export interface StreamerPlatformEnvironment extends TwitchEnvironment, KickEnvironment {
+    [key: string]: string | undefined;
     NODE_ENV?: string;
     STREAMER_FAKE_PLATFORM?: string;
 }

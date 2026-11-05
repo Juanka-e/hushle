@@ -6,7 +6,6 @@ import {
     type FetchLike,
     type PlatformIdentity,
     type StreamerPlatformClient,
-    type TokenHint,
     type TokenSet,
 } from "./platform-client";
 import { StreamerConfigError } from "./token-crypto";
@@ -64,7 +63,7 @@ export function createTwitchPlatformClient(env: TwitchEnvironment, fetchImpl: Fe
         refresh(refreshToken) {
             return tokenRequest("refresh", "refresh", { grant_type: "refresh_token", refresh_token: refreshToken });
         },
-        async revoke(token: string, _hint: TokenHint) {
+        async revoke(token: string) {
             await platformRequest(fetchImpl, {
                 platform: "twitch",
                 operation: "revoke",

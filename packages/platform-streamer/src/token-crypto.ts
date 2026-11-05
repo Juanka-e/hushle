@@ -41,6 +41,7 @@ export interface TokenKeyring {
 }
 
 export interface TokenKeyringEnvironment {
+    [key: string]: string | undefined;
     STREAMER_TOKEN_KEY?: string;
     STREAMER_TOKEN_KEY_VERSION?: string;
     STREAMER_TOKEN_KEY_PREVIOUS?: string;
