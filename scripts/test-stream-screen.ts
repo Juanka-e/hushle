@@ -83,7 +83,9 @@ const cardBack = {
 
 const KEY = "Ab3_-".repeat(8) + "xyz";
 
-type Listener = (...args: unknown[]) => void;
+// As StreamSocketLike takes them: any listener, whatever its parameters. `fire` passes what the
+// server would send.
+type Listener = (...args: never[]) => void;
 
 class FakeSocket implements StreamSocketLike {
     connected = false;
@@ -110,7 +112,7 @@ class FakeSocket implements StreamSocketLike {
         return this;
     }
     fire(event: string, ...args: unknown[]): void {
-        for (const listener of this.listeners.get(event) ?? []) listener(...args);
+        for (const listener of this.listeners.get(event) ?? []) (listener as (...args: unknown[]) => void)(...args);
     }
     up(): void {
         this.connected = true;

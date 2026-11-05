@@ -137,7 +137,13 @@ async function checkScene(page: Page, state: DemoState): Promise<void> {
 
 test.describe("stream screen", () => {
     test.skip(!enabled, "set STREAMER_FAKE_PLATFORM=1 (and start the server with it) to run");
-    test.use({ viewport: { width: 1920, height: 1080 }, reducedMotion: "reduce" });
+    // reducedMotion is a context option, not a fixture of its own: at the top level of test.use
+    // Playwright ignores it.
+    test.use({ viewport: { width: 1920, height: 1080 }, contextOptions: { reducedMotion: "reduce" } });
+    test.beforeEach(async ({ page }) => {
+        // The scenes are shot without motion: the context must really emulate it.
+        expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches), "reduced motion").toBe(true);
+    });
 
     for (const theme of THEMES) {
         test(`demo scenes render for ${theme}`, async ({ page }) => {
@@ -227,7 +233,11 @@ test.describe("stream screen", () => {
 
 test.describe("stream screen motion", () => {
     test.skip(!enabled, "set STREAMER_FAKE_PLATFORM=1 (and start the server with it) to run");
-    test.use({ viewport: { width: 1920, height: 1080 }, reducedMotion: "no-preference" });
+    test.use({ viewport: { width: 1920, height: 1080 }, contextOptions: { reducedMotion: "no-preference" } });
+    test.beforeEach(async ({ page }) => {
+        // The play loop's timings need the motion on.
+        expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches), "reduced motion").toBe(false);
+    });
 
     test("the play loop stamps, flips, scores, passes, times out and ends", async ({ page }) => {
         test.setTimeout(120_000);
