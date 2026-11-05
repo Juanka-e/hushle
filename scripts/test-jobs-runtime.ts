@@ -54,6 +54,7 @@ assert.deepEqual(JOB_NAMES, [
     "email-retention",
     "payment-webhook",
     "payment-reconciliation",
+    "streamer-connection-hygiene",
 ]);
 assert.equal(isJobName("audit-retention"), true);
 assert.equal(isJobName("mobile-auth-retention"), true);

@@ -33,6 +33,12 @@ export interface PaymentWebhookConfig {
     leaseTtlMs: number;
 }
 
+export interface StreamerHygieneConfig {
+    dormantDays: number;
+    batchSize: number;
+    leaseTtlMs: number;
+}
+
 export interface PaymentReconciliationConfig {
     batchSize: number;
     minAgeMinutes: number;
@@ -51,6 +57,9 @@ interface JobsEnvironment {
     MOBILE_AUTH_REUSE_EVIDENCE_DAYS?: string;
     MOBILE_AUTH_RETENTION_BATCH_SIZE?: string;
     MOBILE_AUTH_RETENTION_LEASE_TTL_MS?: string;
+    STREAMER_CONNECTION_DORMANT_DAYS?: string;
+    STREAMER_HYGIENE_BATCH_SIZE?: string;
+    STREAMER_HYGIENE_LEASE_TTL_MS?: string;
     EMAIL_DELIVERY_BATCH_SIZE?: string;
     EMAIL_DELIVERY_LEASE_TTL_MS?: string;
     EMAIL_SENT_RETENTION_DAYS?: string;
@@ -245,6 +254,34 @@ export function getMobileAuthRetentionConfig(
         leaseTtlMs: parseBoundedInteger({
             name: "MOBILE_AUTH_RETENTION_LEASE_TTL_MS",
             value: env.MOBILE_AUTH_RETENTION_LEASE_TTL_MS,
+            fallback: 5 * 60_000,
+            min: 60_000,
+            max: 60 * 60_000,
+        }),
+    };
+}
+
+export function getStreamerHygieneConfig(
+    env: JobsEnvironment = process.env
+): StreamerHygieneConfig {
+    return {
+        dormantDays: parseBoundedInteger({
+            name: "STREAMER_CONNECTION_DORMANT_DAYS",
+            value: env.STREAMER_CONNECTION_DORMANT_DAYS,
+            fallback: 90,
+            min: 1,
+            max: 365,
+        }),
+        batchSize: parseBoundedInteger({
+            name: "STREAMER_HYGIENE_BATCH_SIZE",
+            value: env.STREAMER_HYGIENE_BATCH_SIZE,
+            fallback: 100,
+            min: 1,
+            max: 1_000,
+        }),
+        leaseTtlMs: parseBoundedInteger({
+            name: "STREAMER_HYGIENE_LEASE_TTL_MS",
+            value: env.STREAMER_HYGIENE_LEASE_TTL_MS,
             fallback: 5 * 60_000,
             min: 60_000,
             max: 60 * 60_000,

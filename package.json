@@ -137,6 +137,7 @@
     "test:streamer-connection-store-integration": "tsx scripts/test-streamer-connection-store-integration.ts",
     "test:streamer-connect-state": "tsx scripts/test-streamer-connect-state.ts",
     "test:streamer-connect-flow": "tsx scripts/test-streamer-connect-flow.ts",
+    "test:streamer-hygiene-job": "tsx scripts/test-streamer-hygiene-job.ts",
     "test:account-recovery-integration": "tsx scripts/test-account-recovery-integration.ts",
     "test:email-delivery-operations-integration": "tsx scripts/test-email-delivery-operations-integration.ts",
     "test:email-delivery-operations": "tsx scripts/test-email-delivery-operations.ts",

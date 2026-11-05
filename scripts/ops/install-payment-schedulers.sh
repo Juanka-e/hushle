@@ -33,6 +33,8 @@ units=(
   hushle-payment-webhook.timer
   hushle-payment-reconciliation.service
   hushle-payment-reconciliation.timer
+  hushle-streamer-hygiene.service
+  hushle-streamer-hygiene.timer
 )
 for unit in "${units[@]}"; do
   source_file="$ROOT_DIR/infra/systemd/$unit"
@@ -47,7 +49,8 @@ systemctl daemon-reload
 if [[ "$ENABLE" == "true" ]]; then
   systemctl enable --now \
     hushle-payment-webhook.timer \
-    hushle-payment-reconciliation.timer
+    hushle-payment-reconciliation.timer \
+    hushle-streamer-hygiene.timer
 else
   echo "Units installed but not enabled. Re-run with --enable after production preflight."
 fi
