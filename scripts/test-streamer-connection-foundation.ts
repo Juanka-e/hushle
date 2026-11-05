@@ -52,4 +52,11 @@ assert.doesNotMatch(migration, /DROP TABLE|ALTER TABLE `oauth_accounts`/);
 
 assert.match(read("package.json"), /"test:streamer-connection-foundation": "tsx scripts\/test-streamer-connection-foundation.ts"/);
 
+// --- Task 7: streamer mode switch -------------------------------------------
+
+assert.match(read("apps/web/src/lib/system-settings/schema.ts"), /streamerModeEnabled: z\.boolean\(\)\.default\(false\)/);
+assert.match(read("apps/web/src/types/system-settings.ts"), /streamerModeEnabled: boolean;/);
+assert.match(read("apps/web/src/app/admin/(dashboard)/system-settings/page.tsx"), /features\.streamerModeEnabled/);
+assert.match(read("apps/web/src/app/api/admin/system-settings/route.ts"), /streamerModeEnabled: updatedSettings\.features\.streamerModeEnabled/);
+
 console.log("PASS streamer connection foundation contract");

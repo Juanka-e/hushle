@@ -17,6 +17,16 @@ const defaults = normalizeSystemSettings({});
 assert.deepEqual(defaults, DEFAULT_SYSTEM_SETTINGS);
 assert.equal(isRegistrationAvailable(defaults), true);
 assert.equal(isStoreAvailable(defaults), true);
+// Streamer mode is a single global switch, off until the owner opens it (streamer connections spec, karar 2).
+assert.equal(defaults.features.streamerModeEnabled, false);
+assert.equal(
+    normalizeSystemSettings({ features: { ...defaults.features, streamerModeEnabled: true } }).features.streamerModeEnabled,
+    true
+);
+assert.equal(
+    systemSettingsWriteSchema.safeParse({ ...defaults, features: { ...defaults.features, streamerModeEnabled: true } }).success,
+    true
+);
 assert.equal(getFeatureDisabledMessage("store"), "Mağaza şu anda kullanıma kapalı.");
 assert.equal(getFeatureDisabledMessage("register"), "Kayıtlar şu anda kapalı.");
 assert.equal(getFeatureDisabledErrorCode("store"), "STORE_DISABLED");

@@ -730,6 +730,7 @@ export default function SystemSettingsPage() {
                     <ToggleField checked={payload.settings.features.roomCreateEnabled} label="Oda Oluşturma" description="Yeni lobi açma iznini kontrol eder." onChange={(checked) => updatePayload("features", "roomCreateEnabled", checked)} />
                     <ToggleField checked={payload.settings.features.roomJoinEnabled} label="Odaya Katılım" description="Mevcut odalara yeni oyuncu katılımını kontrol eder." onChange={(checked) => updatePayload("features", "roomJoinEnabled", checked)} />
                     <ToggleField checked={payload.settings.features.storeEnabled} label="Mağaza Açık" description="Store catalog, purchase, bundle ve equip akışını kontrol eder." onChange={(checked) => updatePayload("features", "storeEnabled", checked)} />
+                    <ToggleField checked={payload.settings.features.streamerModeEnabled} label="Yayıncı Modu" description="Twitch/Kick kanal bağlama ve yayıncı panelini açar. Kapalıyken bağlama düğmeleri ve /streamer sayfası \"yakında\" der." onChange={(checked) => updatePayload("features", "streamerModeEnabled", checked)} />
                 </CardContent>
             </Card>
             ) : null}

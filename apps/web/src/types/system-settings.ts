@@ -48,6 +48,7 @@ export interface FeatureSettings {
     roomCreateEnabled: boolean;
     roomJoinEnabled: boolean;
     storeEnabled: boolean;
+    streamerModeEnabled: boolean;
 }
 
 export interface EconomySettings {
