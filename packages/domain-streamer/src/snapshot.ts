@@ -11,6 +11,11 @@ import {
     type StreamSessionState,
 } from "./types";
 
+export interface SnapshotOptions {
+    /** Whether the chat connection is up; defaults to true. */
+    connected?: boolean;
+}
+
 function pick<T extends string>(allowed: readonly T[], value: unknown, fallback: T): T {
     return allowed.includes(value as T) ? (value as T) : fallback;
 }
@@ -27,7 +32,11 @@ function revealedCard(state: StreamSessionState): PublicStreamSnapshot["reveal"]
     };
 }
 
-function baseSnapshot(state: StreamSessionState, revision: number): Omit<PublicStreamSnapshot, "type"> {
+function baseSnapshot(
+    state: StreamSessionState,
+    revision: number,
+    options: SnapshotOptions,
+): Omit<PublicStreamSnapshot, "type"> {
     const settings = state.settings;
     const channel = settings.channel;
     const collection = settings.cardBack?.collection;
@@ -57,22 +66,28 @@ function baseSnapshot(state: StreamSessionState, revision: number): Omit<PublicS
             .map((player) => ({ name: player.name, points: player.points, rank: player.rank, tied: player.tied })),
         lastCorrect: state.lastCorrect ? { ...state.lastCorrect } : null,
         cardBack: Number.isInteger(collection) ? { collection: collection as number, variant: 0 } : null,
+        connected: options.connected !== false,
         reveal: revealedCard(state),
     };
 }
 
-export function publicSnapshot(state: StreamSessionState, revision: number): PublicStreamSnapshot {
-    return { type: "public-state", ...baseSnapshot(state, revision) };
+export function publicSnapshot(
+    state: StreamSessionState,
+    revision: number,
+    options: SnapshotOptions = {},
+): PublicStreamSnapshot {
+    return { type: "public-state", ...baseSnapshot(state, revision, options) };
 }
 
 export function hostSnapshot(
     state: StreamSessionState,
     revision: number,
     pool?: { drawn: number; eligible: number },
+    options: SnapshotOptions = {},
 ): HostStreamSnapshot {
     const snapshot: HostStreamSnapshot = {
         type: "host-state",
-        ...baseSnapshot(state, revision),
+        ...baseSnapshot(state, revision, options),
         card: state.card ? { ...state.card, taboos: [...state.card.taboos] } : null,
         tolerance: state.tolerance,
         players: ranking(state),

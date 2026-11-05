@@ -44,6 +44,7 @@ function settings(overrides: Partial<StreamScreenSettings> = {}): StreamScreenSe
         showCardName: true,
         duration: 60,
         language: "tr",
+        tolerance: "normal",
         channel: null,
         ...overrides,
     };
@@ -432,6 +433,32 @@ test("names are stripped of control characters and bounded", () => {
     guess(s, { name: "Lu\u0000na" + "x".repeat(60), text: "yanlış" });
     assert.equal(s.players.get("fake:luna")?.name.length, 40);
     assert.ok(!s.players.get("fake:luna")?.name.includes("\u0000"));
+});
+
+test("tolerance is a per-session setting", () => {
+    const strict = fresh({ tolerance: "strict" });
+    const normal = fresh({ tolerance: "normal" });
+    assert.equal(strict.tolerance, "strict");
+    assert.equal(normal.tolerance, "normal");
+    assert.equal(hostSnapshot(strict, 1).tolerance, "strict");
+    assert.equal(hostSnapshot(normal, 1).tolerance, "normal");
+    beginRound(strict, otherCard, 0);
+    beginRound(normal, otherCard, 0);
+    assert.equal(guess(strict, { text: "buzdolabi" }), "wrong");
+    assert.equal(guess(normal, { text: "buzdolabi" }), "correct");
+    const loose = fresh({ tolerance: "flexible" as never });
+    assert.equal(loose.tolerance, "normal", "an invalid value falls back to normal");
+    const missing = fresh({ tolerance: undefined as never });
+    assert.equal(missing.tolerance, "normal");
+});
+
+test("the snapshots carry the connected flag, true by default", () => {
+    const s = fresh();
+    assert.equal(publicSnapshot(s, 1).connected, true);
+    assert.equal(publicSnapshot(s, 1, { connected: false }).connected, false);
+    assert.equal(publicSnapshot(s, 1, {}).connected, true);
+    assert.equal(hostSnapshot(s, 1).connected, true);
+    assert.equal(hostSnapshot(s, 1, undefined, { connected: false }).connected, false);
 });
 
 console.log(`${count} checks passed.`);

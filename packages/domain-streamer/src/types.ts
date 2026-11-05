@@ -42,6 +42,8 @@ export interface StreamScreenSettings {
     /** Round length in seconds. */
     duration: number;
     language: "tr" | "en";
+    /** Missing or invalid values fall back to "normal". */
+    tolerance: GuessTolerance;
     channel: { platform: ChannelPlatform; name: string } | null;
 }
 
@@ -112,6 +114,7 @@ export interface PublicStreamSnapshot {
     scores: Array<{ name: string; points: number; rank: number; tied: boolean }>;
     lastCorrect: LastCorrect | null;
     cardBack: { collection: number; variant: 0 } | null;
+    connected: boolean;
     reveal: { target: string; taboos: string[]; solved: boolean } | null;
 }
 

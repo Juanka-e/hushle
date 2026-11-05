@@ -24,7 +24,7 @@ export function createStreamSession(settings: StreamScreenSettings, now: number)
         passedRound: null,
         passedCard: null,
         card: null,
-        tolerance: "normal",
+        tolerance: settings.tolerance === "strict" ? "strict" : "normal",
         settings,
         players: new Map(),
         participants: new Set(),

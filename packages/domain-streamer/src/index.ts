@@ -11,4 +11,4 @@ export {
     skipRound,
     tick,
 } from "./session";
-export { hostSnapshot, publicSnapshot } from "./snapshot";
+export { hostSnapshot, publicSnapshot, type SnapshotOptions } from "./snapshot";
