@@ -83,4 +83,38 @@ const listRoute = read("apps/web/src/app/api/streamer/connections/route.ts");
 assert.match(listRoute, /AUTH_REQUIRED/);
 assert.doesNotMatch(listRoute + disconnectRoute, /TokenEnc|accessToken|refreshToken/, "routes never touch token columns");
 
+// --- Task 10: env examples, compose passthrough, CI, docs ----------------------
+
+const STREAMER_ENV_NAMES = [
+    "STREAMER_TWITCH_CLIENT_ID", "STREAMER_TWITCH_CLIENT_SECRET", "STREAMER_KICK_CLIENT_ID", "STREAMER_KICK_CLIENT_SECRET",
+    "STREAMER_TOKEN_KEY", "STREAMER_TOKEN_KEY_VERSION", "STREAMER_TOKEN_KEY_PREVIOUS", "STREAMER_TOKEN_KEY_PREVIOUS_VERSION",
+    "STREAMER_OAUTH_PUBLIC_ORIGIN", "STREAMER_FAKE_PLATFORM", "STREAMER_CONNECTION_DORMANT_DAYS", "STREAMER_HYGIENE_BATCH_SIZE", "STREAMER_HYGIENE_LEASE_TTL_MS",
+];
+const envExample = read(".env.example");
+for (const name of STREAMER_ENV_NAMES) assert.ok(envExample.includes(name), `.env.example must document ${name}`);
+const prodExample = read(".env.production.example");
+for (const name of ["STREAMER_TWITCH_CLIENT_ID", "STREAMER_KICK_CLIENT_ID", "STREAMER_TOKEN_KEY", "STREAMER_OAUTH_PUBLIC_ORIGIN", "STREAMER_HYGIENE_SCHEDULE_CONFIGURED"]) {
+    assert.ok(prodExample.includes(name), `.env.production.example must document ${name}`);
+}
+assert.doesNotMatch(prodExample, /STREAMER_FAKE_PLATFORM=1/);
+const compose = read("docker-compose.yml");
+const composeApp = compose.split(/\n  app:/)[1] ?? "";
+const composeJobs = compose.split(/\n  jobs:/)[1]?.split(/\n  [a-z]+:/)[0] ?? "";
+for (const block of [composeApp, composeJobs]) {
+    for (const name of ["STREAMER_TOKEN_KEY", "STREAMER_TWITCH_CLIENT_SECRET", "STREAMER_KICK_CLIENT_SECRET"]) {
+        assert.ok(block.includes(`${name}: \${${name}:-}`), `compose must pass ${name} to app and jobs`);
+    }
+}
+const ci = read(".github/workflows/ci.yml");
+for (const script of ["test:streamer-token-crypto", "test:streamer-platform-clients", "test:streamer-token-service", "test:streamer-connect-state", "test:streamer-connect-flow", "test:streamer-hygiene-job", "test:streamer-connection-foundation", "test:streamer-connection-store-integration", "test:streamer-connect-e2e"]) {
+    assert.ok(ci.includes(`npm run ${script}`), `ci.yml must run ${script}`);
+}
+assert.match(ci, /STREAMER_FAKE_PLATFORM: "1"/);
+assert.match(ci, /HUSHLE_E2E_SMOKE: "1"/);
+assert.match(read("docs/stream/README.md"), /platform-connections-guide\.md/);
+const guide = read("docs/stream/platform-connections-guide.md");
+for (const needle of ["/api/streamer/connect/twitch/callback", "/api/streamer/connect/kick/callback", "openssl rand -base64 32", "STREAMER_TOKEN_KEY_PREVIOUS", "streamer-connection-hygiene", "revokeAllForUser"]) {
+    assert.ok(guide.includes(needle), `guide must mention ${needle}`);
+}
+
 console.log("PASS streamer connection foundation contract");
