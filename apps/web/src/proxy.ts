@@ -142,6 +142,7 @@ export default auth((req) => {
     if (
         pathname.startsWith("/dashboard") ||
         pathname.startsWith("/profile") ||
+        pathname.startsWith("/streamer") ||
         pathname.startsWith("/store")
         || pathname.startsWith("/checkout")
     ) {
