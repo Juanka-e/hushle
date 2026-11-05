@@ -36,10 +36,13 @@ import {
     describeTransition,
     isHostSnapshot,
     isLivePhase,
+    joinRefusalAction,
+    rereadSession,
     summaryFromSnapshot,
     type LogDraft,
     type LogEntry,
     type PanelSummary,
+    type RereadStatus,
 } from "./streamer-panel-model";
 import { ScreenSettingsFields, StreamerSetupForm } from "./streamer-setup-form";
 
@@ -179,6 +182,7 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
     const [failure, setFailure] = useState<{ payload: unknown } | null>(null);
     const [log, setLog] = useState<LogEntry[]>([]);
     const [rotated, setRotated] = useState(false);
+    const [signedOut, setSignedOut] = useState(false);
     const socketRef = useRef<Socket | null>(null);
     const lastRef = useRef<HostStreamSnapshot | null>(null);
     const logIdRef = useRef(0);
@@ -212,7 +216,15 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
         else finish({ kind: "ended", summary: summaryFromSnapshot(lastRef.current) });
     });
 
-    const gone = useEffectEvent(() => onGone());
+    const gone = useEffectEvent(() => {
+        setConnection("closed");
+        onGone();
+    });
+    const loggedOut = useEffectEvent(() => {
+        setConnection("closed");
+        setFailure(null);
+        setSignedOut(true);
+    });
     const joinRefused = useEffectEvent((payload: unknown) => setFailure({ payload }));
     const joinedRoom = useEffectEvent(() => {
         setConnection("joined");
@@ -259,13 +271,18 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
                     joinedRoom();
                     return;
                 }
-                const code = error ? undefined : errorCodeOf(reply);
-                if (code === PlayerErrorCode.STREAMER_SESSION_NOT_FOUND || code === PlayerErrorCode.STREAMER_SESSION_NOT_OWNED) {
+                const action = joinRefusalAction(error ? undefined : errorCodeOf(reply));
+                if (action === "gone") {
                     stop();
                     gone();
                     return;
                 }
-                // Rate limited, signed out, a server error or no answer: say so and ask again shortly.
+                if (action === "signedOut") {
+                    stop();
+                    loggedOut();
+                    return;
+                }
+                // Rate limited, a server error or no answer: say so and ask again shortly.
                 joinRefused(error ? {} : reply);
                 retry = setTimeout(join, JOIN_RETRY_MS);
             });
@@ -494,6 +511,21 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
                                 {failureText}
                             </p>
                         ) : null}
+                        {signedOut ? (
+                            <div
+                                role="alert"
+                                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30"
+                            >
+                                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">{t("streamer.panel.signedOut")}</p>
+                                {/* A full page load, so the new sign-in starts from fresh cookies. */}
+                                <a
+                                    href="/login?callbackUrl=/streamer"
+                                    className="min-h-11 rounded-xl bg-slate-900 px-4 text-sm font-black leading-[2.75rem] text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900"
+                                >
+                                    {t("streamer.panel.signIn")}
+                                </a>
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="space-y-4">
@@ -616,6 +648,9 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
     const [viewKey, setViewKey] = useState<string | null>(null);
     const [summary, setSummary] = useState<PanelSummary | null>(null);
     const [idle, setIdle] = useState(false);
+    // A re-read of the current session (after a refused join, a create that found one open, or
+    // an end) that failed is shown with a retry; the live view's socket has stopped by then.
+    const [reread, setReread] = useState<RereadStatus>("idle");
 
     const session = data.session;
     const mode = summary
@@ -629,14 +664,7 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
               : "setup";
 
     const refresh = () => {
-        void runRequest(
-            async () => {
-                const response = await fetch("/api/streamer/sessions", { cache: "no-store" });
-                if (!response.ok) throw new Error(`session view failed (${response.status})`);
-                return (await response.json()) as StreamSessionResponse;
-            },
-            { apply: setData }
-        );
+        void rereadSession(() => fetch("/api/streamer/sessions", { cache: "no-store" }), { apply: setData, status: setReread });
     };
 
     const created = (body: CreateStreamSessionResponse) => {
@@ -671,6 +699,18 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
     return (
         <div data-testid="streamer-panel" className="mx-auto max-w-6xl space-y-6">
             <ChannelHeader channels={initial.channels} />
+            {reread === "failed" ? (
+                <div
+                    role="alert"
+                    data-testid="streamer-reread-failed"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/60 dark:bg-rose-950/30"
+                >
+                    <p className="text-sm font-semibold text-rose-800 dark:text-rose-200">{t("streamer.panel.rereadFailed")}</p>
+                    <button type="button" onClick={refresh} className={buttonClass("plain")}>
+                        {t("streamer.panel.retry")}
+                    </button>
+                </div>
+            ) : null}
             {mode === "summary" && summary ? <SessionSummary summary={summary} onNew={startOver} /> : null}
             {mode === "idle" ? <Notice title={t("streamer.panel.idleTitle")} help={t("streamer.panel.idleHelp")} onNew={startOver} /> : null}
             {mode === "interrupted" ? (

@@ -1,10 +1,12 @@
 import type { CameraSize, CameraSlot, HostStreamSnapshot, StreamPhase } from "@hushle/domain-streamer";
 import { cameraRect } from "@/components/stream/stream-renderer";
-import type { StreamUrls } from "@/types/streamer-session";
+import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
+import type { StreamSessionResponse, StreamUrls } from "@/types/streamer-session";
 
 // The host panel's pure parts: the event log read off host snapshots (no server event exists for
-// it), the summary when only a snapshot is left, the stream addresses and the camera hole's
-// measurements. No DOM and no React here, so scripts/test-streamer-panel.ts runs them under node.
+// it), the summary when only a snapshot is left, the stream addresses, the camera hole's
+// measurements and the two error-path decisions (a refused host join, a re-read of the session).
+// No DOM and no React here, so scripts/test-streamer-panel.ts runs them under node.
 
 export type LogKind = "roundStarted" | "correct" | "passed" | "timeout" | "paused" | "resumed" | "ended";
 
@@ -102,4 +104,54 @@ export function cameraMeasurements(slot: CameraSlot, size: CameraSize): { p1080:
     if (!rect) return null;
     const scale = (value: number) => Math.round((value * 2) / 3);
     return { p1080: rect, p720: { x: scale(rect.x), y: scale(rect.y), w: scale(rect.w), h: scale(rect.h) } };
+}
+
+// ---------------------------------------------------------------- error paths
+
+export type JoinRefusalAction = "gone" | "signedOut" | "retry";
+
+/**
+ * What a refused host join does: a session that is gone (or not this user's) is re-read, a
+ * sign-out (or a suspension) stops for good since no retry can pass, anything else (rate limit,
+ * server error, no answer) is asked again shortly.
+ */
+export function joinRefusalAction(code: unknown): JoinRefusalAction {
+    if (code === PlayerErrorCode.STREAMER_SESSION_NOT_FOUND || code === PlayerErrorCode.STREAMER_SESSION_NOT_OWNED) return "gone";
+    if (code === PlayerErrorCode.AUTH_REQUIRED) return "signedOut";
+    return "retry";
+}
+
+export type RereadStatus = "idle" | "loading" | "failed";
+
+export interface RereadHandlers {
+    apply(data: StreamSessionResponse): void;
+    status(status: RereadStatus): void;
+}
+
+function isSessionResponse(value: unknown): value is StreamSessionResponse {
+    if (typeof value !== "object" || value === null) return false;
+    const record = value as Record<string, unknown>;
+    return typeof record.enabled === "boolean" && "session" in record && "lastSettings" in record && Array.isArray(record.cardBacks);
+}
+
+/**
+ * Re-reads GET /api/streamer/sessions (`load` does the request). Every failure (network, a
+ * non-OK answer, an unreadable body) ends in "failed" so the panel can offer a retry; nothing is
+ * applied then.
+ */
+export async function rereadSession(load: () => Promise<Response>, handlers: RereadHandlers): Promise<void> {
+    handlers.status("loading");
+    let data: StreamSessionResponse;
+    try {
+        const response = await load();
+        if (!response.ok) throw new Error(`session view failed (${response.status})`);
+        const body: unknown = await response.json();
+        if (!isSessionResponse(body)) throw new Error("session view unreadable");
+        data = body;
+    } catch {
+        handlers.status("failed");
+        return;
+    }
+    handlers.apply(data);
+    handlers.status("idle");
 }

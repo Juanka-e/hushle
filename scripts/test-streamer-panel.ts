@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import type { HostStreamSnapshot } from "@hushle/domain-streamer";
+import * as model from "@/components/streamer/streamer-panel-model";
 import {
     appendLog,
     cameraMeasurements,
@@ -12,16 +13,16 @@ import {
     type LogEntry,
 } from "@/components/streamer/streamer-panel-model";
 import { buildStreamUrls } from "@/lib/streamer/session-http";
+import type { StreamSessionResponse } from "@/types/streamer-session";
 
 // The host panel's pure parts (event log, snapshot summary, stream addresses, camera hole) and
 // the source rules the panel keeps: the view key and the card stay in memory, stream addresses
 // open as plain new-tab links. The browser side is tests/streamer-session.spec.ts.
 
-let count = 0;
-function test(name: string, run: () => void): void {
-    run();
-    count += 1;
-    console.log(`ok - ${name}`);
+// Cases are queued and run in order by main(); a failing case is reported and the rest still run.
+const cases: Array<[string, () => void | Promise<void>]> = [];
+function test(name: string, run: () => void | Promise<void>): void {
+    cases.push([name, run]);
 }
 
 function host(patch: Partial<HostStreamSnapshot> = {}): HostStreamSnapshot {
@@ -208,6 +209,64 @@ test("only host snapshots are taken", () => {
     assert.ok(!isHostSnapshot("host-state"));
 });
 
+// ---------------------------------------------------------------- error paths (review fix round 1)
+
+type Refusal = "gone" | "signedOut" | "retry";
+const joinRefusalAction = (model as Record<string, unknown>).joinRefusalAction as ((code: unknown) => Refusal) | undefined;
+type RereadStatus = "idle" | "loading" | "failed";
+const rereadSession = (model as Record<string, unknown>).rereadSession as
+    | ((load: () => Promise<Response>, handlers: { apply(data: StreamSessionResponse): void; status(status: RereadStatus): void }) => Promise<void>)
+    | undefined;
+
+test("a refused host join: a gone session is re-read, a sign-out stops, anything else is retried", () => {
+    assert.equal(typeof joinRefusalAction, "function", "joinRefusalAction decides what a refused join does");
+    const decide = joinRefusalAction!;
+    assert.equal(decide("STREAMER_SESSION_NOT_FOUND"), "gone");
+    assert.equal(decide("STREAMER_SESSION_NOT_OWNED"), "gone");
+    // Signed out (or suspended): retrying every 5 s can never succeed.
+    assert.equal(decide("AUTH_REQUIRED"), "signedOut");
+    for (const code of ["RATE_LIMITED", "UNKNOWN_ERROR", "INVALID_REQUEST", "STREAMER_VIEW_KEY_INVALID", undefined, null, 42, {}]) {
+        assert.equal(decide(code), "retry", `${String(code)} is retried`);
+    }
+});
+
+test("a failed re-read of the session is surfaced, never swallowed; a retry that works clears it", async () => {
+    assert.equal(typeof rereadSession, "function", "rereadSession re-reads GET /api/streamer/sessions and reports how it went");
+    const reread = rereadSession!;
+    const good: StreamSessionResponse = { enabled: true, session: null, lastSettings: null, cardBacks: [] };
+    const run = async (load: () => Promise<Response>) => {
+        const statuses: RereadStatus[] = [];
+        const applied: StreamSessionResponse[] = [];
+        await reread(load, { apply: (data) => applied.push(data), status: (status) => statuses.push(status) });
+        return { statuses, applied };
+    };
+    const failing: Array<[string, () => Promise<Response>]> = [
+        ["a network error", () => Promise.reject(new TypeError("fetch failed"))],
+        ["a server error", async () => new Response(JSON.stringify({ error: "x", code: "UNKNOWN_ERROR" }), { status: 500 })],
+        ["a signed-out answer", async () => new Response(JSON.stringify({ error: "x", code: "AUTH_REQUIRED" }), { status: 401 })],
+        ["a body that is not JSON", async () => new Response("<html>", { status: 200 })],
+        ["a body of the wrong shape", async () => new Response(JSON.stringify({ ok: true }), { status: 200 })],
+    ];
+    for (const [label, load] of failing) {
+        const outcome = await run(load);
+        assert.deepEqual(outcome.statuses, ["loading", "failed"], `${label} ends in "failed"`);
+        assert.equal(outcome.applied.length, 0, `${label} applies nothing`);
+    }
+    const ok = await run(async () => new Response(JSON.stringify(good), { status: 200 }));
+    assert.deepEqual(ok.statuses, ["loading", "idle"]);
+    assert.deepEqual(ok.applied, [good]);
+});
+
+test("the panel wires both: re-read failures show a retry banner, a signed-out join stops with a sign-in link", () => {
+    const panel = readFileSync("apps/web/src/components/streamer/streamer-panel.tsx", "utf8");
+    assert.ok(panel.includes("rereadSession("), "the panel re-reads through rereadSession");
+    assert.ok(panel.includes(`t("streamer.panel.rereadFailed")`), "a failed re-read is shown");
+    assert.ok(panel.includes(`t("streamer.panel.retry")`), "with a retry button");
+    assert.ok(panel.includes("joinRefusalAction("), "a refused join goes through joinRefusalAction");
+    assert.ok(panel.includes(`t("streamer.panel.signedOut")`), "a sign-out is shown");
+    assert.ok(panel.includes("/login?callbackUrl=/streamer"), "with a link back to the panel after signing in");
+});
+
 test("panel sources keep the key and the card in memory and open stream addresses as plain links", () => {
     const dir = "apps/web/src/components/streamer";
     const files = readdirSync(dir).filter((file) => /\.tsx?$/.test(file));
@@ -226,4 +285,25 @@ test("panel sources keep the key and the card in memory and open stream addresse
     assert.ok(!panel.includes("instanceof"), "errors are read by code, not by class");
 });
 
-console.log(`PASS streamer panel (${count} checks)`);
+async function main(): Promise<void> {
+    let passed = 0;
+    let failed = 0;
+    for (const [name, run] of cases) {
+        try {
+            await run();
+            passed += 1;
+            console.log(`ok - ${name}`);
+        } catch (error) {
+            failed += 1;
+            console.log(`not ok - ${name}
+    ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    if (failed > 0) {
+        console.log(`FAIL streamer panel: ${failed} failed, ${passed} passed`);
+        process.exit(1);
+    }
+    console.log(`PASS streamer panel (${passed} checks)`);
+}
+
+void main();
