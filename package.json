@@ -176,6 +176,7 @@
     "test:room-card-themes": "tsx scripts/test-room-card-themes.ts",
     "test:room-display": "tsx scripts/test-room-display.ts",
     "test:room-socket-security": "tsx scripts/test-room-socket-security.ts",
+    "test:card-visibility": "tsx scripts/test-card-visibility.ts",
     "test:socket-protocol-version": "tsx scripts/test-socket-protocol-version.ts",
     "test:player-error-codes": "tsx scripts/test-player-error-codes.ts",
     "test:release-compatibility": "tsx scripts/test-release-compatibility-contract.ts",

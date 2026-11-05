@@ -27,6 +27,7 @@ Oyun halihazırda başlamışken (turlar dönüyorken) WhatsApp'tan linke tıkla
 2. **Kriptografik Körlük (Hile Koruması):**
     - Sistem sadece "Anlatıcı" ve "Gözetmen" rolünde olan kişilere kelimeyi (kart bilgisini) gönderir.
     - Yeni gelen kişi `İzleyici` (veya `Tahminci`) statüsünde olduğu için, sunucu ona gönderdiği paketin içine kart verisini bilerek koymaz (`kart: null`).
+    - Tur ortasında anlatıcı kart değiştirdiğinde (`kartGuncelle`) de aynı kural geçerlidir: kartı yalnız anlatıcı, gözetmen ve karşı takımın oyuncuları alır; `İzleyici` rolündeki hiç kimse almaz (`lib/socket/card-visibility.ts` içindeki `shouldPlayerSeeCard`, `scripts/test-card-visibility.ts` ile sözleşmeye bağlıdır).
 3. **Akıcı Arayüz:**
     - Giren kişi kelimeyi hiçbir şekilde göremez. Ekranda sadece "**[Şu An Anlatan Kişi] kelimeyi anlatıyor. Doğru cevabı bulmaya çalış!**" ekranını (Guessing Screen) görür.
     - Bu sayede oyunu bozmadan dışarıdan izler, chatten tahminde bulunabilir ve bir sonraki "Yeni Tur" başlangıcında sistem onu otomatik olarak takımlara dağıtır.
