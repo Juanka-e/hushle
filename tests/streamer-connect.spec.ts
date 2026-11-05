@@ -71,6 +71,8 @@ test.describe("streamer channel linking", () => {
     });
 
     test("link, gate, disconnect, and the switch", async ({ page }) => {
+        // The settings cache (15 s TTL) is waited out twice; the default 30 s budget is too tight.
+        test.setTimeout(150_000);
         await login(page);
         await waitForMode(page, true);
 
@@ -102,7 +104,8 @@ test.describe("streamer channel linking", () => {
         await setStreamerMode(false);
         await waitForMode(page, false);
         await page.goto("/dashboard?tab=settings");
-        await page.waitForLoadState("networkidle");
+        await expect(page.getByRole("heading", { name: "Profil Ayarları" })).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole("heading", { name: "Oyun Ayarları" })).toBeVisible();
         await expect(page.getByTestId("streamer-connections")).toHaveCount(0);
         await page.goto("/streamer");
         await expect(page.getByRole("heading", { name: "Yayıncı modu yakında" })).toBeVisible({ timeout: 20_000 });
