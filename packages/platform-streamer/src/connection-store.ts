@@ -56,9 +56,12 @@ export interface StreamerConnectionStore {
     findByUserAndPlatform(userId: number, platform: StreamerPlatform): Promise<StreamerConnectionRecord | null>;
     findByPlatformUser(platform: StreamerPlatform, platformUserId: string): Promise<StreamerConnectionRecord | null>;
     upsertLinked(input: UpsertLinkedInput): Promise<{ record: StreamerConnectionRecord; relinked: boolean }>;
-    updateTokens(id: string, input: UpdateTokensInput): Promise<StreamerConnectionRecord>;
-    markNeedsReconnect(id: string, reason: StatusReason, now: Date): Promise<StreamerConnectionRecord>;
+    /** Writes only while the row is still `active`; null means the row was disconnected or relinked meanwhile. */
+    updateTokens(id: string, input: UpdateTokensInput): Promise<StreamerConnectionRecord | null>;
+    /** No-op on a `revoked` row: a late failure never downgrades an explicit disconnect. */
+    markNeedsReconnect(id: string, reason: StatusReason, now: Date): Promise<StreamerConnectionRecord | null>;
     markRevoked(id: string, reason: StatusReason, now: Date): Promise<StreamerConnectionRecord>;
+    deleteById(id: string): Promise<void>;
     touchUsed(id: string, now: Date): Promise<void>;
     touchValidated(id: string, now: Date): Promise<void>;
     findDormant(cutoff: Date, limit: number): Promise<StreamerConnectionRecord[]>;
@@ -119,9 +122,9 @@ export const prismaStreamerConnectionStore: StreamerConnectionStore = {
         });
         return { record, relinked: false };
     },
-    updateTokens(id, input) {
-        return prisma.streamerConnection.update({
-            where: { id },
+    async updateTokens(id, input) {
+        const result = await prisma.streamerConnection.updateMany({
+            where: { id, status: StreamerConnectionStatus.active },
             data: {
                 accessTokenEnc: input.accessTokenEnc,
                 refreshTokenEnc: input.refreshTokenEnc,
@@ -130,12 +133,19 @@ export const prismaStreamerConnectionStore: StreamerConnectionStore = {
                 lastValidatedAt: input.now,
             },
         });
+        if (result.count === 0) return null;
+        return prisma.streamerConnection.findUnique({ where: { id } });
     },
-    markNeedsReconnect(id, reason, now) {
-        return prisma.streamerConnection.update({
-            where: { id },
+    async markNeedsReconnect(id, reason, now) {
+        const result = await prisma.streamerConnection.updateMany({
+            where: { id, status: { not: StreamerConnectionStatus.revoked } },
             data: { status: StreamerConnectionStatus.needs_reconnect, statusReason: reason, accessTokenEnc: null, refreshTokenEnc: null, tokenKeyVersion: null, accessTokenExpiresAt: null, revokedAt: now },
         });
+        if (result.count === 0) return null;
+        return prisma.streamerConnection.findUnique({ where: { id } });
+    },
+    async deleteById(id) {
+        await prisma.streamerConnection.deleteMany({ where: { id } });
     },
     markRevoked(id, reason, now) {
         return prisma.streamerConnection.update({
@@ -239,6 +249,7 @@ export function createMemoryStreamerConnectionStore(): MemoryStreamerConnectionS
         },
         async updateTokens(id, input) {
             const record = byId(id);
+            if (record.status !== "active") return null;
             Object.assign(record, {
                 accessTokenEnc: input.accessTokenEnc,
                 refreshTokenEnc: input.refreshTokenEnc,
@@ -250,7 +261,13 @@ export function createMemoryStreamerConnectionStore(): MemoryStreamerConnectionS
             return clone(record);
         },
         async markNeedsReconnect(id, reason, now) {
-            return clear(byId(id), "needs_reconnect", reason, now);
+            const record = byId(id);
+            if (record.status === "revoked") return null;
+            return clear(record, "needs_reconnect", reason, now);
+        },
+        async deleteById(id) {
+            const index = rows.findIndex((row) => row.id === id);
+            if (index >= 0) rows.splice(index, 1);
         },
         async markRevoked(id, reason, now) {
             return clear(byId(id), "revoked", reason, now);

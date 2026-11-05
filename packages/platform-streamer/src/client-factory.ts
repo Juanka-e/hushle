@@ -8,11 +8,15 @@ export interface StreamerPlatformEnvironment extends TwitchEnvironment, KickEnvi
     [key: string]: string | undefined;
     NODE_ENV?: string;
     STREAMER_FAKE_PLATFORM?: string;
+    HUSHLE_E2E_SMOKE?: string;
 }
 
-// The fake platform can never answer in production, whatever the flag says.
+// The fake platform answers only outside production. The one exception is the Playwright
+// smoke server, which runs a production build on 127.0.0.1 and marks itself with
+// HUSHLE_E2E_SMOKE=1; the production preflight rejects both variables for real deployments.
 export function isFakePlatformEnabled(env: StreamerPlatformEnvironment): boolean {
-    return env.STREAMER_FAKE_PLATFORM === "1" && env.NODE_ENV !== "production";
+    if (env.STREAMER_FAKE_PLATFORM !== "1") return false;
+    return env.NODE_ENV !== "production" || env.HUSHLE_E2E_SMOKE === "1";
 }
 
 export function isPlatformConfigured(platform: StreamerPlatform, env: StreamerPlatformEnvironment): boolean {
@@ -26,7 +30,7 @@ export function createStreamerPlatformClient(
     env: StreamerPlatformEnvironment,
     fetchImpl: FetchLike = fetch
 ): StreamerPlatformClient {
-    if (env.STREAMER_FAKE_PLATFORM === "1" && env.NODE_ENV === "production") {
+    if (env.STREAMER_FAKE_PLATFORM === "1" && !isFakePlatformEnabled(env)) {
         throw new StreamerConfigError("STREAMER_FAKE_PLATFORM must not be set in production");
     }
     if (isFakePlatformEnabled(env)) return createFakePlatformClient(platform);

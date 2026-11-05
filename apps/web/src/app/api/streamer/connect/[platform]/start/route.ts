@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // Top-level navigation from the "Bağla" button: every outcome is a redirect, never a body.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
     const { platform } = await params;
-    const base = request.nextUrl.origin;
+    const base = resolveConnectOrigin(request);
     let deps;
     try {
         deps = createConnectFlowDeps(request);
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         user: sessionUser ? { id: sessionUser.id, role: sessionUser.role } : null,
         platform,
         requestIp: getRequestIp(request),
-        origin: resolveConnectOrigin(request),
+        origin: base,
     });
     const response = NextResponse.redirect(new URL(result.redirectTo, base), 302);
     if (result.setCookie) {

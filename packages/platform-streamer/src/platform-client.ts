@@ -66,10 +66,12 @@ export type FetchLike = typeof fetch;
 function kindForStatus(status: number, operation: "refresh" | "exchange" | "other", body: unknown): StreamerPlatformErrorKind {
     if (status === 401) return "unauthorized";
     if (status === 429) return "rate_limited";
-    if (status === 400) {
+    if (status === 400 && (operation === "refresh" || operation === "exchange")) {
+        // RFC 6749 §5.2: only invalid_grant means the user's grant is dead. invalid_client
+        // (our secret), invalid_request and friends are deployment problems and must not
+        // cost the streamer their connection.
         const error = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
-        if (error === "invalid_grant" || operation === "refresh") return "invalid_grant";
-        if (operation === "exchange") return "invalid_grant";
+        if (error === "invalid_grant") return "invalid_grant";
     }
     return "unexpected";
 }

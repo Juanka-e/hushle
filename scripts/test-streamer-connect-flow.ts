@@ -14,7 +14,7 @@ import {
 import { readConnectState } from "../apps/web/src/lib/streamer/connect-state";
 import { completeConnect, startConnect, type ConnectFlowDeps, type ConnectFlowUser } from "../apps/web/src/lib/streamer/connect-flow";
 import { disconnectPlatform, listConnectionsView, revokeAllForUser } from "../apps/web/src/lib/streamer/connections-view";
-import { settingsRedirect, STREAMER_REDIRECT_CODES } from "../apps/web/src/lib/streamer/redirects";
+import { publicOriginFor, settingsRedirect, STREAMER_REDIRECT_CODES } from "../apps/web/src/lib/streamer/redirects";
 
 // Start → platform → callback, with every refusal the spec lists (güvenlik kontrol listesi).
 
@@ -275,6 +275,84 @@ async function main(): Promise<void> {
             user: null, platform: "twitch", query: new URLSearchParams({ code: "x", state: "y" }), cookieValue: "a.b", requestIp: "ip", origin,
         });
         assert.equal(codeOf(finished.redirectTo).code, "unauthenticated");
+    });
+
+    // ---- review findings on Tasks 1-5
+
+    await test("review 1: browser redirects use the configured public origin, never the bind address", () => {
+        assert.equal(publicOriginFor({ STREAMER_OAUTH_PUBLIC_ORIGIN: "https://hushle.example/" }, "http://0.0.0.0:3000"), "https://hushle.example");
+        assert.equal(publicOriginFor({ NEXT_PUBLIC_SITE_URL: "https://hushle.example/path" }, "http://0.0.0.0:3000"), "https://hushle.example");
+        assert.equal(publicOriginFor({ NEXT_PUBLIC_SITE_URL: "not a url" }, "http://127.0.0.1:3201"), "http://127.0.0.1:3201");
+        assert.equal(publicOriginFor({}, "http://127.0.0.1:3201"), "http://127.0.0.1:3201");
+    });
+
+    await test("review 3: relinking revokes the previous tokens at the platform and audits a channel change", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "twitch", "deniz");
+        await startAndCallback(h, user1, "twitch", "deniz");
+        assert.deepEqual(h.fake.twitch.revoked, ["fake-refresh-deniz"], "the old refresh token is revoked on relink");
+        await startAndCallback(h, user1, "twitch", "deniz2");
+        assert.equal(h.fake.twitch.revoked.length, 2);
+        const row = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        assert.equal(row.platformUserId, "fake-deniz2");
+        const last = h.audits.at(-1)!;
+        assert.equal(last.action, "streamer.connection.relinked");
+        assert.deepEqual(last.metadata, { platform: "twitch", reason: "channel_changed" });
+    });
+
+    await test("review 4: a unique-constraint race on the write is reported as already_linked_elsewhere and the new tokens are revoked", async () => {
+        const h = harness();
+        const realUpsert = h.store.upsertLinked.bind(h.store);
+        let armed = true;
+        h.deps.store = {
+            ...h.store,
+            findByUser: h.store.findByUser.bind(h.store),
+            findByUserAndPlatform: h.store.findByUserAndPlatform.bind(h.store),
+            findByPlatformUser: async () => null,
+            upsertLinked: async (input) => {
+                if (armed) {
+                    armed = false;
+                    const error = new Error("Unique constraint failed on the constraint: `streamer_connections_platform_platform_user_id_key`") as Error & { code: string; meta: unknown };
+                    error.code = "P2002";
+                    error.meta = { target: ["platform", "platform_user_id"] };
+                    throw error;
+                }
+                return realUpsert(input);
+            },
+        };
+        const { finished } = await startAndCallback(h, user1, "twitch");
+        assert.equal(codeOf(finished.redirectTo).code, "already_linked_elsewhere");
+        assert.equal(h.fake.twitch.revoked.length, 1, "tokens obtained in the lost race are revoked");
+    });
+
+    await test("review 5: a channel left behind as revoked by another user can be claimed with fresh OAuth proof", async () => {
+        const h = harness();
+        await startAndCallback(h, user2, "twitch", "deniz");
+        await disconnectPlatform(h.deps, { user: user2, platform: "twitch", requestIp: "ip" });
+        const { finished } = await startAndCallback(h, user1, "twitch", "deniz");
+        assert.equal(codeOf(finished.redirectTo).streamer, "linked");
+        assert.equal(h.store.rows.filter((r) => r.platformUserId === "fake-deniz").length, 1);
+        assert.equal((await h.store.findByUserAndPlatform(1, "twitch"))!.status, "active");
+        assert.equal(await h.store.findByUserAndPlatform(2, "twitch"), null);
+    });
+
+    await test("review 5: a needs_reconnect row of another user still blocks the channel", async () => {
+        const h = harness();
+        await startAndCallback(h, user2, "twitch", "deniz");
+        const row = (await h.store.findByUserAndPlatform(2, "twitch"))!;
+        await h.store.markNeedsReconnect(row.id, "refresh_failed", NOW);
+        const { finished } = await startAndCallback(h, user1, "twitch", "deniz");
+        assert.equal(codeOf(finished.redirectTo).code, "already_linked_elsewhere");
+    });
+
+    await test("review 13: the callback re-checks the streamer mode switch", async () => {
+        const h = harness();
+        const started = await startConnect(h.deps, { user: user1, platform: "twitch", requestIp: "ip", origin });
+        const state = new URL(started.redirectTo, origin).searchParams.get("state")!;
+        h.enabled = false;
+        const finished = await completeConnect(h.deps, { user: user1, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state }), cookieValue: started.setCookie!.value, requestIp: "ip", origin });
+        assert.equal(codeOf(finished.redirectTo).code, "disabled");
+        assert.equal(h.store.rows.length, 0);
     });
 
     // ---- Task 6: connections view, disconnect, account closure

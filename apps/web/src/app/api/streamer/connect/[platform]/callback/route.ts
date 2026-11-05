@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // The platform sends the browser here. The state cookie is consumed whatever happens.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
     const { platform } = await params;
-    const base = request.nextUrl.origin;
+    const base = resolveConnectOrigin(request);
     const clearCookie = (response: NextResponse) => {
         response.cookies.set({ name: CONNECT_STATE_COOKIE, value: "", httpOnly: true, sameSite: "lax", path: CONNECT_STATE_COOKIE_PATH, maxAge: 0 });
         return response;
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         query: request.nextUrl.searchParams,
         cookieValue: request.cookies.get(CONNECT_STATE_COOKIE)?.value,
         requestIp: getRequestIp(request),
-        origin: resolveConnectOrigin(request),
+        origin: base,
     });
     return clearCookie(NextResponse.redirect(new URL(result.redirectTo, base), 302));
 }

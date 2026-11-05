@@ -47,6 +47,7 @@ export {
     callWithToken,
     getAccessToken,
     REFRESH_LEEWAY_MS,
+    revokeAtPlatform,
     revokeConnectionTokens,
     StreamerReconnectRequired,
     type TokenServiceDeps,

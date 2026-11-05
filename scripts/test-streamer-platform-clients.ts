@@ -243,7 +243,7 @@ await test("kick exchangeCode sends verifier and secret; identity merges users a
     });
 });
 
-await test("kick refresh 400 is invalid_grant and revoke sends the hint", async () => {
+await test("kick refresh 400 is invalid_grant and revoke sends the hint in query and body", async () => {
     const { fetchImpl, requests } = stubFetch([
         { status: 400, body: { error: "invalid_grant" } },
         { status: 200, body: "" },
@@ -251,16 +251,31 @@ await test("kick refresh 400 is invalid_grant and revoke sends the hint", async 
     const client = createKickPlatformClient(kickEnv, fetchImpl);
     await expectPlatformError(() => client.refresh("kref"), "invalid_grant", 400);
     await client.revoke("kref", "refresh_token");
-    assert.equal(requests[1].url, "https://id.kick.com/oauth/revoke");
+    const revokeUrl = new URL(requests[1].url);
+    assert.equal(revokeUrl.origin + revokeUrl.pathname, "https://id.kick.com/oauth/revoke");
+    assert.equal(revokeUrl.searchParams.get("token"), "kref");
+    assert.equal(revokeUrl.searchParams.get("token_hint_type"), "refresh_token");
     const form = new URLSearchParams(requests[1].body ?? "");
     assert.equal(form.get("token"), "kref");
     assert.equal(form.get("token_hint_type"), "refresh_token");
+});
+
+await test("review 7: a 400 on refresh without error=invalid_grant is unexpected, not invalid_grant", async () => {
+    const { fetchImpl } = stubFetch([
+        { status: 400, body: { error: "invalid_client", message: "SECRET" } },
+        { status: 400, body: { error: "invalid_request" } },
+    ]);
+    const client = createTwitchPlatformClient(twitchEnv, fetchImpl);
+    await expectPlatformError(() => client.refresh("ref"), "unexpected", 400);
+    await expectPlatformError(() => client.exchangeCode({ code: "c", redirectUri }), "unexpected", 400);
 });
 
 await test("factory: fake only outside production with the flag; real clients need credentials", () => {
     assert.equal(isFakePlatformEnabled({ STREAMER_FAKE_PLATFORM: "1", NODE_ENV: "test" }), true);
     assert.equal(isFakePlatformEnabled({ STREAMER_FAKE_PLATFORM: "1", NODE_ENV: "production" }), false);
     assert.equal(isFakePlatformEnabled({ NODE_ENV: "test" }), false);
+    assert.equal(isFakePlatformEnabled({ STREAMER_FAKE_PLATFORM: "1", NODE_ENV: "production", HUSHLE_E2E_SMOKE: "1" }), true, "the Playwright smoke server runs a production build");
+    assert.equal(isFakePlatformEnabled({ NODE_ENV: "production", HUSHLE_E2E_SMOKE: "1" }), false, "the smoke marker alone enables nothing");
     const fake = createStreamerPlatformClient("twitch", { STREAMER_FAKE_PLATFORM: "1", NODE_ENV: "test" });
     assert.equal(fake.platform, "twitch");
     assert.equal(fake.isFake, true);

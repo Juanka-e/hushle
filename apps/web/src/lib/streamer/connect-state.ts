@@ -44,8 +44,10 @@ export function pkceChallenge(verifier: string): string {
     return createHash("sha256").update(verifier, "ascii").digest("base64url");
 }
 
+const SIGNING_DOMAIN = "hushle.streamer-connect.v1.";
+
 function sign(encodedPayload: string, secret: string): string {
-    return createHmac("sha256", secret).update(encodedPayload).digest("base64url");
+    return createHmac("sha256", secret).update(SIGNING_DOMAIN + encodedPayload).digest("base64url");
 }
 
 export function createConnectState(input: {

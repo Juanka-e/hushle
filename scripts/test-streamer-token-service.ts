@@ -204,6 +204,52 @@ async function main(): Promise<void> {
         assert.equal(stored.refreshTokenEnc, null);
     });
 
+    await test("review 6: a refresh that returns no new refresh token re-encrypts the old one under the current key", async () => {
+        const oldRing = loadTokenKeyring({ STREAMER_TOKEN_KEY: randomBytes(32).toString("base64"), STREAMER_TOKEN_KEY_VERSION: "1" });
+        const rotated = loadTokenKeyring({ STREAMER_TOKEN_KEY: randomBytes(32).toString("base64"), STREAMER_TOKEN_KEY_VERSION: "2", STREAMER_TOKEN_KEY_PREVIOUS: oldRing.current.key.toString("base64"), STREAMER_TOKEN_KEY_PREVIOUS_VERSION: "1" });
+        const fake = createFakePlatformClient("twitch", { now: () => NOW.getTime() });
+        const noRotate: StreamerPlatformClient = { ...fake, async refresh(token) { const t = await fake.refresh(token); return { ...t, refreshToken: null }; } };
+        const store = createMemoryStreamerConnectionStore();
+        const seeded = store.seed(row({ accessTokenEnc: encryptToken("fake-access-deniz-0", oldRing, aad), refreshTokenEnc: encryptToken("fake-refresh-deniz", oldRing, aad), accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        await getAccessToken({ store, client: noRotate, keyring: rotated, now: () => NOW }, seeded);
+        const stored = (await store.findByUserAndPlatform(42, "twitch"))!;
+        assert.match(stored.refreshTokenEnc!, /^v2\./);
+        assert.equal(decryptToken(stored.refreshTokenEnc!, rotated, aad), "fake-refresh-deniz");
+        assert.equal(stored.tokenKeyVersion, 2);
+    });
+
+    await test("review 7: a 401 from the refresh endpoint (bad client secret) leaves the row intact", async () => {
+        const fake = createFakePlatformClient("twitch");
+        const badClient: StreamerPlatformClient = { ...fake, async refresh() { throw new StreamerPlatformError("twitch", "refresh", "unauthorized", 401); } };
+        const d = deps(badClient);
+        const seeded = d.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        await assert.rejects(() => getAccessToken(d, seeded), (error: unknown) => error instanceof StreamerPlatformError && error.kind === "unauthorized");
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.equal(stored.status, "active");
+        assert.equal(stored.refreshTokenEnc, seeded.refreshTokenEnc);
+    });
+
+    await test("review 2: a refresh that finishes after a disconnect does not resurrect tokens and revokes the new ones", async () => {
+        const fake = createFakePlatformClient("twitch", { now: () => NOW.getTime() });
+        const d = deps(fake);
+        const seeded = d.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        const slow: StreamerPlatformClient = { ...fake, async refresh(token) { await d.store.markRevoked(seeded.id, "user_disconnected", NOW); return fake.refresh(token); } };
+        await assert.rejects(() => getAccessToken({ ...d, client: slow }, seeded), StreamerReconnectRequired);
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.equal(stored.status, "revoked");
+        assert.equal(stored.accessTokenEnc, null);
+        assert.equal(stored.refreshTokenEnc, null);
+        assert.ok(fake.revoked.some((t) => t.startsWith("fake-refresh-deniz")), "the freshly issued tokens were revoked at the platform");
+    });
+
+    await test("review 2: markNeedsReconnect never downgrades a revoked row", async () => {
+        const store = createMemoryStreamerConnectionStore();
+        const seeded = store.seed(row({ status: "revoked", statusReason: "user_disconnected", accessTokenEnc: null, refreshTokenEnc: null, tokenKeyVersion: null }));
+        await store.markNeedsReconnect(seeded.id, "refresh_failed", NOW);
+        assert.equal(store.rows[0].status, "revoked");
+        assert.equal(store.rows[0].statusReason, "user_disconnected");
+    });
+
     await test("memory store: upsertLinked relinks the same user/platform row and findDormant filters by status and age", async () => {
         const store = createMemoryStreamerConnectionStore();
         const identity = { platformUserId: "fake-deniz", login: "deniz", displayName: "Deniz", avatarUrl: null, channelUrl: "https://twitch.tv/deniz" };

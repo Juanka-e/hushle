@@ -59,6 +59,18 @@ assert.match(read("apps/web/src/types/system-settings.ts"), /streamerModeEnabled
 assert.match(read("apps/web/src/app/admin/(dashboard)/system-settings/page.tsx"), /features\.streamerModeEnabled/);
 assert.match(read("apps/web/src/app/api/admin/system-settings/route.ts"), /streamerModeEnabled: updatedSettings\.features\.streamerModeEnabled/);
 
+// --- review 1/12: connect routes redirect to the public origin and set a hardened cookie
+
+for (const routePath of ["apps/web/src/app/api/streamer/connect/[platform]/start/route.ts", "apps/web/src/app/api/streamer/connect/[platform]/callback/route.ts"]) {
+    const route = read(routePath);
+    assert.doesNotMatch(route, /NextResponse\.redirect\(new URL\([^)]*request\.nextUrl\.origin/, `${routePath} must not redirect to the bind address`);
+    assert.match(route, /resolveConnectOrigin\(request\)/);
+}
+const startRoute = read("apps/web/src/app/api/streamer/connect/[platform]/start/route.ts");
+for (const attribute of ["httpOnly: true", 'sameSite: "lax"', "path: CONNECT_STATE_COOKIE_PATH", 'secure: process.env.NODE_ENV === "production"']) {
+    assert.ok(startRoute.includes(attribute), `start cookie must set ${attribute}`);
+}
+
 // --- Task 6: connections API routes ------------------------------------------
 
 const disconnectRoute = read("apps/web/src/app/api/streamer/connections/[platform]/disconnect/route.ts").split("export async function POST")[1] ?? "";

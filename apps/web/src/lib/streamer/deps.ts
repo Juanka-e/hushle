@@ -14,6 +14,7 @@ import { consumeDistributedRequestRateLimit } from "@/lib/security/request-rate-
 import { getSystemSettings } from "@/lib/system-settings/service";
 import { requireConnectStateSecret } from "./connect-state";
 import type { ConnectFlowDeps } from "./connect-flow";
+import { publicOriginFor } from "./redirects";
 
 // Real wiring for the streamer connection flows. Config errors (missing key, missing
 // secret) surface here, once, instead of inside a half-finished OAuth exchange.
@@ -41,15 +42,7 @@ export async function isStreamerModeEnabled(): Promise<boolean> {
 // The origin platforms redirect back to. Behind a proxy the request origin can be the
 // internal one, so production sets STREAMER_OAUTH_PUBLIC_ORIGIN (or NEXT_PUBLIC_SITE_URL).
 export function resolveConnectOrigin(request: NextRequest): string {
-    const configured = process.env.STREAMER_OAUTH_PUBLIC_ORIGIN?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim();
-    if (configured) {
-        try {
-            return new URL(configured).origin;
-        } catch {
-            // fall through to the request origin
-        }
-    }
-    return request.nextUrl.origin;
+    return publicOriginFor(process.env, request.nextUrl.origin);
 }
 
 export function createConnectFlowDeps(request: Request | null): ConnectFlowDeps {

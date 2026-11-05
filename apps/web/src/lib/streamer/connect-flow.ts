@@ -1,12 +1,18 @@
+import { getUniqueConstraintTarget } from "@hushle/platform-db";
 import {
     connectionAad,
+    decryptToken,
     encryptToken,
     isStreamerPlatform,
+    revokeAtPlatform,
     StreamerPlatformError,
+    TokenDecryptError,
+    type StreamerConnectionRecord,
     type StreamerConnectionStore,
     type StreamerPlatform,
     type StreamerPlatformClient,
     type TokenKeyring,
+    type TokenSet,
 } from "@hushle/platform-streamer";
 import { ConnectStateError, CONNECT_STATE_TTL_MS, createConnectState, readConnectState } from "./connect-state";
 import { settingsRedirect, type StreamerRedirectCode } from "./redirects";
@@ -75,6 +81,16 @@ async function safely(task: Promise<void>): Promise<void> {
     }
 }
 
+function decryptStored(deps: ConnectFlowDeps, record: StreamerConnectionRecord, encoded: string | null): string | null {
+    if (!encoded) return null;
+    try {
+        return decryptToken(encoded, deps.keyring, connectionAad(record.platform, record.platformUserId));
+    } catch (error) {
+        if (error instanceof TokenDecryptError) return null;
+        throw error;
+    }
+}
+
 export async function startConnect(
     deps: ConnectFlowDeps,
     input: { user: ConnectFlowUser | null; platform: string; requestIp: string; origin: string }
@@ -111,6 +127,7 @@ async function decideCallback(
     if (!user) return fail(platform, "unauthenticated");
     const limit = await deps.consumeRateLimit({ ...CONNECT_RATE_LIMITS.callback, key: `ip:${input.requestIp}` });
     if (!limit.allowed) return fail(platform, "rate_limited");
+    if (!(await deps.isStreamerModeEnabled())) return fail(platform, "disabled");
 
     let codeVerifier: string | undefined;
     try {
@@ -130,12 +147,13 @@ async function decideCallback(
     if (!code) return fail(platform, "state_invalid");
 
     const client = deps.clientFor(platform);
+    let tokens: TokenSet | null = null;
     try {
-        const tokens = await client.exchangeCode({ code, redirectUri: callbackUri(input.origin, platform), codeVerifier });
+        tokens = await client.exchangeCode({ code, redirectUri: callbackUri(input.origin, platform), codeVerifier });
         const identity = await client.fetchIdentity(tokens.accessToken);
 
-        const existing = await deps.store.findByPlatformUser(platform, identity.platformUserId);
-        if (existing && existing.userId !== user.id) {
+        const rejectElsewhere = async () => {
+            await revokeAtPlatform(client, [[tokens?.refreshToken, "refresh_token"], [tokens?.accessToken, "access_token"]]);
             await safely(
                 deps.writeAudit({
                     actor: { id: user.id, role: user.role },
@@ -147,32 +165,64 @@ async function decideCallback(
                 })
             );
             return fail(platform, "already_linked_elsewhere");
+        };
+
+        const holder = await deps.store.findByPlatformUser(platform, identity.platformUserId);
+        if (holder && holder.userId !== user.id) {
+            // Someone else holds this channel. Only a row they explicitly disconnected
+            // (`revoked`) yields to fresh proof of ownership; active or merely broken
+            // (`needs_reconnect`) links stay theirs.
+            if (holder.status !== "revoked") return await rejectElsewhere();
+            await deps.store.deleteById(holder.id);
         }
 
+        // The user's previous link on this platform: its tokens are revoked once the new
+        // ones are safely stored, so an old refresh token never lingers at the platform.
+        const previous = await deps.store.findByUserAndPlatform(user.id, platform);
         const aad = connectionAad(platform, identity.platformUserId);
-        const { record, relinked } = await deps.store.upsertLinked({
-            userId: user.id,
-            platform,
-            identity,
-            scopes: tokens.scopes.length ? tokens.scopes : [...client.scopes],
-            accessTokenEnc: encryptToken(tokens.accessToken, deps.keyring, aad),
-            refreshTokenEnc: tokens.refreshToken ? encryptToken(tokens.refreshToken, deps.keyring, aad) : null,
-            tokenKeyVersion: deps.keyring.current.version,
-            accessTokenExpiresAt: tokens.expiresAt,
-            now: now(deps),
-        });
+        let upserted: { record: StreamerConnectionRecord; relinked: boolean };
+        try {
+            upserted = await deps.store.upsertLinked({
+                userId: user.id,
+                platform,
+                identity,
+                scopes: tokens.scopes.length ? tokens.scopes : [...client.scopes],
+                accessTokenEnc: encryptToken(tokens.accessToken, deps.keyring, aad),
+                refreshTokenEnc: tokens.refreshToken ? encryptToken(tokens.refreshToken, deps.keyring, aad) : null,
+                tokenKeyVersion: deps.keyring.current.version,
+                accessTokenExpiresAt: tokens.expiresAt,
+                now: now(deps),
+            });
+        } catch (error) {
+            // Two callbacks raced for the same channel; the unique index decided.
+            if (getUniqueConstraintTarget(error) !== null) return await rejectElsewhere();
+            throw error;
+        }
+        tokens = null; // stored; no longer ours to revoke on failure
+        const { record, relinked } = upserted;
+        if (previous && previous.status === "active") {
+            await revokeAtPlatform(client, [
+                [decryptStored(deps, previous, previous.refreshTokenEnc), "refresh_token"],
+                [decryptStored(deps, previous, previous.accessTokenEnc), "access_token"],
+            ]);
+        }
+        const channelChanged = Boolean(previous && previous.platformUserId !== identity.platformUserId);
         await safely(
             deps.writeAudit({
                 actor: { id: user.id, role: user.role },
                 action: relinked ? "streamer.connection.relinked" : "streamer.connection.linked",
                 resourceType: AUDIT_RESOURCE_TYPE,
                 resourceId: record.id,
-                summary: relinked ? "Streamer channel relinked" : "Streamer channel linked",
-                metadata: { platform },
+                summary: relinked ? (channelChanged ? "Streamer channel changed" : "Streamer channel relinked") : "Streamer channel linked",
+                metadata: channelChanged ? { platform, reason: "channel_changed" } : { platform },
             })
         );
         return { redirectTo: settingsRedirect("linked", platform) };
     } catch (error) {
+        if (tokens) {
+            // Nothing was stored: do not leave a live grant behind.
+            await revokeAtPlatform(client, [[tokens.refreshToken, "refresh_token"], [tokens.accessToken, "access_token"]]).catch(() => undefined);
+        }
         if (error instanceof StreamerPlatformError) {
             await safely(deps.emitEvent({ event: "streamer.connect.platform_error", level: "warn", context: { platform, operation: error.operation, kind: error.kind, status: error.status } }));
             return fail(platform, "platform_error");

@@ -84,10 +84,13 @@ export function createKickPlatformClient(env: KickEnvironment, fetchImpl: FetchL
             return tokenRequest("refresh", "refresh", { grant_type: "refresh_token", refresh_token: refreshToken });
         },
         async revoke(token, hint) {
+            const url = new URL(REVOKE_URL);
+            url.searchParams.set("token", token);
+            url.searchParams.set("token_hint_type", hint);
             await platformRequest(fetchImpl, {
                 platform: "kick",
                 operation: "revoke",
-                url: REVOKE_URL,
+                url: url.toString(),
                 form: { token, token_hint_type: hint },
                 expectJson: false,
             });

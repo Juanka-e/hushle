@@ -129,7 +129,12 @@ Audit olayları (metadata'da token yok): `streamer.connection.linked`,
 - Token'lar yalnız sunucuda, şifreli; yanıt/log/audit'te yok; anahtar sürümü ile
   rotasyon mümkün.
 - Askıya alınmış kullanıcı bağlayamaz; hesap silinince cascade + platform iptali.
-- Hız sınırı: start ve callback kullanıcı+IP, disconnect kullanıcı.
+- Hız sınırı: start kullanıcı başına (15 dk / 10), callback IP başına (15 dk / 10;
+  bu aşamada oturum zaten doğrulanmış olur), disconnect kullanıcı başına (15 dk / 5).
+- `state` tek kullanımlığı çerezin callback'te silinmesine dayanır; sunucu tarafında
+  kullanılmış state kaydı (Redis set-if-absent) tutulmaz. Yakalanmış çerez + state
+  en çok 10 dakika ve yalnız kurbanın oturumuyla tekrar oynatılabilir; sonraki
+  aşamada Redis guard eklenebilir.
 - POST uçları güvenilir Origin ister; GET callback yalnız yönlendirme yapar,
   yanıt gövdesinde veri yok.
 - Yönlendirme hedefi sabit (Ayarlar); açık yönlendirme yok.
