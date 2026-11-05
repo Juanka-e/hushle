@@ -16,6 +16,7 @@ import {
     startMatchSettlementWorker,
 } from "./src/lib/match-settlement/runtime";
 import { getMatchSettlementHealth } from "./src/lib/match-settlement/service";
+import { startStreamerSessionRuntime } from "./src/lib/streamer/session-deps";
 import { isHealthEndpointAllowed } from "./src/lib/security/health-check";
 import { getPaymentSchedulerHealth } from "./src/lib/payments/scheduler-health";
 import { getPaymentCheckoutControl } from "./src/lib/payments/checkout-control";
@@ -298,6 +299,8 @@ app.prepare().then(async () => {
     });
 
     setupGameSocket(io, roomOwnership, roomRouting);
+    // Stream sessions live in memory: rows a previous process left active become interrupted.
+    const streamerSessionRuntime = await startStreamerSessionRuntime();
     const publishCurrentCapacity = () => {
         void publishCapacityHeartbeat(getLocalRoomCapacityMetrics()).catch(
             (error) => {
@@ -359,6 +362,7 @@ app.prepare().then(async () => {
         await socketRedisAdapter?.close();
         await roomOwnership?.close();
         await removeCapacityHeartbeat();
+        await streamerSessionRuntime.stop();
         await matchSettlementWorker.stop();
         await flushObservabilityExporter();
         await closeRedisClient();
