@@ -44,13 +44,21 @@ export const SUMMARY_SCORE_LIMIT = 10;
 // Phase 2 has no chat adapters yet; the stream screen always reads as connected.
 const SNAPSHOT_OPTIONS = { connected: true } as const;
 
-export type StreamerSessionErrorCode =
-    | "session_active"
-    | "connection_required"
-    | "not_found"
-    | "invalid_phase"
-    | "word_source_empty"
-    | "card_not_allowed";
+export const STREAMER_SESSION_ERROR_CODES = [
+    "session_active",
+    "connection_required",
+    "not_found",
+    "invalid_phase",
+    "word_source_empty",
+    "card_not_allowed",
+] as const;
+
+export type StreamerSessionErrorCode = (typeof STREAMER_SESSION_ERROR_CODES)[number];
+
+// The custom server and the Next route bundles each load this module, so a route can catch an
+// error built from the other copy of this class: `instanceof` fails across copies, a
+// registry symbol does not. Check errors with `isStreamerSessionError`.
+const STREAMER_SESSION_ERROR_BRAND = Symbol.for("hushle.streamer-session-error");
 
 export class StreamerSessionError extends Error {
     readonly code: StreamerSessionErrorCode;
@@ -59,7 +67,17 @@ export class StreamerSessionError extends Error {
         super(message ?? `streamer session: ${code}`);
         this.name = "StreamerSessionError";
         this.code = code;
+        Object.defineProperty(this, STREAMER_SESSION_ERROR_BRAND, { value: true });
     }
+}
+
+export function isStreamerSessionError(error: unknown): error is StreamerSessionError {
+    if (typeof error !== "object" || error === null) return false;
+    const code = Reflect.get(error, "code");
+    return (
+        Reflect.get(error, STREAMER_SESSION_ERROR_BRAND) === true &&
+        STREAMER_SESSION_ERROR_CODES.includes(code as StreamerSessionErrorCode)
+    );
 }
 
 export interface WordSource {
@@ -251,7 +269,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     }
 
     function reportTick(error: unknown): void {
-        if (error instanceof StreamerSessionError && error.code === "not_found") return;
+        if (isStreamerSessionError(error) && error.code === "not_found") return;
         onError("streamer_session.tick_failed", error);
     }
 

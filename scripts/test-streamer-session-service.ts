@@ -10,6 +10,7 @@ import { createSessionInputSchema, type CreateSessionInput } from "../apps/web/s
 import { createMemoryStreamSessionStore, type MemoryStreamSessionStore } from "../apps/web/src/lib/streamer/session-store";
 import {
     createStreamerSessionRuntime,
+    isStreamerSessionError,
     StreamerSessionError,
     STREAM_SESSION_IDLE_TIMEOUT_MS,
     type StreamerSessionErrorCode,
@@ -190,7 +191,7 @@ function chat(h: Harness, text: string, user = "luna", overrides: Partial<ChatGu
 
 async function rejectsWith(run: () => Promise<unknown>, code: StreamerSessionErrorCode): Promise<void> {
     await assert.rejects(run, (error: unknown) => {
-        assert.ok(error instanceof StreamerSessionError, `expected StreamerSessionError(${code}), got ${String(error)}`);
+        assert.ok(isStreamerSessionError(error), `expected StreamerSessionError(${code}), got ${String(error)}`);
         assert.equal(error.code, code);
         return true;
     });
@@ -243,7 +244,7 @@ async function main(): Promise<void> {
         ]);
         assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
         const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult;
-        assert.ok(rejected.reason instanceof StreamerSessionError && rejected.reason.code === "session_active");
+        assert.ok(isStreamerSessionError(rejected.reason) && rejected.reason.code === "session_active");
         assert.equal(h.sessions.rows.length, 1);
     });
 
@@ -251,14 +252,23 @@ async function main(): Promise<void> {
         const h = harness();
         const { session, viewKey } = await opened(h);
         assert.match(viewKey, /^[A-Za-z0-9_-]{43}$/);
-        assert.equal(session.viewKeyHash, hashViewKey(viewKey));
-        assert.match(session.viewKeyHash, /^[0-9a-f]{64}$/);
+        const row = await h.sessions.findById(session.id);
+        assert.equal(row?.viewKeyHash, hashViewKey(viewKey));
+        assert.match(row?.viewKeyHash ?? "", /^[0-9a-f]{64}$/);
         assert.equal(JSON.stringify(h.sessions.rows).includes(viewKey), false, "the raw view key is never stored");
-        assert.equal(session.status, "active");
-        assert.equal(session.platform, "twitch");
-        assert.equal(session.connectionId, connection(1, "twitch").id);
-        assert.deepEqual(session.settings, INPUT);
-        assert.equal(session.startedAt.getTime(), START);
+        assert.equal(row?.connectionId, connection(1, "twitch").id);
+        assert.deepEqual(row?.settings, INPUT);
+        assert.deepEqual(session, {
+            id: row?.id,
+            status: "active",
+            interrupted: false,
+            platform: "twitch",
+            settings: INPUT,
+            startedAt: new Date(START).toISOString(),
+            endedAt: null,
+            roundCount: 0,
+            summary: null,
+        });
         const live = h.runtime.forUser(1);
         assert.ok(live);
         assert.equal(live.id, session.id);
@@ -663,6 +673,123 @@ async function main(): Promise<void> {
         assert.equal(ended?.endedAt?.getTime(), START + 1_000);
         assert.equal(await sessions.findActiveByUser(1), null);
         assert.equal(await sessions.markInterruptedAll(at), 0);
+    });
+
+    await test("session views never carry the view key hash", async () => {
+        const h = harness();
+        const created = await opened(h);
+        const hash = hashViewKey(created.viewKey);
+        const assertHashFree = (value: unknown, label: string) => {
+            const json = JSON.stringify(value);
+            assert.equal(json.includes("viewKeyHash"), false, `${label} has no viewKeyHash key`);
+            assert.equal(json.includes(hash), false, `${label} has no hash value`);
+            assert.equal(json.includes("connectionId") || json.includes("userId"), false, `${label} has no owner or link ids`);
+        };
+        assertHashFree(created.session, "createSession().session");
+        assertHashFree(await currentSession(h.deps, 1), "currentSession (active)");
+        await h.sessions.markInterruptedAll(new Date(h.clock.now));
+        const second = harness({ sessions: h.sessions });
+        const interrupted = await currentSession(second.deps, 1);
+        assert.equal(interrupted?.interrupted, true);
+        assert.equal(interrupted?.status, "interrupted");
+        assertHashFree(interrupted, "currentSession (interrupted)");
+    });
+
+    await test("the stale-row interrupt is conditional: only an active row flips", async () => {
+        const sessions = createMemoryStreamSessionStore();
+        const base = { connectionId: null, platform: "twitch" as const, settings: INPUT, startedAt: new Date(START) };
+        const active = await sessions.create({ ...base, userId: 1, viewKeyHash: "f".repeat(64) });
+        const ended = await sessions.create({ ...base, userId: 2, viewKeyHash: "9".repeat(64) });
+        await sessions.update(ended.id, { status: "ended", endedAt: new Date(START + 1_000), summary: { scores: [], participants: 0, rounds: 0 } });
+        const flipped = await sessions.markInterrupted(active.id, new Date(START + 2_000));
+        assert.equal(flipped?.status, "interrupted");
+        assert.equal(flipped?.endedAt?.getTime(), START + 2_000);
+        assert.equal(await sessions.markInterrupted(active.id, new Date(START + 3_000)), null);
+        assert.equal((await sessions.findById(active.id))?.endedAt?.getTime(), START + 2_000);
+        assert.equal(await sessions.markInterrupted(ended.id, new Date(START + 3_000)), null);
+        const untouched = await sessions.findById(ended.id);
+        assert.equal(untouched?.status, "ended");
+        assert.equal(untouched?.endedAt?.getTime(), START + 1_000);
+        assert.equal(await sessions.markInterrupted("00000000-0000-4000-8000-000000000999", new Date(START)), null);
+    });
+
+    for (const order of ["end write lands first", "stale interrupt lands first"] as const) {
+        await test(`an end still being written is never turned into interrupted (${order})`, async () => {
+            const base = createMemoryStreamSessionStore();
+            const gate = () => {
+                let open!: () => void;
+                let seen!: () => void;
+                const released = new Promise<void>((resolve) => (open = resolve));
+                const reached = new Promise<void>((resolve) => (seen = resolve));
+                return { open: () => open(), reached, wait: () => (seen(), released) };
+            };
+            const endWrite = gate();
+            const interrupt = gate();
+            const sessions: MemoryStreamSessionStore = {
+                ...base,
+                async update(id, patch) {
+                    if (patch.status === "ended") await endWrite.wait();
+                    return base.update(id, patch);
+                },
+                async markInterrupted(id, now) {
+                    await interrupt.wait();
+                    return base.markInterrupted(id, now);
+                },
+            };
+            const h = harness({ sessions });
+            const { session } = await opened(h);
+            await h.runtime.start(session.id);
+            assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct");
+            h.advance(2_000);
+            const ending = endCurrent(h.deps, 1);
+            await endWrite.reached;
+            assert.equal(h.runtime.get(session.id), null, "the runtime let go before the write landed");
+            const current = currentSession(h.deps, 1);
+            await interrupt.reached;
+            let summary;
+            if (order === "end write lands first") {
+                endWrite.open();
+                ({ summary } = await ending);
+                interrupt.open();
+                assert.equal(await current, null, "an ended session is no current session");
+            } else {
+                interrupt.open();
+                assert.equal((await current)?.status, "interrupted");
+                endWrite.open();
+                ({ summary } = await ending);
+            }
+            const row = await base.findById(session.id);
+            assert.equal(row?.status, "ended");
+            assert.equal(row?.endedAt?.getTime(), START + 2_000);
+            assert.deepEqual(row?.summary, summary);
+            assert.deepEqual(summary, { scores: [{ name: "Luna", points: 1, rank: 1, tied: false }], participants: 1, rounds: 1 });
+            assert.equal(await currentSession(h.deps, 1), null);
+        });
+    }
+
+    await test("isStreamerSessionError recognises errors from another copy of the module", () => {
+        const brand = Symbol.for("hushle.streamer-session-error");
+        // What a route bundle sees when the server's copy of the runtime throws: same shape, other class.
+        class ForeignStreamerSessionError extends Error {
+            readonly code = "not_found";
+            constructor() {
+                super("streamer session: not_found");
+                Object.defineProperty(this, brand, { value: true });
+            }
+        }
+        const foreign = new ForeignStreamerSessionError();
+        assert.equal(foreign instanceof StreamerSessionError, false);
+        assert.equal(isStreamerSessionError(foreign), true);
+        assert.equal(isStreamerSessionError(new StreamerSessionError("invalid_phase")), true);
+        assert.equal(isStreamerSessionError(new Error("not_found")), false, "a plain Error is not one");
+        assert.equal(isStreamerSessionError(Object.assign(new Error("x"), { code: "not_found" })), false, "a code without the brand is not one");
+        const unknownCode = Object.assign(new Error("x"), { code: "teapot" });
+        Object.defineProperty(unknownCode, brand, { value: true });
+        assert.equal(isStreamerSessionError(unknownCode), false, "a branded error with an unknown code is not one");
+        for (const value of [null, undefined, "not_found", 42, { code: "not_found" }]) {
+            assert.equal(isStreamerSessionError(value), false);
+        }
+        assert.deepEqual(JSON.parse(JSON.stringify(new StreamerSessionError("not_found"))), { code: "not_found", name: "StreamerSessionError" }, "the brand is not enumerable");
     });
 
     await test("restart during a round: boot reconciliation interrupts the row, the panel sees it, a new session can open", async () => {

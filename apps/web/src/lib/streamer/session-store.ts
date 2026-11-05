@@ -70,6 +70,11 @@ export interface StreamSessionStore {
     findById(id: string): Promise<StreamSessionRecord | null>;
     findByViewKeyHash(hash: string): Promise<StreamSessionRecord | null>;
     update(id: string, patch: StreamSessionPatch): Promise<StreamSessionRecord>;
+    /**
+     * Interrupts the row only while it is still `active`; null when it no longer is (an end
+     * that just landed is never overwritten).
+     */
+    markInterrupted(id: string, now: Date): Promise<StreamSessionRecord | null>;
     /** Boot reconciliation: every `active` row becomes `interrupted`; returns how many. */
     markInterruptedAll(now: Date): Promise<number>;
     addRoundResult(result: StreamRoundResultInput): Promise<void>;
@@ -132,6 +137,14 @@ export const prismaStreamSessionStore: StreamSessionStore = {
     },
     update(id, patch) {
         return prisma.streamSession.update({ where: { id }, data: patchColumns(patch) });
+    },
+    async markInterrupted(id, now) {
+        const result = await prisma.streamSession.updateMany({
+            where: { id, status: StreamSessionStatus.active },
+            data: { status: StreamSessionStatus.interrupted, endedAt: now },
+        });
+        if (result.count === 0) return null;
+        return prisma.streamSession.findUnique({ where: { id } });
     },
     async markInterruptedAll(now) {
         const result = await prisma.streamSession.updateMany({
@@ -219,6 +232,13 @@ export function createMemoryStreamSessionStore(): MemoryStreamSessionStore {
             for (const [key, value] of Object.entries(patch)) {
                 if (value !== undefined) Object.assign(record, { [key]: structuredClone(value) });
             }
+            return clone(record);
+        },
+        async markInterrupted(id, now) {
+            const record = rows.find((row) => row.id === id && row.status === "active");
+            if (!record) return null;
+            record.status = "interrupted";
+            record.endedAt = now;
             return clone(record);
         },
         async markInterruptedAll(now) {

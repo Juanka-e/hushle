@@ -149,6 +149,17 @@ async function main(): Promise<void> {
         assert.deepEqual((await store.listRecent(first, 1)).map((row) => row.id), [later.id]);
         pass("listRecent is newest first and honours the limit");
 
+        const lone = await store.create({ userId: second, connectionId: null, platform: "kick", settings: INPUT, viewKeyHash: hash("e"), startedAt: NOW });
+        const flipped = await store.markInterrupted(lone.id, new Date(NOW.getTime() + 150_000));
+        assert.equal(flipped?.status, "interrupted");
+        assert.equal(flipped?.endedAt?.getTime(), NOW.getTime() + 150_000);
+        assert.equal(await store.markInterrupted(lone.id, new Date(NOW.getTime() + 160_000)), null, "an interrupted row is not interrupted again");
+        assert.equal(await store.markInterrupted(later.id, new Date(NOW.getTime() + 160_000)), null, "an ended row is never interrupted");
+        const stillEnded = await store.findById(later.id);
+        assert.equal(stillEnded?.status, "ended");
+        assert.equal(stillEnded?.endedAt?.getTime(), NOW.getTime() + 120_000);
+        pass("markInterrupted only flips a row that is still active");
+
         const interruptedAt = new Date(NOW.getTime() + 200_000);
         assert.ok((await store.markInterruptedAll(interruptedAt)) >= 1);
         const interrupted = await store.findById(created.id);
@@ -175,6 +186,10 @@ async function main(): Promise<void> {
         try {
             const { session, viewKey } = await service.createSession(deps, { userId: first, settings: INPUT });
             assert.equal((await store.findByViewKeyHash(hashViewKey(viewKey)))?.id, session.id);
+            for (const view of [session, await service.currentSession(deps, first)]) {
+                const json = JSON.stringify(view);
+                assert.equal(json.includes("viewKeyHash") || json.includes(hashViewKey(viewKey)), false, "session views carry no view key hash");
+            }
             await runtime.start(session.id);
             assert.equal(
                 await runtime.guess(session.id, { platform: "fake", platformUserId: "luna", name: "Luna", text: "mandalina", messageId: "m1", sentAt: Date.now() }),

@@ -1,16 +1,54 @@
+import { z } from "zod";
 import { createStreamSession } from "@hushle/domain-streamer";
-import type { StreamerConnectionStore } from "@hushle/platform-streamer";
+import type { StreamerConnectionStore, StreamerPlatform } from "@hushle/platform-streamer";
 import { createSessionInputSchema, toScreenSettings, type CreateSessionInput } from "./session-settings";
 import { StreamerSessionError, type StreamerSessionRuntime } from "./session-runtime";
-import type { StreamSessionRecord, StreamSessionStore, StreamSessionSummary } from "./session-store";
+import type { StreamSessionRecord, StreamSessionStatusValue, StreamSessionStore, StreamSessionSummary } from "./session-store";
 import { createViewKey } from "./view-key";
 
 // What the /streamer routes do with a session: open one on an active channel link, read the
 // current one, end it, rotate its stream-screen key and prefill the next form. Live state is the
 // runtime's; this layer only decides who may open what and keeps the rows truthful.
 
-export { StreamerSessionError, type StreamerSessionErrorCode } from "./session-runtime";
+export { isStreamerSessionError, StreamerSessionError, type StreamerSessionErrorCode } from "./session-runtime";
 export { createSessionInputSchema, type CreateSessionInput } from "./session-settings";
+
+/** What a session row may show outside the service: never the view key hash, owner or link ids. */
+export interface StreamSessionView {
+    id: string;
+    status: StreamSessionStatusValue;
+    /** The process that ran it went away; the panel offers a new session. */
+    interrupted: boolean;
+    platform: StreamerPlatform;
+    /** The stored input; null when it no longer reads as one. */
+    settings: CreateSessionInput | null;
+    startedAt: string;
+    endedAt: string | null;
+    roundCount: number;
+    summary: StreamSessionSummary | null;
+}
+
+const summarySchema = z.object({
+    scores: z.array(z.object({ name: z.string(), points: z.number(), rank: z.number(), tied: z.boolean() })),
+    participants: z.number(),
+    rounds: z.number(),
+});
+
+export function toSessionView(record: StreamSessionRecord): StreamSessionView {
+    const settings = createSessionInputSchema.safeParse(record.settings);
+    const summary = summarySchema.safeParse(record.summary);
+    return {
+        id: record.id,
+        status: record.status,
+        interrupted: record.status === "interrupted",
+        platform: record.platform,
+        settings: settings.success ? settings.data : null,
+        startedAt: record.startedAt.toISOString(),
+        endedAt: record.endedAt ? record.endedAt.toISOString() : null,
+        roundCount: record.roundCount,
+        summary: summary.success ? summary.data : null,
+    };
+}
 
 export interface StreamerSessionServiceDeps {
     sessions: StreamSessionStore;
@@ -42,9 +80,10 @@ async function withUserLock<T>(userId: number, task: () => Promise<T>): Promise<
 }
 
 // An `active` row this process does not run (a failed end write, a lost runtime) can never
-// resume: it is interrupted, exactly as boot reconciliation would have done.
-async function interruptStale(deps: StreamerSessionServiceDeps, row: StreamSessionRecord): Promise<StreamSessionRecord> {
-    return deps.sessions.update(row.id, { status: "interrupted", endedAt: new Date(clock(deps)) });
+// resume: it is interrupted, exactly as boot reconciliation would have done. The write is
+// conditional: null means the row stopped being active meanwhile (an end write just landed).
+async function interruptStale(deps: StreamerSessionServiceDeps, row: StreamSessionRecord): Promise<StreamSessionRecord | null> {
+    return deps.sessions.markInterrupted(row.id, new Date(clock(deps)));
 }
 
 const MAX_STALE_ROWS = 10;
@@ -52,7 +91,7 @@ const MAX_STALE_ROWS = 10;
 export async function createSession(
     deps: StreamerSessionServiceDeps,
     input: { userId: number; settings: CreateSessionInput },
-): Promise<{ session: StreamSessionRecord; viewKey: string }> {
+): Promise<{ session: StreamSessionView; viewKey: string }> {
     const settings = createSessionInputSchema.parse(input.settings);
     const { userId } = input;
     return withUserLock(userId, async () => {
@@ -84,7 +123,7 @@ export async function createSession(
             await interruptStale(deps, session);
             throw error;
         }
-        return { session, viewKey };
+        return { session: toSessionView(session), viewKey };
     });
 }
 
@@ -92,12 +131,16 @@ export async function createSession(
  * The user's newest session while it is live, or once it was interrupted (the panel offers a new
  * one then); null when there is none or the newest has ended.
  */
-export async function currentSession(deps: StreamerSessionServiceDeps, userId: number): Promise<StreamSessionRecord | null> {
+export async function currentSession(deps: StreamerSessionServiceDeps, userId: number): Promise<StreamSessionView | null> {
     return withUserLock(userId, async () => {
         const [latest] = await deps.sessions.listRecent(userId, 1);
         if (!latest || latest.status === "ended") return null;
-        if (latest.status === "active" && !deps.runtime.get(latest.id)) return interruptStale(deps, latest);
-        return latest;
+        if (latest.status !== "active" || deps.runtime.get(latest.id)) return toSessionView(latest);
+        const interrupted = await interruptStale(deps, latest);
+        if (interrupted) return toSessionView(interrupted);
+        // No longer active: an end landed in between (or another reconcile won); read what it is now.
+        const now = await deps.sessions.findById(latest.id);
+        return now && now.status !== "ended" ? toSessionView(now) : null;
     });
 }
 
