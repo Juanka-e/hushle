@@ -133,6 +133,8 @@
     "test:streamer-connection-foundation": "tsx scripts/test-streamer-connection-foundation.ts",
     "test:streamer-token-crypto": "tsx scripts/test-streamer-token-crypto.ts",
     "test:streamer-platform-clients": "tsx scripts/test-streamer-platform-clients.ts",
+    "test:streamer-token-service": "tsx scripts/test-streamer-token-service.ts",
+    "test:streamer-connection-store-integration": "tsx scripts/test-streamer-connection-store-integration.ts",
     "test:account-recovery-integration": "tsx scripts/test-account-recovery-integration.ts",
     "test:email-delivery-operations-integration": "tsx scripts/test-email-delivery-operations-integration.ts",
     "test:email-delivery-operations": "tsx scripts/test-email-delivery-operations.ts",

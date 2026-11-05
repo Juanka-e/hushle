@@ -32,3 +32,22 @@ export {
     isPlatformConfigured,
     type StreamerPlatformEnvironment,
 } from "./client-factory";
+export {
+    createMemoryStreamerConnectionStore,
+    prismaStreamerConnectionStore,
+    type MemoryStreamerConnectionStore,
+    type StatusReason,
+    type StreamerConnectionRecord,
+    type StreamerConnectionStatusValue,
+    type StreamerConnectionStore,
+    type UpdateTokensInput,
+    type UpsertLinkedInput,
+} from "./connection-store";
+export {
+    callWithToken,
+    getAccessToken,
+    REFRESH_LEEWAY_MS,
+    revokeConnectionTokens,
+    StreamerReconnectRequired,
+    type TokenServiceDeps,
+} from "./token-service";
