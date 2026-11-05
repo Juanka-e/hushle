@@ -131,3 +131,129 @@ Diğer yaşam döngüsü olayları:
 - `/streamer` her açılışta etkin bağlantıyı doğrular (gerekirse yeniler, Twitch'te
   `/validate` çağırır); geçersiz bağlantı `needs_reconnect` olur. Twitch'in saatlik
   doğrulama şartı yayın oturumu sürerken 2. aşamada uygulanacak.
+
+## 8. Yayın oturumu ve OBS
+
+Kapsam: 2. aşama ([tasarım](../superpowers/specs/2026-11-05-streamer-session-and-screens-design.md),
+[plan](../superpowers/plans/2026-11-05-streamer-session-and-screens.md)). Yayıncı `/streamer`
+sayfasından oturum açar, OBS'ye yayın ekranı adresini verir ve turları oradan yönetir.
+Gerçek sohbet okuma henüz yok (3. aşama); tahmin kaynağı yalnız geliştirme amaçlı sahte sohbettir.
+
+### 8.1 Ön koşullar
+
+- Admin → Sistem Ayarları → Özellikler → "Yayıncı Modu" açık (`streamerModeEnabled`).
+- Ayarlar'da en az bir etkin kanal bağlantısı (§3). Bağlantı yoksa oturum kurulamaz
+  (`STREAMER_CONNECTION_REQUIRED`).
+- Kullanıcı başına aynı anda tek aktif oturum vardır; ikincisi `STREAMER_SESSION_ACTIVE` ile reddedilir.
+  Oturum oluşturma kullanıcı başına 15 dakikada 10 ile sınırlıdır.
+
+### 8.2 Oturum açma ve OBS adresleri
+
+1. `/streamer` → bağlı kanalı, kelime dilini, kategorileri, tur süresini (30–120 sn),
+   toleransı (`strict` / `normal`), temayı, kamera yuvasını ve kart arkasını seç, sonra oturumu başlat.
+2. "OBS" kutusu dört adres gösterir. Her biri OBS'de bir Tarayıcı Kaynağı olarak eklenir.
+   Anahtar adresin sonundadır ve yalnız oturumu açtığın (ya da anahtarı yenilediğin)
+   sayfada görünür. Sayfa yenilenirse anahtar gizlenir; yeniden görmek için anahtarı yenile.
+
+| Kaynak | Adres | Tarayıcı Kaynağı boyutu |
+| --- | --- | --- |
+| Tam ekran sahne | `/stream/<görüntüleme-anahtarı>` | 1920×1080 |
+| Yarım ekran sütun | `/stream/<görüntüleme-anahtarı>?layout=half` | 960×1080 |
+| Üst şerit | `/stream/<görüntüleme-anahtarı>?overlay=top` | 1920×220 |
+| Alt şerit | `/stream/<görüntüleme-anahtarı>?overlay=bottom` | 1920×220 |
+
+### 8.3 Kamera deliği ölçüleri
+
+Tam ekran sahnede web kamerası için bir delik bırakılır. Ölçüler `x, y` (sol üst köşe) ve
+`genişlik×yükseklik` olarak verilir. 1080p sahnenin kendi koordinatıdır; 720p her değerin
+2/3'ünün yuvarlanmış halidir. OBS kutusundaki kamera ölçüleri aynı sayıları gösterir.
+
+Köşe yuvalarında (`tl` sol üst, `tr` sağ üst, `bl` sol alt, `br` sağ alt) delik kenarlardan 70 px içeridedir:
+
+| Boy | Yuva | 1080p | 720p |
+| --- | --- | --- | --- |
+| `s` | `tl` | 70, 70 · 480×270 | 47, 47 · 320×180 |
+| `s` | `tr` | 1370, 70 · 480×270 | 913, 47 · 320×180 |
+| `s` | `bl` | 70, 740 · 480×270 | 47, 493 · 320×180 |
+| `s` | `br` | 1370, 740 · 480×270 | 913, 493 · 320×180 |
+| `m` | `tl` | 70, 70 · 560×315 | 47, 47 · 373×210 |
+| `m` | `tr` | 1290, 70 · 560×315 | 860, 47 · 373×210 |
+| `m` | `bl` | 70, 695 · 560×315 | 47, 463 · 373×210 |
+| `m` | `br` | 1290, 695 · 560×315 | 860, 463 · 373×210 |
+| `l` | `tl` | 70, 70 · 640×360 | 47, 47 · 427×240 |
+| `l` | `tr` | 1210, 70 · 640×360 | 807, 47 · 427×240 |
+| `l` | `bl` | 70, 650 · 640×360 | 47, 433 · 427×240 |
+| `l` | `br` | 1210, 650 · 640×360 | 807, 433 · 427×240 |
+
+Yarım yuvalarda boy etkisizdir, delik yarım ekranın tamamıdır:
+
+| Yuva | 1080p | 720p |
+| --- | --- | --- |
+| `left` | 0, 0 · 960×1080 | 0, 0 · 640×720 |
+| `right` | 960, 0 · 960×1080 | 640, 0 · 640×720 |
+
+`none` seçilirse delik yoktur. Sayılar yayın ekranının `cameraRect` işlevinden gelir;
+ekran ve panel aynı işlevi kullanır.
+
+### 8.4 Anahtarı yenileme
+
+Panelde "Anahtarı yenile" tek tıkla yeni bir görüntüleme anahtarı üretir ve dört adresi
+günceller. Eski anahtarla açık olan bütün yayın ekranları düşer (`streamer:ended`, neden
+`view-key-rotated`); yeni adresleri OBS'de yeniden girmen gerekir. Yayın adresi sızdıysa
+bunu kullan. Yenileme host odasını etkilemez: panel açık kalır ve oyun sürer.
+
+### 8.5 Kesinti, boşta kapanma ve bitiş
+
+- **Süreç yeniden başlarsa:** oturumlar bellekte tutulur (tek web replikası). Yeniden
+  başlatmada aktif oturum veritabanında `interrupted` olur; panel oturumun kesildiğini söyler
+  ve yeni oturum açmayı önerir. Eski görüntüleme anahtarı geçersizdir.
+- **6 saat boşta:** 6 saat boyunca hiçbir işlem görmeyen oturum otomatik biter
+  (`streamer:ended`, neden `idle`).
+- **Bitirince:** oturum kapanır, kelime havuzu temizlenir, ilk 10 sıra ve katılımcı sayısı
+  özet olarak kaydedilir, anahtar geçersiz olur.
+- Veritabanında yalnız oturum ve tur sonuçları (kazanan, süre) tutulur; ham sohbet ve
+  yanlış tahminler yazılmaz.
+
+### 8.6 Yayın vitrini anahtarı
+
+Admin sistem ayarlarındaki `streamerShowcaseAllCosmetics` (varsayılan kapalı) yalnız yayın
+ekranının kart arkası seçimini etkiler. Kapalıyken yayıncı kendi envanterindeki koleksiyonlardan
+seçer; açıkken bütün koleksiyonlar seçilebilir. Seçim sunucuda da doğrulanır: ayar kapalıyken
+sahip olunmayan koleksiyon `STREAMER_CARD_NOT_ALLOWED` ile reddedilir. Normal oyun odaları
+her durumda yalnız sahip olunan kozmetikleri kullanır.
+
+### 8.7 Sahte platform ve test-guess (yalnız geliştirme)
+
+`STREAMER_FAKE_PLATFORM=1` yalnız geliştirme ve test içindir; üretim ön kontrolü bu değerde
+durur. Açıkken:
+
+- `POST /api/streamer/sessions/current/test-guess` gövdesi `{ "name": "...", "text": "..." }`
+  ile etkin oturuma sahte bir izleyici tahmini gönderir. Bayrak kapalıyken (üretim) bu uç 404 döner.
+- `?demo=` yayın ekranı sahneleri (galeri ve ekran görüntüsü testleri) çalışır.
+
+Gerçek sohbet 3. aşamada aynı tahmin arayüzünden (`ChatGuess`) gelecek; bu uçlar o zaman da
+yalnız test içindir.
+
+### 8.8 Güvenlik notları
+
+- Kelime ve yasaklı kelimeler tur bitmeden public odaya, yayın sayfasının HTML'ine ya da
+  `streamer:public:state` mesajına çıkmaz; kart yalnız host odasındadır. Sunucu, yayına
+  giden her durumu göndermeden önce denetler ve ihlalde düşürür. Public oda
+  yayıncı kartını tur bitene kadar hiçbir zaman almaz.
+- Görüntüleme anahtarı 32 bayt rastgeledir; veritabanında yalnız sha256 özeti saklanır.
+  Anahtar log'a ve audit'e yazılmaz.
+- Host olayları yalnız oturum sahibindendir (her olayda sahiplik, `sessionVersion` ve
+  askıya alma denetlenir) ve 10 saniyede 10 ile sınırlıdır. Yayın ekranına katılım IP başına
+  dakikada 30 ile sınırlıdır.
+
+### 8.9 Testler
+
+- Birim: `npm run test:domain-streamer`, `test:streamer-session-service`,
+  `test:streamer-card-backs`, `test:streamer-session-foundation`,
+  `test:streamer-socket-integration`, `test:stream-screen`.
+- Veritabanı: `STREAMER_INTEGRATION_DATABASE_URL=<tabu_test> npm run test:streamer-session-store-integration`.
+- Uçtan uca: §6'daki sunucu ayarlarıyla (`STREAMER_FAKE_PLATFORM=1`, `HUSHLE_E2E_SMOKE=1`,
+  `STREAMER_TOKEN_KEY`) ve Playwright sürecinde `DATABASE_URL` ile
+  `npm run test:streamer-stream-screen-e2e` ve `npm run test:streamer-session-e2e`.
+  Üç yayıncı e2e betiği (`test:streamer-connect-e2e` dahil) genel `features` sistem ayarını
+  değiştirir; bu yüzden `--workers=1` ile ve art arda çalışır, paralel koşulmamalıdır.
