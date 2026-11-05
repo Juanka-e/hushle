@@ -21,7 +21,7 @@ case "$JOB" in
     SCHEDULE_KEY="STREAMER_HYGIENE_SCHEDULE_CONFIGURED"
     ;;
   *)
-    echo "Unsupported job: ${JOB:-missing}" >&2
+    echo "Unsupported payment job: ${JOB:-missing}" >&2
     exit 64
     ;;
 esac
