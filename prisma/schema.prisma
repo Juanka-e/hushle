@@ -136,6 +136,18 @@ enum StreamerConnectionStatus {
   revoked
 }
 
+enum StreamSessionStatus {
+  active
+  ended
+  interrupted
+}
+
+enum StreamRoundOutcome {
+  solved
+  timeout
+  passed
+}
+
 enum UserAccountStatus {
   active
   pending_email_verification
@@ -341,6 +353,7 @@ model User {
   emailSuppressions        EmailSuppression[]
   oauthAccounts            OAuthAccount[]
   streamerConnections      StreamerConnection[]
+  streamSessions           StreamSession[]
   paymentOrders            PaymentOrder[]
   paymentReversalsAuthored PaymentReversal[] @relation("PaymentReversalActor")
   paymentReversalRequestsAuthored PaymentReversalRequest[] @relation("PaymentReversalRequestActor")
@@ -709,12 +722,55 @@ model StreamerConnection {
   createdAt            DateTime                @default(now()) @map("created_at")
   updatedAt            DateTime                @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions StreamSession[]
 
   @@unique([platform, platformUserId])
   @@unique([userId, platform])
   @@index([status, lastUsedAt])
   @@map("streamer_connections")
+}
+
+model StreamSession {
+  id           String              @id @default(uuid()) @db.Char(36)
+  userId       Int                 @map("user_id")
+  connectionId String?             @map("connection_id") @db.Char(36)
+  platform     StreamerPlatform
+  status       StreamSessionStatus @default(active)
+  settings     Json
+  viewKeyHash  String              @map("view_key_hash") @db.Char(64)
+  startedAt    DateTime            @default(now()) @map("started_at")
+  endedAt      DateTime?           @map("ended_at")
+  roundCount   Int                 @default(0) @map("round_count")
+  summary      Json?
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection StreamerConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  results    StreamRoundResult[]
+
+  @@unique([viewKeyHash])
+  @@index([userId, status])
+  @@map("stream_sessions")
+}
+
+model StreamRoundResult {
+  id                   Int                @id @default(autoincrement())
+  sessionId            String             @map("session_id") @db.Char(36)
+  round                Int
+  wordId               Int?               @map("word_id")
+  outcome              StreamRoundOutcome
+  winnerPlatformUserId String?            @map("winner_platform_user_id") @db.VarChar(64)
+  winnerName           String?            @map("winner_name") @db.VarChar(100)
+  solveMs              Int?               @map("solve_ms")
+  startedAt            DateTime           @map("started_at")
+  endedAt              DateTime           @map("ended_at")
+
+  session StreamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, round])
+  @@map("stream_round_results")
 }
 
 model MobileAuthSession {
