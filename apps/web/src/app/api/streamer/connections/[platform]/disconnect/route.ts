@@ -29,7 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pla
     const { platform } = await params;
     try {
         const result = await disconnectPlatform(createConnectFlowDeps(request), {
-            user: { id: sessionUser.id, role: sessionUser.role },
+            user: { id: sessionUser.id, role: sessionUser.role, accountStatus: sessionUser.accountStatus },
             platform,
             requestIp: getRequestIp(request),
         });

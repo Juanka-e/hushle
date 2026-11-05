@@ -14,6 +14,7 @@ import type { StreamerConnectionsResponse, StreamerConnectionView } from "@/type
 
 const ERROR_KEYS: Record<string, TranslationKey> = {
     unauthenticated: "settings.streamerErrorUnauthenticated",
+    account_not_active: "settings.streamerErrorAccountNotActive",
     platform_invalid: "settings.streamerErrorPlatformInvalid",
     disabled: "settings.streamerErrorDisabled",
     platform_unavailable: "settings.streamerErrorPlatformUnavailable",

@@ -37,9 +37,10 @@ function keyring(current: string, version: number, previous?: { key: string; ver
     });
 }
 
-function flipLastChar(value: string): string {
-    const last = value.at(-1) === "A" ? "B" : "A";
-    return value.slice(0, -1) + last;
+function flipFirstByte(value: string): string {
+    const bytes = Buffer.from(value, "base64url");
+    bytes[0] ^= 0x01;
+    return bytes.toString("base64url");
 }
 
 test("connectionAad binds platform and platform user id", () => {
@@ -65,11 +66,16 @@ test("every encryption uses a fresh IV", () => {
 test("tampered ciphertext is rejected as tampered", () => {
     const ring = keyring(keyA, 1);
     const [version, iv, tag, ciphertext] = encryptToken("token", ring, aad).split(".");
-    const tampered = [version, iv, tag, flipLastChar(ciphertext)].join(".");
-    assert.throws(
-        () => decryptToken(tampered, ring, aad),
-        (error: unknown) => error instanceof TokenDecryptError && error.reason === "tampered"
-    );
+    for (const tampered of [
+        [version, iv, tag, flipFirstByte(ciphertext)].join("."),
+        [version, iv, flipFirstByte(tag), ciphertext].join("."),
+        [version, flipFirstByte(iv), tag, ciphertext].join("."),
+    ]) {
+        assert.throws(
+            () => decryptToken(tampered, ring, aad),
+            (error: unknown) => error instanceof TokenDecryptError && error.reason === "tampered"
+        );
+    }
 });
 
 test("a different aad is rejected as tampered (ciphertext cannot move between rows)", () => {

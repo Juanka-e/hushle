@@ -22,13 +22,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
         throw error;
     }
-    const sessionUser = await getSessionUser();
-    const result = await startConnect(deps, {
-        user: sessionUser ? { id: sessionUser.id, role: sessionUser.role } : null,
-        platform,
-        requestIp: getRequestIp(request),
-        origin: base,
-    });
+    let result;
+    try {
+        const sessionUser = await getSessionUser();
+        result = await startConnect(deps, {
+            user: sessionUser ? { id: sessionUser.id, role: sessionUser.role, accountStatus: sessionUser.accountStatus } : null,
+            platform,
+            requestIp: getRequestIp(request),
+            origin: base,
+        });
+    } catch (error) {
+        // A database or configuration failure must not leave the streamer on a raw 500 page.
+        console.error("streamer connect start failed", error instanceof Error ? error.name : error);
+        return NextResponse.redirect(new URL(settingsRedirect("error", platform, "internal_error"), base), 302);
+    }
     const response = NextResponse.redirect(new URL(result.redirectTo, base), 302);
     if (result.setCookie) {
         response.cookies.set({

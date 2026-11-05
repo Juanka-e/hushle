@@ -177,7 +177,7 @@ async function main(): Promise<void> {
         const seeded = d.store.seed(row());
         const result = await revokeConnectionTokens(d, seeded, "user_disconnected", "revoked");
         assert.deepEqual(result, { revokedAtPlatform: true });
-        assert.deepEqual(fake.revoked, ["fake-refresh-deniz"]);
+        assert.deepEqual(fake.revoked, ["fake-access-deniz-0"], "the stored access token is revoked first (Twitch accepts access tokens)");
         const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
         assert.equal(stored.status, "revoked");
         assert.equal(stored.statusReason, "user_disconnected");
@@ -248,6 +248,39 @@ async function main(): Promise<void> {
         await store.markNeedsReconnect(seeded.id, "refresh_failed", NOW);
         assert.equal(store.rows[0].status, "revoked");
         assert.equal(store.rows[0].statusReason, "user_disconnected");
+    });
+
+    await test("review 2.3: when neither stored token can be revoked, a refreshed access token is revoked instead", async () => {
+        const fake = createFakePlatformClient("twitch", { now: () => NOW.getTime() });
+        let attempts = 0;
+        const picky: StreamerPlatformClient = {
+            ...fake,
+            async revoke(token, hint) {
+                attempts += 1;
+                // Twitch-like: only a live access token is accepted; the stored one is stale.
+                if (hint !== "access_token" || token === "fake-access-deniz-0") throw new StreamerPlatformError("twitch", "revoke", "unexpected", 400);
+                return fake.revoke(token, hint);
+            },
+        };
+        const d = deps(picky);
+        const seeded = d.store.seed(row());
+        const result = await revokeConnectionTokens(d, seeded, "user_disconnected", "revoked");
+        assert.deepEqual(result, { revokedAtPlatform: true });
+        assert.ok(attempts >= 3, "stored access, stored refresh, then the refreshed access token");
+        assert.equal(fake.revoked.length, 1);
+        assert.match(fake.revoked[0], /^fake-access-deniz-\d+$/);
+        assert.equal((await d.store.findByUserAndPlatform(42, "twitch"))!.status, "revoked");
+    });
+
+    await test("review 2 minor 3: relinking resets lastUsedAt so a dormant row is not revoked again next night", async () => {
+        const store = createMemoryStreamerConnectionStore();
+        const identity = { platformUserId: "fake-deniz", login: "deniz", displayName: "Deniz", avatarUrl: null, channelUrl: "https://twitch.tv/deniz" };
+        const first = await store.upsertLinked({ userId: 42, platform: "twitch", identity, scopes: [], accessTokenEnc: "a", refreshTokenEnc: "r", tokenKeyVersion: 1, accessTokenExpiresAt: null, now: NOW });
+        await store.touchUsed(first.record.id, new Date(NOW.getTime() - 200 * 86_400_000));
+        await store.markNeedsReconnect(first.record.id, "dormant", NOW);
+        const second = await store.upsertLinked({ userId: 42, platform: "twitch", identity, scopes: [], accessTokenEnc: "a2", refreshTokenEnc: "r2", tokenKeyVersion: 1, accessTokenExpiresAt: null, now: NOW });
+        assert.equal(second.record.lastUsedAt, null);
+        assert.equal((await store.findDormant(new Date(NOW.getTime() - 90 * 86_400_000), 10)).length, 0);
     });
 
     await test("memory store: upsertLinked relinks the same user/platform row and findDormant filters by status and age", async () => {

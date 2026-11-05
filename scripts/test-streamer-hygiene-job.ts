@@ -87,7 +87,7 @@ async function main(): Promise<void> {
         assert.equal(result.revokedCount, 1);
         assert.equal(result.platformRevokeFailures, 0);
         assert.equal(result.hasMore, false);
-        assert.deepEqual(h.fakes.twitch.revoked, ["fake-refresh-old"]);
+        assert.deepEqual(h.fakes.twitch.revoked, ["fake-access-old-0"]);
         const stored = h.store.rows[0];
         assert.equal(stored.status, "needs_reconnect");
         assert.equal(stored.statusReason, "dormant");
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
         h.store.seed(row("00000000-0000-4000-8000-000000000031", "kick", "silent"));
         const result = await h.run(false);
         assert.equal(result.revokedCount, 1);
-        assert.deepEqual(h.fakes.kick.revoked, ["fake-refresh-silent"]);
+        assert.deepEqual(h.fakes.kick.revoked, ["fake-access-silent-0"]);
     });
 
     await test("a failing platform revoke still clears the tokens and is counted", async () => {

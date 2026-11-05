@@ -23,6 +23,8 @@ import { settingsRedirect, type StreamerRedirectCode } from "./redirects";
 export interface ConnectFlowUser {
     id: number;
     role: string;
+    /** `active` links; `pending_email_verification` (and anything else) does not. */
+    accountStatus: string;
 }
 
 export interface ConnectRateLimitResult {
@@ -98,6 +100,7 @@ export async function startConnect(
     const platform = input.platform;
     if (!isStreamerPlatform(platform)) return fail(platform, "platform_invalid");
     if (!input.user) return fail(platform, "unauthenticated");
+    if (input.user.accountStatus !== "active") return fail(platform, "account_not_active");
     if (!(await deps.isStreamerModeEnabled())) return fail(platform, "disabled");
     if (!deps.isPlatformConfigured(platform)) return fail(platform, "platform_unavailable");
     const limit = await deps.consumeRateLimit({ ...CONNECT_RATE_LIMITS.start, key: `user:${input.user.id}` });
@@ -125,6 +128,7 @@ async function decideCallback(
     if (!isStreamerPlatform(platform)) return fail(platform, "platform_invalid");
     const user = input.user;
     if (!user) return fail(platform, "unauthenticated");
+    if (user.accountStatus !== "active") return fail(platform, "account_not_active");
     const limit = await deps.consumeRateLimit({ ...CONNECT_RATE_LIMITS.callback, key: `ip:${input.requestIp}` });
     if (!limit.allowed) return fail(platform, "rate_limited");
     if (!(await deps.isStreamerModeEnabled())) return fail(platform, "disabled");

@@ -4,7 +4,7 @@ import { StreamerConfigError } from "@hushle/platform-streamer";
 import { translate } from "@/lib/i18n/dictionaries";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { getSessionUser } from "@/lib/session";
-import { listConnectionsView } from "@/lib/streamer/connections-view";
+import { verifyActiveConnections } from "@/lib/streamer/connections-view";
 import { createConnectFlowDeps } from "@/lib/streamer/deps";
 import type { StreamerConnectionsResponse } from "@/types/streamer";
 
@@ -23,7 +23,7 @@ export default async function StreamerPage() {
 
     let view: StreamerConnectionsResponse = { enabled: false, platforms: [] };
     try {
-        view = await listConnectionsView(createConnectFlowDeps(null), sessionUser.id);
+        view = await verifyActiveConnections(createConnectFlowDeps(null), sessionUser.id);
     } catch (error) {
         if (!(error instanceof StreamerConfigError)) throw error;
     }

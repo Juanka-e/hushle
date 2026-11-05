@@ -7,6 +7,7 @@ import {
 } from "@/lib/moderation/schema";
 import { clearExpiredSuspensions } from "@/lib/moderation/service";
 import { writeAuditLog } from "@/lib/security/audit-log";
+import { revokeStreamerConnectionsForUser } from "@/lib/streamer/connections-view";
 import {
     buildRateLimitHeaders,
     consumeRequestRateLimit,
@@ -146,6 +147,11 @@ export async function POST(
 
             return event;
         });
+
+        if (action.actionType === "suspend") {
+            // A suspended account keeps no live platform grant (streamer spec, karar 4).
+            await revokeStreamerConnectionsForUser(targetUserId, request);
+        }
 
         await writeAuditLog({
             actor: adminSession,

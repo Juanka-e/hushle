@@ -70,21 +70,23 @@ JOBS_ENABLED=true npm run jobs:run -- streamer-connection-hygiene execute
 ```
 
 Üretimde günde bir `infra/systemd/hushle-streamer-hygiene.timer` (03:40) →
-`scripts/ops/run-payment-job.sh streamer-connection-hygiene`. Kurulum
-`scripts/ops/install-payment-schedulers.sh --enable` ile ödeme zamanlayıcılarıyla
-birlikte yapılır; `.env.production` içinde `STREAMER_HYGIENE_SCHEDULE_CONFIGURED=true`
-gerekir. Her iptal `streamer.connection.dormant_revoked` audit kaydı bırakır (aktör: system).
+`scripts/ops/run-payment-job.sh streamer-connection-hygiene`. Birim dosyaları
+`scripts/ops/install-payment-schedulers.sh` ile kurulur; zamanlayıcı yalnız
+`ENABLE_STREAMER_HYGIENE=true scripts/ops/install-payment-schedulers.sh --enable` ile
+açılır ve `.env.production` içinde `STREAMER_HYGIENE_SCHEDULE_CONFIGURED=true` ister. Her iptal `streamer.connection.dormant_revoked` audit kaydı bırakır (aktör: system).
 
 Diğer yaşam döngüsü olayları:
 
 - Refresh başarısız (`invalid_grant`): token'lar anında silinir, `needs_reconnect` / `refresh_failed`.
-- Platform token uç noktasından 401 (`invalid_client`, yanlış secret): satır dokunulmaz,
-  olay kaydedilir; önce yapılandırmayı düzelt.
+- Platform token uç noktasından 401 (`invalid_client`, yanlış secret) ya da ağ hatası:
+  satır dokunulmaz, hata çağırana iletilir; önce yapılandırmayı düzelt.
 - Kullanıcı "Kaldır" der: platformda iptal + `revoked` / `user_disconnected`.
-- Hesap kapatma: `revokeAllForUser(deps, userId, "account_closed")` (apps/web
-  `lib/streamer/connections-view.ts`). Bugün sunucu tarafında hesap silme akışı
-  olmadığı için çağrılmıyor; veritabanı cascade satırı siler, platform tarafı bakım
-  işine kalır. Hesap silme akışı eklendiğinde silmeden önce bu fonksiyon çağrılmalıdır.
+- Askıya alma: admin "suspend" işlemi `revokeStreamerConnectionsForUser` ile kullanıcının
+  bütün bağlantılarını platformda iptal eder ve `revoked` / `account_closed` yapar.
+- Hesap silme: yalnız e-postası doğrulanmamış hesaplar bakım işiyle silinir; bu hesaplar
+  kanal bağlayamaz (`account_not_active`). Veritabanı cascade satırı siler. İleride tam
+  bir hesap silme akışı eklenirse silmeden önce `revokeStreamerConnectionsForUser`
+  çağrılmalıdır; cascade sonrası platform tarafında iptal mümkün değildir.
 - Yeniden bağlama: yeni token'lar yazıldıktan sonra eskileri platformda iptal edilir;
   kanal değiştiyse audit `channel_changed` nedeni taşır.
 
@@ -122,6 +124,10 @@ Diğer yaşam döngüsü olayları:
 - `state` tek kullanımlığı çerezin silinmesine dayanır; sunucu tarafında kullanılmış
   state kaydı yok (10 dakika, yalnız aynı oturumda tekrar oynatılabilir).
 - Token yazımları `status = active` koşuluyla yapılır; yarışı kaybeden yenileme yeni
-  token'ları iptal eder. Aynı anda iki yenileme olursa biri yeniden bağlama ister.
-- Twitch'in saatlik `/validate` şartı yayın oturumu aşamasında (2. aşama) panel açıkken
-  uygulanacak; bu aşamada yalnız bağlama anında doğrulanır.
+  token'ları iptal eder. Aynı anda iki yenileme olursa biri yeniden bağlama ister;
+  2. aşamada refresh token üzerinden karşılaştır-ve-yaz eklenmelidir.
+- Platformda iptal sırası: saklı access token, saklı refresh token, ikisi de reddedilirse
+  refresh ile taze bir access token alınıp o iptal edilir (Twitch yalnız access token kabul eder).
+- `/streamer` her açılışta etkin bağlantıyı doğrular (gerekirse yeniler, Twitch'te
+  `/validate` çağırır); geçersiz bağlantı `needs_reconnect` olur. Twitch'in saatlik
+  doğrulama şartı yayın oturumu sürerken 2. aşamada uygulanacak.

@@ -5,6 +5,7 @@ import type { StreamerPlatform } from "@hushle/platform-streamer";
 
 export const STREAMER_REDIRECT_CODES = [
     "unauthenticated",
+    "account_not_active",
     "platform_invalid",
     "disabled",
     "platform_unavailable",

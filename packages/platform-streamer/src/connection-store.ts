@@ -108,6 +108,7 @@ export const prismaStreamerConnectionStore: StreamerConnectionStore = {
             revokedAt: null,
             connectedAt: input.now,
             lastValidatedAt: input.now,
+            lastUsedAt: null,
         };
         const existing = await prisma.streamerConnection.findUnique({
             where: { userId_platform: { userId: input.userId, platform: input.platform } },
@@ -222,6 +223,7 @@ export function createMemoryStreamerConnectionStore(): MemoryStreamerConnectionS
                 revokedAt: null,
                 connectedAt: input.now,
                 lastValidatedAt: input.now,
+                lastUsedAt: null,
                 updatedAt: input.now,
             };
             const existing = rows.find((row) => row.userId === input.userId && row.platform === input.platform);
@@ -240,7 +242,6 @@ export function createMemoryStreamerConnectionStore(): MemoryStreamerConnectionS
                 id: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
                 userId: input.userId,
                 platform: input.platform,
-                lastUsedAt: null,
                 createdAt: input.now,
                 ...columns,
             };

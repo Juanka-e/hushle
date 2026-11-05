@@ -17,8 +17,11 @@ case "$JOB" in
   payment-reconciliation)
     SCHEDULE_KEY="PAYMENT_RECONCILIATION_SCHEDULE_CONFIGURED"
     ;;
+  streamer-connection-hygiene)
+    SCHEDULE_KEY="STREAMER_HYGIENE_SCHEDULE_CONFIGURED"
+    ;;
   *)
-    echo "Unsupported payment job: ${JOB:-missing}" >&2
+    echo "Unsupported job: ${JOB:-missing}" >&2
     exit 64
     ;;
 esac

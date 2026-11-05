@@ -161,10 +161,23 @@ export async function revokeConnectionTokens(
 ): Promise<{ revokedAtPlatform: boolean }> {
     const refreshToken = connection.refreshTokenEnc ? decryptOrNull(deps, connection, connection.refreshTokenEnc) : null;
     const accessToken = connection.accessTokenEnc ? decryptOrNull(deps, connection, connection.accessTokenEnc) : null;
-    const revokedAtPlatform = await revokeAtPlatform(deps.client, [
-        [refreshToken, "refresh_token"],
+    let revokedAtPlatform = await revokeAtPlatform(deps.client, [
         [accessToken, "access_token"],
+        [refreshToken, "refresh_token"],
     ]);
+    if (!revokedAtPlatform && refreshToken) {
+        // Twitch revokes access tokens; a stored one is usually stale. Mint a fresh one just
+        // to revoke it, which also invalidates the grant behind it.
+        try {
+            const fresh = await deps.client.refresh(refreshToken);
+            revokedAtPlatform = await revokeAtPlatform(deps.client, [
+                [fresh.accessToken, "access_token"],
+                [fresh.refreshToken, "refresh_token"],
+            ]);
+        } catch (error) {
+            if (!(error instanceof StreamerPlatformError)) throw error;
+        }
+    }
     const now = clock(deps);
     if (status === "revoked") await deps.store.markRevoked(connection.id, reason, now);
     else await deps.store.markNeedsReconnect(connection.id, reason, now);

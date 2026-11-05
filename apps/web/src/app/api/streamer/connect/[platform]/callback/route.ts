@@ -26,14 +26,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         }
         throw error;
     }
-    const sessionUser = await getSessionUser();
-    const result = await completeConnect(deps, {
-        user: sessionUser ? { id: sessionUser.id, role: sessionUser.role } : null,
-        platform,
-        query: request.nextUrl.searchParams,
-        cookieValue: request.cookies.get(CONNECT_STATE_COOKIE)?.value,
-        requestIp: getRequestIp(request),
-        origin: base,
-    });
-    return clearCookie(NextResponse.redirect(new URL(result.redirectTo, base), 302));
+    try {
+        const sessionUser = await getSessionUser();
+        const result = await completeConnect(deps, {
+            user: sessionUser ? { id: sessionUser.id, role: sessionUser.role, accountStatus: sessionUser.accountStatus } : null,
+            platform,
+            query: request.nextUrl.searchParams,
+            cookieValue: request.cookies.get(CONNECT_STATE_COOKIE)?.value,
+            requestIp: getRequestIp(request),
+            origin: base,
+        });
+        return clearCookie(NextResponse.redirect(new URL(result.redirectTo, base), 302));
+    } catch (error) {
+        console.error("streamer connect callback failed", error instanceof Error ? error.name : error);
+        return clearCookie(NextResponse.redirect(new URL(settingsRedirect("error", platform, "internal_error"), base), 302));
+    }
 }

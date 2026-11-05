@@ -5,6 +5,7 @@ import {
     createFakePlatformClient,
     createMemoryStreamerConnectionStore,
     decryptToken,
+    encryptToken,
     loadTokenKeyring,
     StreamerPlatformError,
     type FakePlatformClient,
@@ -13,7 +14,8 @@ import {
 } from "@hushle/platform-streamer";
 import { readConnectState } from "../apps/web/src/lib/streamer/connect-state";
 import { completeConnect, startConnect, type ConnectFlowDeps, type ConnectFlowUser } from "../apps/web/src/lib/streamer/connect-flow";
-import { disconnectPlatform, listConnectionsView, revokeAllForUser } from "../apps/web/src/lib/streamer/connections-view";
+import { disconnectPlatform, listConnectionsView, revokeAllForUser, verifyActiveConnections } from "../apps/web/src/lib/streamer/connections-view";
+import { StreamerConfigError } from "@hushle/platform-streamer";
 import { publicOriginFor, settingsRedirect, STREAMER_REDIRECT_CODES } from "../apps/web/src/lib/streamer/redirects";
 
 // Start → platform → callback, with every refusal the spec lists (güvenlik kontrol listesi).
@@ -29,8 +31,8 @@ const NOW = new Date("2026-11-05T12:00:00Z");
 const secret = "s".repeat(48);
 const keyring = loadTokenKeyring({ STREAMER_TOKEN_KEY: randomBytes(32).toString("base64") });
 const origin = "https://hushle.example";
-const user1: ConnectFlowUser = { id: 1, role: "user" };
-const user2: ConnectFlowUser = { id: 2, role: "user" };
+const user1: ConnectFlowUser = { id: 1, role: "user", accountStatus: "active" };
+const user2: ConnectFlowUser = { id: 2, role: "user", accountStatus: "active" };
 
 interface Harness {
     deps: ConnectFlowDeps;
@@ -290,7 +292,8 @@ async function main(): Promise<void> {
         const h = harness();
         await startAndCallback(h, user1, "twitch", "deniz");
         await startAndCallback(h, user1, "twitch", "deniz");
-        assert.deepEqual(h.fake.twitch.revoked, ["fake-refresh-deniz"], "the old refresh token is revoked on relink");
+        assert.equal(h.fake.twitch.revoked.length, 1, "the old grant is revoked on relink");
+        assert.match(h.fake.twitch.revoked[0], /^fake-(access|refresh)-deniz/);
         await startAndCallback(h, user1, "twitch", "deniz2");
         assert.equal(h.fake.twitch.revoked.length, 2);
         const row = (await h.store.findByUserAndPlatform(1, "twitch"))!;
@@ -355,6 +358,56 @@ async function main(): Promise<void> {
         assert.equal(h.store.rows.length, 0);
     });
 
+    // ---- review 2 findings
+
+    await test("review 2.1: an account that is not active cannot start or finish a link", async () => {
+        const h = harness();
+        const pending: ConnectFlowUser = { id: 9, role: "user", accountStatus: "pending_email_verification" };
+        const started = await startConnect(h.deps, { user: pending, platform: "twitch", requestIp: "ip", origin });
+        assert.equal(codeOf(started.redirectTo).code, "account_not_active");
+        assert.equal(started.setCookie, undefined);
+        const activeStart = await startConnect(h.deps, { user: user1, platform: "twitch", requestIp: "ip", origin });
+        const state = new URL(activeStart.redirectTo, origin).searchParams.get("state")!;
+        const finished = await completeConnect(h.deps, { user: { ...user1, accountStatus: "pending_email_verification" }, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state }), cookieValue: activeStart.setCookie!.value, requestIp: "ip", origin });
+        assert.equal(codeOf(finished.redirectTo).code, "account_not_active");
+        assert.equal(h.store.rows.length, 0);
+    });
+
+    await test("review 2.2: opening the panel validates the active connection and stamps lastValidatedAt", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "twitch");
+        const before = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        const later = new Date(NOW.getTime() + 60_000);
+        h.deps.now = () => later;
+        const view = await verifyActiveConnections(h.deps, user1.id);
+        assert.equal(view.platforms[0].connection?.status, "active");
+        const after = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        assert.equal(after.lastValidatedAt?.getTime(), later.getTime());
+        assert.notEqual(after.lastValidatedAt?.getTime(), before.lastValidatedAt?.getTime());
+    });
+
+    await test("review 2.2: a connection the platform no longer honours becomes needs_reconnect when the panel opens", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "twitch");
+        const row = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        // Simulate a revoked grant: the stored access token is unknown to the platform and the refresh token is dead.
+        const aad = connectionAad("twitch", "fake-deniz");
+        await h.store.updateTokens(row.id, { accessTokenEnc: encryptToken("not-a-fake-token", keyring, aad), refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad), tokenKeyVersion: 1, accessTokenExpiresAt: new Date(NOW.getTime() + 3_600_000), now: NOW });
+        const view = await verifyActiveConnections(h.deps, user1.id);
+        assert.equal(view.platforms[0].connection?.status, "needs_reconnect");
+        assert.equal((await h.store.findByUserAndPlatform(1, "twitch"))!.statusReason, "refresh_failed");
+    });
+
+    await test("review 2 minor 1: 'Kaldır' still works when the platform client cannot be built", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "kick");
+        h.deps.clientFor = () => { throw new StreamerConfigError("STREAMER_KICK_CLIENT_ID and STREAMER_KICK_CLIENT_SECRET are required"); };
+        assert.deepEqual(await disconnectPlatform(h.deps, { user: user1, platform: "kick", requestIp: "ip" }), { ok: true });
+        const row = (await h.store.findByUserAndPlatform(1, "kick"))!;
+        assert.equal(row.status, "revoked");
+        assert.equal(row.refreshTokenEnc, null);
+    });
+
     // ---- Task 6: connections view, disconnect, account closure
 
     await test("the connections view lists both platforms, hides tokens and reports configuration", async () => {
@@ -382,7 +435,8 @@ async function main(): Promise<void> {
         await startAndCallback(h, user1, "kick");
         const result = await disconnectPlatform(h.deps, { user: user1, platform: "kick", requestIp: "ip" });
         assert.deepEqual(result, { ok: true });
-        assert.deepEqual(h.fake.kick.revoked, ["fake-refresh-deniz"]);
+        assert.equal(h.fake.kick.revoked.length, 1);
+        assert.match(h.fake.kick.revoked[0], /^fake-(access|refresh)-deniz/);
         const row = (await h.store.findByUserAndPlatform(1, "kick"))!;
         assert.equal(row.status, "revoked");
         assert.equal(row.statusReason, "user_disconnected");

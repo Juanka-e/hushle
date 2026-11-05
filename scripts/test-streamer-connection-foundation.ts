@@ -83,6 +83,17 @@ const listRoute = read("apps/web/src/app/api/streamer/connections/route.ts");
 assert.match(listRoute, /AUTH_REQUIRED/);
 assert.doesNotMatch(listRoute + disconnectRoute, /TokenEnc|accessToken|refreshToken/, "routes never touch token columns");
 
+// --- review 2: the systemd units must name jobs the wrapper script accepts -----
+
+const wrapper = read("scripts/ops/run-payment-job.sh");
+for (const unit of ["hushle-payment-webhook.service", "hushle-payment-reconciliation.service", "hushle-streamer-hygiene.service"]) {
+    const job = /ExecStart=.*run-payment-job\.sh ([a-z-]+)/.exec(read(`infra/systemd/${unit}`))?.[1];
+    assert.ok(job, `${unit} must run a job through run-payment-job.sh`);
+    assert.ok(wrapper.includes(`  ${job})`), `run-payment-job.sh must accept ${job}`);
+}
+assert.match(wrapper, /STREAMER_HYGIENE_SCHEDULE_CONFIGURED/);
+assert.match(read("scripts/ops/install-payment-schedulers.sh"), /ENABLE_STREAMER_HYGIENE/);
+
 // --- Task 10: env examples, compose passthrough, CI, docs ----------------------
 
 const STREAMER_ENV_NAMES = [
@@ -113,7 +124,7 @@ assert.match(ci, /STREAMER_FAKE_PLATFORM: "1"/);
 assert.match(ci, /HUSHLE_E2E_SMOKE: "1"/);
 assert.match(read("docs/stream/README.md"), /platform-connections-guide\.md/);
 const guide = read("docs/stream/platform-connections-guide.md");
-for (const needle of ["/api/streamer/connect/twitch/callback", "/api/streamer/connect/kick/callback", "openssl rand -base64 32", "STREAMER_TOKEN_KEY_PREVIOUS", "streamer-connection-hygiene", "revokeAllForUser"]) {
+for (const needle of ["/api/streamer/connect/twitch/callback", "/api/streamer/connect/kick/callback", "openssl rand -base64 32", "STREAMER_TOKEN_KEY_PREVIOUS", "streamer-connection-hygiene", "revokeStreamerConnectionsForUser"]) {
     assert.ok(guide.includes(needle), `guide must mention ${needle}`);
 }
 

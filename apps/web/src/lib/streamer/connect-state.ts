@@ -32,10 +32,11 @@ interface StatePayload {
     t: number;
 }
 
-export function requireConnectStateSecret(env: { [key: string]: string | undefined; STREAMER_CONNECT_SECRET?: string; AUTH_SECRET?: string }): string {
-    const secret = env.STREAMER_CONNECT_SECRET?.trim() || env.AUTH_SECRET?.trim() || "";
+// Signed with AUTH_SECRET under its own domain prefix (see `sign`), so no extra secret to rotate.
+export function requireConnectStateSecret(env: { [key: string]: string | undefined; AUTH_SECRET?: string }): string {
+    const secret = env.AUTH_SECRET?.trim() || "";
     if (secret.length < MIN_SECRET_LENGTH) {
-        throw new StreamerConfigError(`STREAMER_CONNECT_SECRET or AUTH_SECRET must be at least ${MIN_SECRET_LENGTH} characters`);
+        throw new StreamerConfigError(`AUTH_SECRET must be at least ${MIN_SECRET_LENGTH} characters`);
     }
     return secret;
 }

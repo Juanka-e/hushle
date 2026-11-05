@@ -92,7 +92,6 @@ test("the signing secret must be at least 32 characters", () => {
     assert.throws(() => requireConnectStateSecret({ AUTH_SECRET: "short" }), /32/);
     assert.throws(() => requireConnectStateSecret({}), /32/);
     assert.equal(requireConnectStateSecret({ AUTH_SECRET: secret }), secret);
-    assert.equal(requireConnectStateSecret({ STREAMER_CONNECT_SECRET: "c".repeat(40), AUTH_SECRET: secret }), "c".repeat(40));
 });
 
 console.log(`${count} checks passed.`);
