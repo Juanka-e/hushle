@@ -59,4 +59,16 @@ assert.match(read("apps/web/src/types/system-settings.ts"), /streamerModeEnabled
 assert.match(read("apps/web/src/app/admin/(dashboard)/system-settings/page.tsx"), /features\.streamerModeEnabled/);
 assert.match(read("apps/web/src/app/api/admin/system-settings/route.ts"), /streamerModeEnabled: updatedSettings\.features\.streamerModeEnabled/);
 
+// --- Task 6: connections API routes ------------------------------------------
+
+const disconnectRoute = read("apps/web/src/app/api/streamer/connections/[platform]/disconnect/route.ts").split("export async function POST")[1] ?? "";
+assert.ok(disconnectRoute.indexOf("isTrustedStateChangeRequest(request)") < disconnectRoute.indexOf("getSessionUser()"), "origin check runs before the session lookup");
+assert.ok(disconnectRoute.indexOf("getSessionUser()") < disconnectRoute.indexOf("consumeDistributedRequestRateLimit"), "rate limit after session");
+assert.match(disconnectRoute, /bucket: "streamer-disconnect"/);
+assert.match(disconnectRoute, /maxRequests: 5/);
+assert.match(disconnectRoute, /STREAMER_CONNECTION_NOT_FOUND/);
+const listRoute = read("apps/web/src/app/api/streamer/connections/route.ts");
+assert.match(listRoute, /AUTH_REQUIRED/);
+assert.doesNotMatch(listRoute + disconnectRoute, /TokenEnc|accessToken|refreshToken/, "routes never touch token columns");
+
 console.log("PASS streamer connection foundation contract");

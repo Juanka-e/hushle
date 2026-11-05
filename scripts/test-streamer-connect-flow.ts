@@ -13,6 +13,7 @@ import {
 } from "@hushle/platform-streamer";
 import { readConnectState } from "../apps/web/src/lib/streamer/connect-state";
 import { completeConnect, startConnect, type ConnectFlowDeps, type ConnectFlowUser } from "../apps/web/src/lib/streamer/connect-flow";
+import { disconnectPlatform, listConnectionsView, revokeAllForUser } from "../apps/web/src/lib/streamer/connections-view";
 import { settingsRedirect, STREAMER_REDIRECT_CODES } from "../apps/web/src/lib/streamer/redirects";
 
 // Start → platform → callback, with every refusal the spec lists (güvenlik kontrol listesi).
@@ -274,6 +275,78 @@ async function main(): Promise<void> {
             user: null, platform: "twitch", query: new URLSearchParams({ code: "x", state: "y" }), cookieValue: "a.b", requestIp: "ip", origin,
         });
         assert.equal(codeOf(finished.redirectTo).code, "unauthenticated");
+    });
+
+    // ---- Task 6: connections view, disconnect, account closure
+
+    await test("the connections view lists both platforms, hides tokens and reports configuration", async () => {
+        const h = harness({ configured: ["twitch"] });
+        await startAndCallback(h, user1, "twitch");
+        const view = await listConnectionsView(h.deps, user1.id);
+        assert.equal(view.enabled, true);
+        assert.deepEqual(view.platforms.map((p) => [p.platform, p.label, p.configured, p.connection?.status ?? null]), [
+            ["twitch", "Twitch", true, "active"],
+            ["kick", "Kick", false, null],
+        ]);
+        const twitch = view.platforms[0].connection!;
+        assert.equal(twitch.login, "deniz");
+        assert.equal(twitch.displayName, "Deniz");
+        assert.equal(twitch.channelUrl, "https://twitch.tv/deniz");
+        assert.equal(typeof twitch.connectedAt, "string");
+        const json = JSON.stringify(view);
+        assert.ok(!/TokenEnc|fake-access|fake-refresh|tokenKeyVersion|platformUserId/.test(json), json);
+        h.enabled = false;
+        assert.equal((await listConnectionsView(h.deps, user1.id)).enabled, false);
+    });
+
+    await test("disconnect revokes at the platform, clears tokens, audits; a second call is not_found", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "kick");
+        const result = await disconnectPlatform(h.deps, { user: user1, platform: "kick", requestIp: "ip" });
+        assert.deepEqual(result, { ok: true });
+        assert.deepEqual(h.fake.kick.revoked, ["fake-refresh-deniz"]);
+        const row = (await h.store.findByUserAndPlatform(1, "kick"))!;
+        assert.equal(row.status, "revoked");
+        assert.equal(row.statusReason, "user_disconnected");
+        assert.equal(row.accessTokenEnc, null);
+        assert.equal(row.refreshTokenEnc, null);
+        const audit = h.audits.find((a) => a.action === "streamer.connection.disconnected");
+        assert.ok(audit);
+        assert.equal(audit.resourceId, row.id);
+        assert.deepEqual(audit.metadata, { platform: "kick", reason: "user_disconnected" });
+        assert.deepEqual(await disconnectPlatform(h.deps, { user: user1, platform: "kick", requestIp: "ip" }), { error: "not_found" });
+        assert.deepEqual(await disconnectPlatform(h.deps, { user: user1, platform: "twitch", requestIp: "ip" }), { error: "not_found" });
+        assert.deepEqual(await disconnectPlatform(h.deps, { user: user1, platform: "youtube", requestIp: "ip" }), { error: "not_found" });
+        const view = await listConnectionsView(h.deps, user1.id);
+        assert.equal(view.platforms[1].connection?.status, "revoked");
+    });
+
+    await test("a revoked connection can be linked again and comes back active", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "kick");
+        await disconnectPlatform(h.deps, { user: user1, platform: "kick", requestIp: "ip" });
+        const { finished } = await startAndCallback(h, user1, "kick");
+        assert.equal(codeOf(finished.redirectTo).streamer, "linked");
+        assert.equal((await h.store.findByUserAndPlatform(1, "kick"))!.status, "active");
+    });
+
+    await test("account closure revokes every platform of the user", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "twitch");
+        await startAndCallback(h, user1, "kick", "deniz");
+        await startAndCallback(h, user2, "twitch", "luna");
+        const revoked = await revokeAllForUser(h.deps, user1.id, "account_closed");
+        assert.equal(revoked, 2);
+        for (const platform of ["twitch", "kick"] as const) {
+            const row = (await h.store.findByUserAndPlatform(1, platform))!;
+            assert.equal(row.status, "revoked");
+            assert.equal(row.statusReason, "account_closed");
+            assert.equal(row.refreshTokenEnc, null);
+        }
+        assert.equal((await h.store.findByUserAndPlatform(2, "twitch"))!.status, "active");
+        assert.equal(h.fake.twitch.revoked.length, 1);
+        assert.equal(h.fake.kick.revoked.length, 1);
+        assert.equal(await revokeAllForUser(h.deps, user1.id, "account_closed"), 0);
     });
 
     console.log(`${count} checks passed.`);
