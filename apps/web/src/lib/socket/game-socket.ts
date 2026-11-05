@@ -2867,7 +2867,7 @@ function isSecureSocketHandshake(socket: Socket): boolean {
     return process.env.NODE_ENV === "production";
 }
 
-function isTrustedSocketOrigin(socket: Socket): boolean {
+export function isTrustedSocketOrigin(socket: Socket): boolean {
     const origin = socket.handshake.headers.origin;
     return isTrustedWebOrigin({
         origin: typeof origin === "string" ? origin : undefined,
@@ -2879,7 +2879,7 @@ function isTrustedSocketOrigin(socket: Socket): boolean {
     });
 }
 
-async function getSocketAuthState(socket: Socket): Promise<{
+export async function getSocketAuthState(socket: Socket): Promise<{
     userId: number | null;
     role: string | null;
     isSuspended: boolean;

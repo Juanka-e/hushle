@@ -98,3 +98,43 @@ Success and status text that the server sends to players has stable codes too, f
 - The fix keeps guest sockets allowed at handshake time and standardizes room create/join onto the ASCII event name `room:request`.
 - Current room controls also use ASCII event names. The server temporarily keeps
   exact legacy aliases for old clients, but new clients must not emit them.
+
+## Streamer mode
+
+Stream sessions use the same Socket.IO server (default namespace, path `/api/socketio`). The
+owner's panel joins the host room `streamer:host:<sessionId>`, which carries the secret card; the
+stream screen joins the public room `streamer:public:<sessionId>` with its view key and never
+receives the word or its taboos while a round is open. Payloads are checked with strict zod
+schemas (a wrong value or an unknown key is `INVALID_REQUEST`). Every event takes an optional ack,
+answered `{ ok: true, ... }` or `{ ok: false, error, code }`; without an ack a failure arrives as
+`hata`. A socket is in at most one host room and one public room: joining another leaves the
+previous one. Unexpected failures answer `UNKNOWN_ERROR`. Handlers live in
+`apps/web/src/lib/socket/streamer-socket.ts`; event names and ack types for clients in
+`apps/web/src/lib/streamer/socket-contract.ts`.
+
+### Streamer client -> server events
+
+| Event Name | Payload | Ack | Error codes |
+| :--- | :--- | :--- | :--- |
+| `streamer:host:join` | `{ sessionId: uuid }` | `{ ok: true, state: HostStreamSnapshot }` | `AUTH_REQUIRED` (no signed-in user, or a suspended one), `STREAMER_SESSION_NOT_FOUND` (no live session), `STREAMER_SESSION_NOT_OWNED`, `INVALID_REQUEST`, `RATE_LIMITED` (10 joins / 10 s per socket) |
+| `streamer:host:start`, `streamer:host:pause`, `streamer:host:resume`, `streamer:host:pass`, `streamer:host:next` | none | `{ ok: true }` | `STREAMER_ACTION_INVALID_PHASE`, `STREAMER_WORD_POOL_EMPTY` (start, pass, next), `STREAMER_SESSION_NOT_FOUND` (no host room joined, or the session ended), `RATE_LIMITED`, `INVALID_REQUEST` |
+| `streamer:host:end` | none or `{ reason?: "ended" }` | `{ ok: true }` | `STREAMER_SESSION_NOT_FOUND`, `RATE_LIMITED`, `INVALID_REQUEST` |
+| `streamer:host:settings` | `{ theme?, camera?, cameraSize?, clock?, cardBack?: { itemId } \| null, showCardName? }`, at least one key | `{ ok: true }` | `INVALID_REQUEST`, `STREAMER_CARD_NOT_ALLOWED` (not owned and not in the showcase), `STREAMER_CARD_CATALOGUE_UNAVAILABLE`, `STREAMER_SESSION_NOT_FOUND`, `RATE_LIMITED` |
+| `streamer:host:rotate-key` | none | `{ ok: true, viewKey }`: the only place the new key is sent | `STREAMER_SESSION_NOT_FOUND`, `RATE_LIMITED` |
+| `streamer:public:join` | `{ viewKey: string(43) }` | `{ ok: true, state: PublicStreamSnapshot }` | `STREAMER_VIEW_KEY_INVALID` (unknown, rotated or ended key, or an interrupted session), `RATE_LIMITED` (`streamer-public-join`, 30 / 60 s per IP), `INVALID_REQUEST` |
+
+Host actions (every `streamer:host:*` event but the join) share a burst limit of 10 per 10 s per
+socket and act only on the host room this socket joined; ownership is checked again on each one.
+
+### Streamer server -> client events
+
+| Event Name | Room | Payload | Description |
+| :--- | :--- | :--- | :--- |
+| `streamer:host:state` | host | `HostStreamSnapshot` | Every state change, with the card (`card: { wordId, target, taboos }`), the tolerance and the full ranking. |
+| `streamer:public:state` | public | `PublicStreamSnapshot` (schema 4) | Every state change without the card; `reveal` carries the word only once the round is finished. A server guard drops any public state that has a host-only field, an early reveal or the live word. |
+| `streamer:ended` | host and public | `{ reason: "ended" \| "idle" }` | The session ended (the host, the end route, or 6 h idle); both rooms are emptied after it. |
+| `streamer:ended` | public | `{ reason: "view-key-rotated" }` | The view key was rotated: the old stream screens leave the room; the host room stays. |
+| `hata` | caller | `(message, { code })` | A failed streamer event sent without an ack, or `ORIGIN_REJECTED` just before the disconnect. |
+
+The `interrupted` reason is reserved for a session the server lost (a restart); the server does
+not send it yet. `npm run test:streamer-socket-integration` covers these rules.
