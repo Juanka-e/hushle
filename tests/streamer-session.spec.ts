@@ -1,12 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 import bcryptjs from "bcryptjs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import { prisma } from "@hushle/platform-db";
+import { dictionaries } from "../apps/web/src/lib/i18n/dictionaries";
 
 // The host panel (/streamer) end to end against the fake platform: link a channel, open a
 // session from the form, copy the stream screen address, run rounds with the private card while
-// the public screen stays wordless, take a test guess, pass and end. The server needs
+// the public screen stays wordless, take a test guess, pass and end; then, with a session cut
+// short by a restart, the panel shows the "oturum kesildi" notice and opens no socket. The server needs
 // STREAMER_FAKE_PLATFORM=1, STREAMER_TOKEN_KEY and an OAuth public origin equal to the base URL
 // (STREAMER_OAUTH_PUBLIC_ORIGIN or NEXT_PUBLIC_SITE_URL); this process needs DATABASE_URL and
 // STREAMER_TOKEN_KEY. The run seeds its own category and words and removes them afterwards.
@@ -35,6 +37,7 @@ test.describe("streamer host panel", () => {
     let userId: number | null = null;
     let categoryId: number | null = null;
     let originalFeatures: unknown = undefined;
+    let interruptedSessionId: string | null = null;
 
     async function setStreamerMode(on: boolean): Promise<void> {
         const current = await prisma.systemSetting.findUnique({ where: { key: "features" } });
@@ -93,6 +96,7 @@ test.describe("streamer host panel", () => {
         } else {
             await prisma.systemSetting.update({ where: { key: "features" }, data: { value: originalFeatures as object } });
         }
+        if (interruptedSessionId !== null) await prisma.streamSession.deleteMany({ where: { id: interruptedSessionId } });
         if (userId !== null) {
             await prisma.auditLog.deleteMany({ where: { actorUserId: userId } });
             // Sessions, round results and the channel link go with the user.
@@ -274,5 +278,74 @@ test.describe("streamer host panel", () => {
             // A failed run must not leave its session live on the server.
             await page.request.post("/api/streamer/sessions/current/end", { headers: { origin } }).catch(() => undefined);
         }
+    });
+
+    test("a session cut short by a restart shows the interrupted notice and opens no host room", async ({ page }) => {
+        test.setTimeout(60_000);
+        expect(userId).not.toBeNull();
+        expect(categoryId).not.toBeNull();
+        // The panel needs the channel the first test linked (serial: this test runs after it).
+        const channel = await prisma.streamerConnection.findFirst({ where: { userId: userId!, platform: "twitch" }, select: { id: true } });
+        expect(channel, "the first test linked a Twitch channel").toBeTruthy();
+        // The row as boot reconciliation leaves it: the user's newest session, `interrupted`, with an end time.
+        const now = new Date();
+        const row = await prisma.streamSession.create({
+            data: {
+                userId: userId!,
+                connectionId: channel!.id,
+                platform: "twitch",
+                status: "interrupted",
+                settings: {
+                    platform: "twitch",
+                    language: "tr",
+                    categoryIds: [categoryId!],
+                    difficulties: [1],
+                    duration: 30,
+                    tolerance: "normal",
+                    theme: "studyo",
+                    camera: "br",
+                    cameraSize: "m",
+                    clock: null,
+                    cardBack: null,
+                    showCardName: true,
+                },
+                viewKeyHash: createHash("sha256").update(randomBytes(32)).digest("hex"),
+                startedAt: now,
+                endedAt: now,
+                roundCount: 1,
+            },
+            select: { id: true },
+        });
+        interruptedSessionId = row.id;
+
+        await login(page);
+        // Only the live view opens a Socket.IO connection (for the host room): none may start on
+        // this page, over either transport. The dev server's own HMR websocket is not one.
+        const socketTraffic: string[] = [];
+        const isSocketIo = (url: string) => new URL(url).pathname.startsWith("/api/socketio");
+        page.on("websocket", (socket) => {
+            if (isSocketIo(socket.url())) socketTraffic.push(`websocket ${socket.url()}`);
+        });
+        page.on("request", (request) => {
+            if (isSocketIo(request.url())) socketTraffic.push(`request ${request.url()}`);
+        });
+        await page.goto("/streamer");
+        const text = dictionaries.tr.streamer.panel;
+        await expect(page.getByRole("heading", { name: text.interruptedTitle })).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByText(text.interruptedHelp)).toBeVisible();
+        const fresh = page.getByRole("button", { name: text.newSession });
+        await expect(fresh).toBeVisible();
+        await expect(page.getByTestId("streamer-controls")).toHaveCount(0);
+        // The connection badge of the live view ("Bağlı" is also inside the channel line, hence exact).
+        for (const badge of [text.connecting, text.connected, text.reconnecting]) {
+            await expect(page.getByText(badge, { exact: true })).toHaveCount(0);
+        }
+        await page.screenshot({ path: path.join(SHOTS, "interrupted.png"), fullPage: true });
+        // Once hydrated the button leads to the form; by then the page has run its effects without a socket.
+        await expect(async () => {
+            await fresh.click({ timeout: 2_000 });
+            await expect(page.getByTestId("streamer-setup")).toBeVisible({ timeout: 2_000 });
+        }).toPass({ timeout: 20_000 });
+        expect(socketTraffic, "no socket was opened, so no host join was attempted").toEqual([]);
     });
 });
