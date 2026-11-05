@@ -182,7 +182,16 @@ async function main(): Promise<void> {
             wordSource: { next: async () => deck[drawn++ % deck.length], clear: (key) => cleared.push(key) },
             tickMs: 60_000,
         });
-        const deps = { sessions: store, connections: prismaStreamerConnectionStore, runtime };
+        const deps = { sessions: store, connections: prismaStreamerConnectionStore, runtime, getFeatureFlags: async () => ({ streamerShowcaseAllCosmetics: false }),
+            // Card back 4 is "owned" by a fake inventory: this test is about the stored rows, not the catalogue.
+            cardBackLoaders: {
+                inventory: async () => ({
+                    profile: { cardBackItemId: null },
+                    items: [{ shopItemId: 4, name: "Kor", type: "card_back", rarity: "rare" as const, renderMode: "template" as const, renderSpecVersion: 1, imageUrl: "/c/4.svg", thumbnailUrl: null, templateKey: "ember", templateConfig: null }],
+                }),
+                catalog: async () => [],
+            },
+        };
         try {
             const { session, viewKey } = await service.createSession(deps, { userId: first, settings: INPUT });
             assert.equal((await store.findByViewKeyHash(hashViewKey(viewKey)))?.id, session.id);

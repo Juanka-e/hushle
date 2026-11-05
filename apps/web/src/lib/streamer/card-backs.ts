@@ -31,6 +31,9 @@ export interface CardBackInventoryItem extends CardBackRenderFields {
 export interface CardBackCatalogItem extends CardBackRenderFields {
     id: number;
     isActive: boolean;
+    /** ISO instants of the availability window; null means open on that side. */
+    startsAt: string | null;
+    endsAt: string | null;
 }
 
 export interface CardBackInventory {
@@ -41,12 +44,14 @@ export interface CardBackInventory {
 export interface CardBackLoaders {
     inventory: (userId: number) => Promise<CardBackInventory>;
     catalog: (userId: number) => Promise<CardBackCatalogItem[]>;
+    now?: () => number;
 }
 
 export interface CardBackOption {
     itemId: number;
     name: string;
     owned: boolean;
+    /** Always true in this phase: only selectable card backs are listed. */
     selectable: boolean;
     equipped: boolean;
     preview: {
@@ -75,16 +80,32 @@ interface Candidate {
     owned: boolean;
 }
 
+// The platform catalogue only filters `isActive` in the database; the availability window is
+// the caller's to check, so a scheduled or ended item is not offered even with the switch on.
+function inWindow(entry: CardBackCatalogItem, now: number): boolean {
+    const starts = entry.startsAt ? Date.parse(entry.startsAt) : null;
+    const ends = entry.endsAt ? Date.parse(entry.endsAt) : null;
+    return (starts === null || Number.isNaN(starts) || starts <= now) && (ends === null || Number.isNaN(ends) || ends >= now);
+}
+
 async function candidates(userId: number, features: CardBackFeatures, deps: CardBackLoaders) {
-    const inventory = await deps.inventory(userId);
+    let inventory: CardBackInventory;
+    let catalog: CardBackCatalogItem[] = [];
+    try {
+        inventory = await deps.inventory(userId);
+        if (features.streamerShowcaseAllCosmetics) catalog = await deps.catalog(userId);
+    } catch {
+        throw new StreamerSessionError("card_catalogue_unavailable");
+    }
+    const now = deps.now ? deps.now() : Date.now();
     const byId = new Map<number, Candidate>();
     for (const owned of inventory.items) {
         if (owned.type !== "card_back") continue;
         byId.set(owned.shopItemId, { itemId: owned.shopItemId, fields: owned, owned: true });
     }
     if (features.streamerShowcaseAllCosmetics) {
-        for (const entry of await deps.catalog(userId)) {
-            if (entry.type !== "card_back" || !entry.isActive || byId.has(entry.id)) continue;
+        for (const entry of catalog) {
+            if (entry.type !== "card_back" || !entry.isActive || !inWindow(entry, now) || byId.has(entry.id)) continue;
             byId.set(entry.id, { itemId: entry.id, fields: entry, owned: false });
         }
     }

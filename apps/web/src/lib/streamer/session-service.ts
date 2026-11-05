@@ -93,6 +93,14 @@ async function interruptStale(deps: StreamerSessionServiceDeps, row: StreamSessi
 
 const MAX_STALE_ROWS = 10;
 
+async function featureFlagsOf(deps: StreamerSessionServiceDeps): Promise<{ streamerShowcaseAllCosmetics: boolean }> {
+    try {
+        return await deps.getFeatureFlags();
+    } catch {
+        throw new StreamerSessionError("card_catalogue_unavailable");
+    }
+}
+
 export async function createSession(
     deps: StreamerSessionServiceDeps,
     input: { userId: number; settings: CreateSessionInput },
@@ -111,7 +119,7 @@ export async function createSession(
         if (!connection || connection.status !== "active") throw new StreamerSessionError("connection_required");
 
         const cardBack = settings.cardBack
-            ? await resolveCardBackSelection(userId, settings.cardBack.itemId, await deps.getFeatureFlags(), deps.cardBackLoaders)
+            ? await resolveCardBackSelection(userId, settings.cardBack.itemId, await featureFlagsOf(deps), deps.cardBackLoaders)
             : null;
 
         const now = clock(deps);

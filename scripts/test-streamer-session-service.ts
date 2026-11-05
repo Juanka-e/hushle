@@ -113,7 +113,7 @@ function connection(userId: number, platform: StreamerPlatform, status: Streamer
 
 function cardBackItem(id: number, name: string): CardBackCatalogItem {
     return {
-        id, name, type: "card_back", rarity: "epic", renderMode: "template", renderSpecVersion: 1, imageUrl: `/cosmetics/${id}.svg`, thumbnailUrl: null,
+        id, name, type: "card_back", rarity: "epic", renderMode: "template", renderSpecVersion: 1, imageUrl: `/cosmetics/${id}.svg`, thumbnailUrl: null, startsAt: null, endsAt: null,
         templateKey: "ember", templateConfig: { surfaceColor: "#102030", borderColor: "#405060", pattern: "grid" }, isActive: true,
     };
 }
@@ -369,6 +369,19 @@ async function main(): Promise<void> {
         const back = h.lastPublic().cardBack;
         assert.equal(back?.itemId, 11);
         assert.equal(typeof back?.theme.surfaceColor, "string");
+    });
+
+    await test("card back: a failing loader or flag read opens no session (card_catalogue_unavailable)", async () => {
+        const h = harness();
+        h.connections.seed(connection(1, "twitch"));
+        const input = { ...INPUT, cardBack: { itemId: 10 } };
+        const broken = [
+            { ...h.deps, cardBackLoaders: { ...CARD_BACK_LOADERS, inventory: async () => { throw new Error("db down"); } } },
+            { ...h.deps, getFeatureFlags: async () => { throw new Error("settings down"); } },
+        ];
+        for (const deps of broken) await rejectsWith(() => createSession(deps, { userId: 1, settings: input }), "card_catalogue_unavailable");
+        assert.equal(h.sessions.rows.length, 0);
+        assert.ok(!h.runtime.forUser(1));
     });
 
     // ------------------------------------------------------------ rounds

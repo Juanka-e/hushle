@@ -52,6 +52,7 @@ export const STREAMER_SESSION_ERROR_CODES = [
     "invalid_phase",
     "word_source_empty",
     "card_not_allowed",
+    "card_catalogue_unavailable",
 ] as const;
 
 export type StreamerSessionErrorCode = (typeof STREAMER_SESSION_ERROR_CODES)[number];

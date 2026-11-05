@@ -31,6 +31,8 @@ function item(id: number, type: string, overrides: Partial<CardBackCatalogItem> 
         templateKey: "ember",
         templateConfig: { surfaceColor: "#102030", borderColor: "#405060", pattern: "grid" },
         isActive: true,
+        startsAt: null,
+        endsAt: null,
         ...overrides,
     };
 }
@@ -41,6 +43,9 @@ const CATALOG: CardBackCatalogItem[] = [
     item(12, "card_back", { name: "Orman" }),
     item(20, "avatar", { name: "Avatar" }),
     item(13, "card_back", { name: "Gizli", isActive: false }),
+    item(14, "card_back", { name: "Yakinda", startsAt: "2026-12-01T00:00:00Z" }),
+    item(15, "card_back", { name: "Bitti", endsAt: "2026-10-01T00:00:00Z" }),
+    item(16, "card_back", { name: "Sezon", startsAt: "2026-10-01T00:00:00Z", endsAt: "2026-12-01T00:00:00Z" }),
 ];
 
 function loaders(equippedId: number | null = 10): CardBackLoaders {
@@ -51,7 +56,7 @@ function loaders(equippedId: number | null = 10): CardBackLoaders {
             { shopItemId: 20, name: "Avatar", type: "avatar", rarity: "common", renderMode: "image", renderSpecVersion: 1, imageUrl: "/a.svg", thumbnailUrl: null, templateKey: null, templateConfig: null },
         ],
     };
-    return { inventory: async () => inventory, catalog: async () => CATALOG };
+    return { inventory: async () => inventory, catalog: async () => CATALOG, now: () => Date.parse("2026-11-05T12:00:00Z") };
 }
 
 async function rejects(run: () => Promise<unknown>): Promise<void> {
@@ -71,9 +76,9 @@ async function main(): Promise<void> {
 
     await test("switch on: every active catalogue card back is selectable, avatars never listed", async () => {
         const options = await listCardBacksForUser(1, { streamerShowcaseAllCosmetics: true }, loaders());
-        assert.deepEqual(options.map((o) => o.itemId).sort(), [10, 11, 12]);
+        assert.deepEqual(options.map((o) => o.itemId).sort(), [10, 11, 12, 16]);
         assert.ok(options.every((o) => o.selectable));
-        assert.deepEqual(options.map((o) => [o.itemId, o.owned, o.equipped]).sort(), [[10, true, true], [11, false, false], [12, false, false]]);
+        assert.deepEqual(options.map((o) => [o.itemId, o.owned, o.equipped]).sort(), [[10, true, true], [11, false, false], [12, false, false], [16, false, false]]);
         assert.ok(!options.some((o) => o.itemId === 20 || o.itemId === 13));
         const kor = options.find((o) => o.itemId === 10)!;
         assert.equal(kor.preview.renderMode, "template");
@@ -102,6 +107,9 @@ async function main(): Promise<void> {
         assert.equal(back.itemId, 11);
         await rejects(() => resolveCardBackSelection(1, 20, { streamerShowcaseAllCosmetics: true }, loaders()));
         await rejects(() => resolveCardBackSelection(1, 13, { streamerShowcaseAllCosmetics: true }, loaders()));
+        await rejects(() => resolveCardBackSelection(1, 14, { streamerShowcaseAllCosmetics: true }, loaders()));
+        await rejects(() => resolveCardBackSelection(1, 15, { streamerShowcaseAllCosmetics: true }, loaders()));
+        assert.equal((await resolveCardBackSelection(1, 16, { streamerShowcaseAllCosmetics: true }, loaders())).itemId, 16);
         await rejects(() => resolveCardBackSelection(1, 999, { streamerShowcaseAllCosmetics: true }, loaders()));
     });
 
@@ -109,6 +117,16 @@ async function main(): Promise<void> {
         const options = await listCardBacksForUser(1, { streamerShowcaseAllCosmetics: true }, loaders());
         const text = JSON.stringify(options) + JSON.stringify(await resolveCardBackSelection(1, 10, { streamerShowcaseAllCosmetics: true }, loaders()));
         assert.ok(!/inventoryItemId|userId|email|priceCoin/.test(text));
+    });
+
+    await test("a failing loader maps to card_catalogue_unavailable", async () => {
+        const boom = async () => {
+            throw new Error("db down");
+        };
+        for (const broken of [{ ...loaders(), inventory: boom }, { ...loaders(), catalog: boom }]) {
+            await assert.rejects(() => listCardBacksForUser(1, { streamerShowcaseAllCosmetics: true }, broken), (e: unknown) => isStreamerSessionError(e) && e.code === "card_catalogue_unavailable");
+            await assert.rejects(() => resolveCardBackSelection(1, 10, { streamerShowcaseAllCosmetics: true }, broken), (e: unknown) => isStreamerSessionError(e) && e.code === "card_catalogue_unavailable");
+        }
     });
 
     console.log(`${count} checks passed.`);
