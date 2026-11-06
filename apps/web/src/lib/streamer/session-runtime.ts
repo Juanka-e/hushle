@@ -187,7 +187,7 @@ function summarize(entry: SessionEntry): StreamSessionSummary {
         scores: ranking(entry.state)
             .slice(0, SUMMARY_SCORE_LIMIT)
             .map(({ name, points, rank, tied }) => ({ name, points, rank, tied })),
-        participants: entry.state.participants.size,
+        participants: entry.state.participants,
         rounds: entry.roundCount,
     };
 }
@@ -451,9 +451,9 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                 entry.lastActivityAt = now;
                 // acceptGuess ticks first, so a round that just ran out settles as a timeout here.
                 const before = markRound(entry.state);
-                const participants = entry.state.participants.size;
+                const participants = entry.state.participants;
                 const result = acceptGuess(entry.state, guess, now);
-                if (entry.state.phase !== before.phase || entry.state.participants.size !== participants) {
+                if (entry.state.phase !== before.phase || entry.state.participants !== participants) {
                     await settle(entry, before, now);
                 }
                 return result;

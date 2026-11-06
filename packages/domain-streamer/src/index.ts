@@ -5,6 +5,7 @@ export {
     beginRound,
     createStreamSession,
     endSession,
+    MAX_STREAM_PLAYERS,
     PASSED_TARGET_MAX,
     pause,
     ranking,

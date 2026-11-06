@@ -70,7 +70,7 @@ function baseSnapshot(
                 ? { platform: channel.platform, name: channel.name.replace(/\p{Cc}/gu, "").slice(0, 25) }
                 : null,
         passed: state.passedCard ? { ...state.passedCard } : null,
-        participants: state.participants.size,
+        participants: state.participants,
         pack: settings.language === "en" ? "EN" : "TR",
         scores: ranking(state)
             .slice(0, 3)

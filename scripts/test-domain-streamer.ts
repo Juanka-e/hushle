@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
     BROADCAST_THEMES,
+    MAX_STREAM_PLAYERS,
+    PASSED_TARGET_MAX,
     acceptGuess,
     beginRound,
     createStreamSession,
@@ -111,7 +113,7 @@ test("duplicate and stale guesses cannot score", () => {
     assert.equal(guess(s, {}, 2000), "duplicate");
     assert.equal(guess(s, { messageId: "late", sentAt: 500 }, 2000), "stale");
     assert.equal(s.players.get("fake:luna")?.points, 0);
-    assert.equal(s.participants.size, 1);
+    assert.equal(s.participants, 1);
 });
 
 test("ties share rank, next correct changes leader", () => {
@@ -149,6 +151,27 @@ test("expired guesses reject before interval tick and timer never becomes negati
     assert.equal(s.players.size, 0);
 });
 
+test("a guess after the deadline, before the interval tick, is closed and the round finishes as a timeout", () => {
+    const late = fresh();
+    beginRound(late, card, 0);
+    assert.equal(late.phase, "running", "no tick ran since the round began");
+    assert.equal(guess(late, { messageId: "late" }, 60_000), "closed");
+    assert.equal(late.phase, "finished", "the guess brought the clock up to its own time first");
+    assert.equal(late.remaining, 0);
+    assert.equal(late.winner, null);
+    assert.equal(late.lastCorrect, null);
+    assert.equal(late.players.size, 0, "a closed guess tracks nobody");
+    assert.equal(late.participants, 0);
+    assert.deepEqual(late.seenMessages, [], "a closed guess does not burn its message id");
+    assert.deepEqual(publicSnapshot(late, 1).reveal, { target: card.target, taboos: card.taboos, solved: false }, "a timeout, not a solve");
+    assert.equal(tick(late, 61_000), false, "the interval tick that follows finds nothing left to do");
+    assert.equal(late.phase, "finished");
+    // One millisecond before the deadline the round is still on: the same guess scores.
+    const inTime = fresh();
+    beginRound(inTime, card, 0);
+    assert.equal(guess(inTime, { messageId: "in-time" }, 59_999), "correct");
+});
+
 test("skip preserves last correct and pause state", () => {
     const s = fresh();
     s.round = 7;
@@ -156,7 +179,7 @@ test("skip preserves last correct and pause state", () => {
     const last = s.lastCorrect;
     beginRound(s, card, 0);
     pause(s, 1000);
-    const skipped = skipRound(s, 2000);
+    const skipped = skipRound(s, 2000, otherCard);
     assert.deepEqual(skipped, { passed: card });
     assert.equal(s.phase, "paused");
     assert.equal(s.lastCorrect, last);
@@ -165,10 +188,31 @@ test("skip preserves last correct and pause state", () => {
 
 test("skip is refused outside a live round", () => {
     const s = fresh();
-    assert.equal(skipRound(s, 0), null);
+    assert.equal(skipRound(s, 0, otherCard), null);
     beginRound(s, card, 0);
-    assert.equal(skipRound(s, 61000), null, "an expired round cannot be skipped");
+    assert.equal(skipRound(s, 61000, otherCard), null, "an expired round cannot be skipped");
     assert.equal(s.phase, "finished");
+});
+
+test("a pass without a next card is refused and changes nothing (running or paused)", () => {
+    for (const paused of [false, true]) {
+        const s = fresh();
+        beginRound(s, card, 0);
+        if (paused) pause(s, 1000);
+        const before = structuredClone(s);
+        for (const missing of [null, undefined]) {
+            assert.equal(skipRound(s, 2000, missing as never), null, `paused=${paused}, next card ${missing}`);
+            assert.deepEqual(s, before, "the session stays on the current card, nothing recorded");
+        }
+        assert.deepEqual(s.card, card);
+        assert.equal(s.phase, paused ? "paused" : "running");
+        assert.equal(s.passedCard, null);
+        assert.equal(s.passedRound, null);
+        assert.equal(s.round, 1);
+        // The refused pass left a live round with its card: guesses still work.
+        if (paused) resume(s, 3000);
+        assert.equal(guess(s, { messageId: `after-${paused}` }, 4000), "correct");
+    }
 });
 
 test("same nickname is not same player identity", () => {
@@ -178,7 +222,7 @@ test("same nickname is not same player identity", () => {
     beginRound(s, card, 2000);
     guess(s, { platformUserId: "two", name: "Aynı", messageId: "new" }, 3000);
     assert.equal(s.players.size, 2);
-    assert.equal(s.participants.size, 2);
+    assert.equal(s.participants, 2);
 });
 
 test("the same user id on two platforms is two players", () => {
@@ -193,7 +237,7 @@ test("public projection is bounded and excludes secret fields", () => {
     const s = fresh();
     for (const [id, points] of [["deniz", 8], ["luna", 6], ["mert", 5], ["ece", 2]] as const) {
         s.players.set(`fake:${id}`, { id: `fake:${id}`, name: id, points });
-        s.participants.add(`fake:${id}`);
+        s.participants += 1;
     }
     beginRound(s, { wordId: 1, target: "SECRET", taboos: ["SECRET2"] }, 0);
     (s as unknown as Record<string, unknown>).token = "TOKEN";
@@ -252,7 +296,7 @@ test("the card is revealed only after its round is over", () => {
     tick(s, 70000);
     assert.equal(publicSnapshot(s, 3).reveal?.solved, false, "time ran out: revealed, not solved");
     beginRound(s, card, 71000);
-    skipRound(s, 72000);
+    skipRound(s, 72000, otherCard);
     hidden();
     endSession(s, 73000);
     hidden();
@@ -325,9 +369,9 @@ test("a pass names the passed round and turns the passed card face up", () => {
     assert.deepEqual(publicSnapshot(s, 1).passed, { round: 1, target: "KUTUP IŞIKLARI" });
     assert.equal(publicSnapshot(s, 1).reveal, null, "the new round's card stays hidden");
     assert.deepEqual(s.card, otherCard);
-    skipRound(s, 2000);
-    assert.equal(s.card, null);
-    assert.equal(skipRound(s, 2500), null, "no card, nothing to pass");
+    assert.equal(skipRound(s, 2000, null as never), null, "no next card, no pass");
+    assert.deepEqual(s.card, otherCard, "the live card stays");
+    assert.equal(s.round, 2);
     endSession(s, 3000);
     beginRound(s, card, 4000);
     assert.equal(publicSnapshot(s, 3).passedRound, null);
@@ -353,6 +397,28 @@ test("a pass that deals the passed word again drops the passed card", () => {
     skipRound(s, 4000, long);
     skipRound(s, 5000, { ...long, wordId: 15 });
     assert.equal(s.passedCard, null, "a long word dealt again is dropped too");
+});
+
+test("a dealt word longer than the passed card shows, equal to it only in full, drops the passed card", () => {
+    // 43 units; the whitespace run collapses, so in full it is the passed word, cut to 40 it is not.
+    const spaced: StreamCard = { wordId: 20, target: `Kutup${" ".repeat(30)}Işıkları`, taboos: ["Kuzey"] };
+    assert.ok(spaced.target.length > PASSED_TARGET_MAX);
+    assert.notEqual(normalizeGuess(spaced.target.slice(0, PASSED_TARGET_MAX), "normal"), normalizeGuess(card.target, "normal"));
+    assert.equal(normalizeGuess(spaced.target, "normal"), normalizeGuess(card.target, "normal"));
+    // The pass path: the pool deals it as the next card.
+    const passing = fresh();
+    beginRound(passing, card, 0);
+    skipRound(passing, 1000, spaced);
+    assert.equal(passing.passedCard, null, "pass: the passed card would show the live word");
+    assert.equal(publicSnapshot(passing, 1).passed, null);
+    assert.equal(passing.passedRound, 1, "the pass itself is still recorded");
+    // The next-round path: dealt after the round that followed the pass.
+    const next = fresh();
+    beginRound(next, card, 0);
+    skipRound(next, 1000, otherCard);
+    tick(next, 62_000);
+    beginRound(next, spaced, 63_000);
+    assert.equal(next.passedCard, null, "next round: the passed card would show the live word");
 });
 
 test("a pass to a card whose taboos hold the passed word keeps the passed card", () => {
@@ -482,8 +548,80 @@ test("the 257th message id evicts the oldest", () => {
 test("a guess without a card is closed", () => {
     const s = fresh();
     beginRound(s, card, 0);
-    skipRound(s, 100);
+    // The API never leaves a live round without a card; the guard holds should a caller do so.
+    s.card = null;
     assert.equal(guess(s, { messageId: "n" }, 200), "closed");
+});
+
+let chatterMessages = 0;
+function chatter(s: StreamSessionState, user: string, time = 1000, text = "yanlış") {
+    chatterMessages += 1;
+    return guess(s, { platformUserId: user, name: user, text, messageId: `chatter-${chatterMessages}` }, time);
+}
+
+test("players are capped: a new chatter evicts the longest-quiet player without points", () => {
+    assert.equal(MAX_STREAM_PLAYERS, 2000);
+    const s = fresh();
+    beginRound(s, card, 0);
+    for (let i = 0; i < MAX_STREAM_PLAYERS; i++) assert.equal(chatter(s, `u${i}`), "wrong");
+    assert.equal(s.players.size, MAX_STREAM_PLAYERS);
+    assert.equal(s.participants, MAX_STREAM_PLAYERS);
+    // u0 speaks again: it is now the most recently active, so u1 is the longest quiet.
+    assert.equal(chatter(s, "u0"), "wrong");
+    assert.equal(s.participants, MAX_STREAM_PLAYERS, "a known player is no new participant");
+    assert.equal(chatter(s, "late-1"), "wrong");
+    assert.equal(s.players.size, MAX_STREAM_PLAYERS);
+    assert.ok(s.players.has("fake:u0"), "the player who spoke again stays");
+    assert.ok(!s.players.has("fake:u1"), "the longest-quiet player without points makes room");
+    assert.ok(s.players.has("fake:late-1"));
+    assert.equal(s.participants, MAX_STREAM_PLAYERS + 1, "participants count every player ever tracked");
+    assert.equal(chatter(s, "late-2"), "wrong");
+    assert.ok(!s.players.has("fake:u2"), "eviction goes in activity order");
+    assert.ok(s.players.has("fake:u3"));
+});
+
+test("players are capped: a scorer is never evicted; with only scorers tracked a new chatter is invalid", () => {
+    const s = fresh();
+    beginRound(s, card, 0);
+    for (let i = 0; i < MAX_STREAM_PLAYERS; i++) chatter(s, `u${i}`);
+    // The two longest-quiet players have points: the first quiet player without points goes instead.
+    s.players.get("fake:u0")!.points = 3;
+    s.players.get("fake:u1")!.points = 1;
+    assert.equal(chatter(s, "late-1"), "wrong");
+    assert.ok(s.players.has("fake:u0") && s.players.has("fake:u1"), "scorers stay");
+    assert.ok(!s.players.has("fake:u2"));
+    assert.deepEqual(ranking(s).map((player) => [player.id, player.points, player.rank]), [["fake:u0", 3, 1], ["fake:u1", 1, 2]], "ranking unaffected");
+    // Every tracked player now scores: a new name is not tracked and its guess is invalid, even a correct one.
+    for (const player of s.players.values()) player.points = Math.max(1, player.points);
+    const participants = s.participants;
+    const seen = [...s.seenMessages];
+    for (const text of ["yanlış", card.target]) {
+        assert.equal(guess(s, { platformUserId: "outsider", name: "Outsider", text, messageId: `outsider-${text}` }, 1500), "invalid");
+    }
+    assert.equal(s.players.size, MAX_STREAM_PLAYERS);
+    assert.ok(!s.players.has("fake:outsider"));
+    assert.equal(s.participants, participants, "an untracked chatter is no participant");
+    assert.deepEqual(s.seenMessages, seen, "an invalid guess does not burn its message id");
+    assert.equal(s.phase, "running", "the correct text of an untracked chatter did not end the round");
+    assert.equal(s.winner, null);
+    // A tracked scorer still plays.
+    assert.equal(chatter(s, "u5", 1600, card.target), "correct");
+    assert.equal(s.players.get("fake:u5")?.points, 2);
+});
+
+test("players are capped: memory stays at the cap however many chatters come and go", () => {
+    const s = fresh();
+    beginRound(s, card, 0);
+    for (let i = 0; i < 5_000; i++) chatter(s, `c${i}`);
+    assert.equal(s.players.size, MAX_STREAM_PLAYERS);
+    assert.equal(s.participants, 5_000);
+    assert.equal(typeof s.participants, "number", "no set of every id ever seen is kept");
+    assert.deepEqual([...s.players.keys()].slice(0, 2), ["fake:c3000", "fake:c3001"], "the most recent chatters are kept");
+    assert.equal(publicSnapshot(s, 1).participants, 5_000);
+    endSession(s, 2000);
+    beginRound(s, card, 3000);
+    assert.equal(s.participants, 0, "a new session starts its count afresh");
+    assert.equal(s.players.size, 0);
 });
 
 test("names are stripped of control characters and bounded", () => {

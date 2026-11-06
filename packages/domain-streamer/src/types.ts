@@ -117,8 +117,10 @@ export interface StreamSessionState {
     card: StreamCard | null;
     tolerance: GuessTolerance;
     settings: StreamScreenSettings;
+    /** Tracked chatters, least recently active first; at most MAX_STREAM_PLAYERS. */
     players: Map<string, StreamPlayer>;
-    participants: Set<string>;
+    /** How many players were taken into `players` this session (an evicted one who returns counts again). */
+    participants: number;
     /** Most recent message ids, oldest first, capped at 256. */
     seenMessages: string[];
     eventCounter: number;
