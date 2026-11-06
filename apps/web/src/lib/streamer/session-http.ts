@@ -15,6 +15,7 @@ const MAPPING: Record<StreamerSessionErrorCode, { code: PlayerErrorCode; status:
     word_source_empty: { code: PlayerErrorCode.STREAMER_WORD_POOL_EMPTY, status: 422 },
     card_not_allowed: { code: PlayerErrorCode.STREAMER_CARD_NOT_ALLOWED, status: 422 },
     card_catalogue_unavailable: { code: PlayerErrorCode.STREAMER_CARD_CATALOGUE_UNAVAILABLE, status: 503 },
+    busy: { code: PlayerErrorCode.SERVER_BUSY, status: 503 },
 };
 
 /** The response for a known session-service error, or null so the caller falls through to its own 500. */

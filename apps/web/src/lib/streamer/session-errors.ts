@@ -10,6 +10,8 @@ export const STREAMER_SESSION_ERROR_CODES = [
     "word_source_empty",
     "card_not_allowed",
     "card_catalogue_unavailable",
+    // The database did not answer within the drain bound: nothing changed, try again.
+    "busy",
 ] as const;
 
 export type StreamerSessionErrorCode = (typeof STREAMER_SESSION_ERROR_CODES)[number];

@@ -336,8 +336,18 @@ async function main(): Promise<void> {
     const source = deckSource();
     const features = { streamerShowcaseAllCosmetics: false };
     const runtimeErrors: Array<{ event: string; error: unknown }> = [];
+    // The runtime's row writes can be held (a database that stops answering) and watched.
+    const writeGate: { held: Promise<void> | null; onUpdate: ((patch: object) => void) | null } = { held: null, onUpdate: null };
+    const runtimeStore: typeof sessions = {
+        ...sessions,
+        async update(id, patch) {
+            writeGate.onUpdate?.(patch);
+            if (writeGate.held) await writeGate.held;
+            return sessions.update(id, patch);
+        },
+    };
     const runtime = createStreamerSessionRuntime({
-        store: sessions,
+        store: runtimeStore,
         wordSource: source,
         now: () => clock.now,
         tickMs: 50,
@@ -1163,6 +1173,50 @@ async function main(): Promise<void> {
             assert.deepEqual((await endedPublic)[0], { reason: "idle" });
             assert.equal(io.sockets.adapter.rooms.get(streamerHostRoom(secondId)), undefined);
             assert.equal(io.sockets.adapter.rooms.get(streamerPublicRoom(secondId)), undefined);
+        });
+
+        await test("rotate during end: a key stored while the session closes is never handed out; both rooms get ended", async () => {
+            const fourth = await createSession(deps, { userId: 3, settings: INPUT });
+            const fourthId = fourth.session.id;
+            const host = await connect(url, "second");
+            const screen = await connect(url);
+            assertOk(await ask(host, "streamer:host:join", { sessionId: fourthId }), "the host joins");
+            assertOk(await ask(screen, "streamer:public:join", { viewKey: fourth.viewKey }), "the stream screen joins");
+            let release = () => {};
+            writeGate.held = new Promise<void>((resolve) => (release = resolve));
+            const keyWriteStarted = new Promise<void>((resolve) => {
+                writeGate.onUpdate = (patch) => {
+                    if ("viewKeyHash" in patch) resolve();
+                };
+            });
+            try {
+                const rotating = ask(host, "streamer:host:rotate-key");
+                await within(keyWriteStarted, "the new key's write starts");
+                const finalHost = nextState<HostStreamSnapshot>(host, "streamer:host:state", (s) => s.phase === "ended");
+                const endedHost = nextEvent<{ reason: string }>(host, "streamer:ended");
+                const endedScreen = nextEvent<{ reason: string }>(screen, "streamer:ended");
+                const ending = ask(host, "streamer:host:end");
+                // The end has begun (its final state is out) and now waits for the key write.
+                await finalHost;
+                writeGate.held = null;
+                release();
+                assertError(await rotating, "STREAMER_SESSION_NOT_FOUND", "the session closed while its new key was stored");
+                assertOk(await ending, "end");
+                assert.deepEqual((await endedHost)[0], { reason: "ended" });
+                assert.deepEqual((await endedScreen)[0], { reason: "ended" });
+            } finally {
+                writeGate.held = null;
+                writeGate.onUpdate = null;
+                release();
+            }
+            await runtime.flush();
+            assert.equal(io.sockets.adapter.rooms.get(streamerHostRoom(fourthId)), undefined, "the host room is empty");
+            assert.equal(io.sockets.adapter.rooms.get(streamerPublicRoom(fourthId)), undefined, "the public room is empty");
+            assert.equal((await sessions.findById(fourthId))?.status, "ended");
+            assertError(await ask(screen, "streamer:public:join", { viewKey: fourth.viewKey }), "STREAMER_VIEW_KEY_INVALID", "the old key");
+            for (const client of [host, screen]) {
+                assert.ok(!client.events.some((entry) => JSON.stringify(entry.args).includes('"viewKey"')), "no socket was sent a new key");
+            }
         });
 
         await test("a host join puts the socket in its user's session room: a password reset or email change drops it", async () => {

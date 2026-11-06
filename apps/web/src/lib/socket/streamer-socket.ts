@@ -254,6 +254,7 @@ const SESSION_ERROR_CODES: Record<StreamerSessionErrorCode, PlayerErrorCode> = {
     word_source_empty: PlayerErrorCode.STREAMER_WORD_POOL_EMPTY,
     card_not_allowed: PlayerErrorCode.STREAMER_CARD_NOT_ALLOWED,
     card_catalogue_unavailable: PlayerErrorCode.STREAMER_CARD_CATALOGUE_UNAVAILABLE,
+    busy: PlayerErrorCode.SERVER_BUSY,
 };
 
 /** An expected refusal: answered with its code, never reported. */

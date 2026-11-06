@@ -41,6 +41,7 @@ import {
     type StreamerSessionServiceDeps,
 } from "../apps/web/src/lib/streamer/session-service";
 import { resolveCardBackSelection, type CardBackCatalogItem, type CardBackLoaders } from "../apps/web/src/lib/streamer/card-backs";
+import type { StreamerTimers } from "../apps/web/src/lib/streamer/session-timers";
 import { createViewKey, hashViewKey } from "../apps/web/src/lib/streamer/view-key";
 import * as realRateLimit from "../apps/web/src/lib/security/request-rate-limit";
 
@@ -212,6 +213,62 @@ function holdingStore(base: MemoryStreamSessionStore = createMemoryStreamSession
     };
 }
 
+/**
+ * Timers that fire only when the test says so, with a wall clock the test moves. Every request
+ * is logged with its delay, so a test reads how long the runtime chose to wait.
+ */
+function manualTimers(start = 0) {
+    let now = start;
+    let sequence = 0;
+    const timeouts = new Map<number, { run: () => void; ms: number }>();
+    const intervals = new Map<number, { run: () => void; ms: number }>();
+    const requested: number[] = [];
+    const timers: StreamerTimers = {
+        now: () => now,
+        setTimeout(run, ms) {
+            requested.push(ms);
+            timeouts.set(++sequence, { run, ms });
+            return sequence;
+        },
+        clearTimeout(handle) {
+            timeouts.delete(handle as number);
+        },
+        setInterval(run, ms) {
+            intervals.set(++sequence, { run, ms });
+            return sequence;
+        },
+        clearInterval(handle) {
+            intervals.delete(handle as number);
+        },
+    };
+    return {
+        timers,
+        requested,
+        intervals,
+        timeouts,
+        advance(ms: number) {
+            now += ms;
+        },
+        /** Runs every pending timeout once (each is removed first). */
+        fireTimeouts() {
+            const due = [...timeouts.entries()];
+            for (const [handle, { run }] of due) {
+                timeouts.delete(handle);
+                run();
+            }
+        },
+        /** Runs every interval of `ms` once. */
+        fireIntervals(ms: number) {
+            for (const { run, ms: every } of [...intervals.values()]) if (every === ms) run();
+        },
+    };
+}
+
+/** Lets every pending microtask and the I/O phase run once: what an awaited memory store needs. */
+function turn(): Promise<void> {
+    return new Promise((resolve) => setImmediate(resolve));
+}
+
 interface ReportedError {
     event: string;
     error: unknown;
@@ -237,7 +294,9 @@ interface Harness {
 
 const runtimes: StreamerSessionRuntime[] = [];
 
-function harness(options: { source?: FakeSource; sessions?: MemoryStreamSessionStore; tickMs?: number; drainTimeoutMs?: number } = {}): Harness {
+function harness(
+    options: { source?: FakeSource; sessions?: MemoryStreamSessionStore; tickMs?: number; drainTimeoutMs?: number; timers?: StreamerTimers } = {},
+): Harness {
     const clock = { now: START };
     const sessions = options.sessions ?? createMemoryStreamSessionStore();
     const connections = createMemoryStreamerConnectionStore();
@@ -257,6 +316,7 @@ function harness(options: { source?: FakeSource; sessions?: MemoryStreamSessionS
         onError,
         tickMs: options.tickMs ?? 5,
         drainTimeoutMs: options.drainTimeoutMs,
+        timers: options.timers,
     });
     runtime.setOnViewKeyRotated((sessionId) => rotated.push(sessionId));
     runtimes.push(runtime);
@@ -1397,6 +1457,143 @@ async function main(): Promise<void> {
         assert.equal(row?.roundCount, 1);
         assert.equal((row?.summary as StreamSessionSummary).rounds, 1, "the stored summary counts what was written");
         assert.equal(h.errors.length, 1);
+    });
+
+    await test("persistence: end waits for the pending writes and for its own write within one shared deadline", async () => {
+        const held = holdingStore();
+        const finalGate = deferred();
+        const sessions: MemoryStreamSessionStore = {
+            ...held.store,
+            async update(id, patch) {
+                // The end write itself hangs, after the writes before it landed.
+                if (patch.status === "ended") await finalGate.promise;
+                return held.store.update(id, patch);
+            },
+        };
+        const clock = manualTimers();
+        const h = harness({ sessions, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        held.hold();
+        await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
+        const ending = h.runtime.end(session.id, "ended");
+        await turn();
+        assert.deepEqual(clock.requested, [10_000], "the drain waits at most the bound");
+        // The pending write lands 6 s in; the end write then gets what is left of the bound.
+        clock.advance(6_000);
+        held.release();
+        await turn();
+        await turn();
+        assert.deepEqual(clock.requested, [10_000, 4_000], "one deadline: the end write waits only the 4 s left");
+        assert.equal(await settlesNow(ending), false, "the end write still hangs");
+        clock.fireTimeouts();
+        await ending;
+        assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.persist_drain_timeout"], "the bound is reported once");
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }]);
+        finalGate.resolve();
+        await h.runtime.flush();
+        assert.equal((await h.sessions.findById(session.id))?.status, "ended", "the end write lands once the database answers");
+    });
+
+    await test("persistence: a rotate behind a hung write answers busy within the drain bound; the old key stays live", async () => {
+        const held = holdingStore();
+        const clock = manualTimers();
+        const h = harness({ sessions: held.store, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const { session, viewKey } = await opened(h);
+        const oldHash = hashViewKey(viewKey);
+        await h.runtime.start(session.id);
+        held.hold();
+        await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
+        const rotating = h.runtime.rotateViewKey(session.id);
+        rotating.catch(() => undefined);
+        await turn();
+        assert.equal(await settlesNow(rotating), false, "the rotate waits for its turn behind the hung write");
+        assert.deepEqual(clock.requested, [10_000], "bounded by the drain timeout");
+        clock.fireTimeouts();
+        await rejectsWith(() => rotating, "busy");
+        assert.equal(h.runtime.get(session.id)?.viewKeyHash, oldHash, "the old key stays live");
+        assert.deepEqual(h.rotated, [], "no stream screen was closed");
+        held.release();
+        await h.runtime.flush();
+        assert.ok(!held.log.includes("update:viewKeyHash"), "a write given up before its turn never runs");
+        assert.equal((await h.sessions.findByViewKeyHash(oldHash))?.id, session.id, "the stored key is still the live one");
+        assert.equal(streamerSessionErrorResponse(new StreamerSessionError("busy"))?.status, 503);
+        assert.equal((await streamerSessionErrorResponse(new StreamerSessionError("busy"))?.json())?.code, "SERVER_BUSY");
+        assert.deepEqual(h.errors, []);
+    });
+
+    await test("persistence: a rotate whose own write lands after the bound is undone: the stored key goes back to the live one", async () => {
+        const held = holdingStore();
+        const clock = manualTimers();
+        const h = harness({ sessions: held.store, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const { session, viewKey } = await opened(h);
+        const oldHash = hashViewKey(viewKey);
+        held.hold();
+        const rotating = h.runtime.rotateViewKey(session.id);
+        rotating.catch(() => undefined);
+        await turn();
+        assert.deepEqual(held.log, ["update:viewKeyHash"], "the rotate's own write started and hangs");
+        clock.fireTimeouts();
+        await rejectsWith(() => rotating, "busy");
+        held.release();
+        await h.runtime.flush();
+        assert.deepEqual(held.log, ["update:viewKeyHash", "update:viewKeyHash"], "the late write landed, then the live key was written back");
+        assert.equal((await h.sessions.findByViewKeyHash(oldHash))?.id, session.id, "the old key opens the stream screen again");
+        assert.equal(h.runtime.get(session.id)?.viewKeyHash, oldHash);
+        assert.deepEqual(h.rotated, []);
+        // The database answers again: a rotation goes through.
+        const rotated = await h.runtime.rotateViewKey(session.id);
+        assert.equal((await h.sessions.findByViewKeyHash(hashViewKey(rotated.viewKey)))?.id, session.id);
+        assert.deepEqual(h.rotated, [session.id]);
+        assert.deepEqual(h.errors, []);
+    });
+
+    await test("persistence: a failed write is reported sanitized (name, Prisma code, a fixed message), never with its arguments", async () => {
+        const planted = "PLANTED-Ayşe-yayin-ozeti";
+        const prismaError = (name: string, code?: string) => {
+            const error = Object.assign(new Error(`Invalid \`prisma.streamSession.update()\` invocation: { data: { summary: { scores: [{ name: "${planted}" }] } } }`), {
+                meta: { target: planted },
+                clientVersion: "6.0.0",
+                ...(code ? { code } : {}),
+            });
+            error.name = name;
+            return error;
+        };
+        const base = createMemoryStreamSessionStore();
+        let failing = false;
+        const sessions: MemoryStreamSessionStore = {
+            ...base,
+            async update(id, patch) {
+                if (failing) throw prismaError("PrismaClientValidationError");
+                return base.update(id, patch);
+            },
+            async addRoundResult() {
+                throw prismaError("PrismaClientKnownRequestError", "P2000");
+            },
+        };
+        const h = harness({ sessions });
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct");
+        failing = true;
+        await h.runtime.applySettings(session.id, { theme: "sakura" });
+        await h.runtime.end(session.id, "ended");
+        assert.deepEqual(
+            h.errors.map((error) => [error.event, (error.error as Error).name, (error.error as { code?: unknown }).code]),
+            [
+                ["streamer_session.round_result_failed", "PrismaClientKnownRequestError", "P2000"],
+                ["streamer_session.settings_failed", "PrismaClientValidationError", undefined],
+                ["streamer_session.end_failed", "PrismaClientValidationError", undefined],
+            ],
+        );
+        for (const { error, context } of h.errors) {
+            assert.ok(error instanceof Error, "an Error is reported");
+            assert.equal(error.message, "stream session write failed");
+            assert.deepEqual(context, { sessionId: session.id });
+            for (const text of [error.message, String(error.stack), JSON.stringify(error), JSON.stringify(Object.getOwnPropertyNames(error).map((key) => Reflect.get(error, key)))]) {
+                assert.ok(!text.includes(planted), `the report carries none of the call arguments: ${text.slice(0, 120)}`);
+            }
+        }
     });
 
     // ------------------------------------------------------------ view key, store, restarts

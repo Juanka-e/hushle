@@ -1,4 +1,5 @@
 import { ranking, type StreamCard, type StreamPhase, type StreamSessionState } from "@hushle/domain-streamer";
+import { StreamerSessionError } from "./session-errors";
 import type {
     StreamRoundOutcomeValue,
     StreamRoundResultInput,
@@ -6,6 +7,7 @@ import type {
     StreamSessionStore,
     StreamSessionSummary,
 } from "./session-store";
+import { realStreamerTimers, type StreamerTimers } from "./session-timers";
 
 // The writes of live stream sessions, kept off their action queues. Each session has its own
 // chain: writes land one at a time in the order they were queued, and a slow or hanging database
@@ -77,11 +79,32 @@ export function roundResultOf(
     };
 }
 
+const SAFE_ERROR_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const PRISMA_ERROR_CODE = /^P\d{4}$/;
+
+/**
+ * What a failed store write is reported as: its class name, its Prisma code and a fixed message.
+ * A Prisma error's message (and its meta) can echo the call's arguments: settings, summary names.
+ */
+export function storeFailure(error: unknown): Error {
+    const safe = new Error("stream session write failed");
+    const name: unknown = error instanceof Error ? error.name : undefined;
+    if (typeof name === "string" && SAFE_ERROR_NAME.test(name)) safe.name = name;
+    const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
+    if (typeof code === "string" && PRISMA_ERROR_CODE.test(code)) Object.assign(safe, { code });
+    return safe;
+}
+
 export interface StreamerSessionPersistence {
     /** Queues a write after the session's earlier ones. Never rejects: false once its failure was reported. */
     write(sessionId: string, event: string, run: () => Promise<unknown>): Promise<boolean>;
-    /** Queues a write in the same order whose failure goes to the caller instead (not reported). */
-    request<T>(sessionId: string, run: () => Promise<T>): Promise<T>;
+    /**
+     * Queues a write in the same order whose failure goes to the caller instead (not reported). The
+     * caller waits at most the drain bound, then gets `busy`: a write that has not started by then
+     * never runs; one that lands later is followed by `undo`, in its turn (a failing undo is reported
+     * under `event`).
+     */
+    request<T>(sessionId: string, event: string, run: () => Promise<T>, undo: () => Promise<unknown>): Promise<T>;
     /**
      * Queues a finished round's result. `counted` runs only once the row is written and returns the
      * session's new round count, stored right after; a failed result write counts nothing.
@@ -103,10 +126,13 @@ export interface StreamerSessionPersistenceDeps {
     store: StreamSessionStore;
     report: StreamerErrorReporter;
     drainTimeoutMs?: number;
+    /** The wall clock and timeouts of the bounds (real ones when absent). */
+    timers?: StreamerTimers;
 }
 
 export function createStreamerSessionPersistence(deps: StreamerSessionPersistenceDeps): StreamerSessionPersistence {
     const timeoutMs = deps.drainTimeoutMs ?? STREAM_PERSIST_DRAIN_TIMEOUT_MS;
+    const timers = deps.timers ?? realStreamerTimers;
     const chains = new Map<string, Promise<void>>();
 
     function report(event: string, error: unknown, sessionId: string): void {
@@ -134,50 +160,90 @@ export function createStreamerSessionPersistence(deps: StreamerSessionPersistenc
         return enqueue(sessionId, run).then(
             () => true,
             (error: unknown) => {
-                report(event, error, sessionId);
+                report(event, storeFailure(error), sessionId);
                 return false;
             },
         );
     }
 
-    async function drain(sessionId: string): Promise<boolean> {
+    /** `promise`, or `onTimeout()` once the wall clock reaches `deadline`. */
+    async function until<T>(promise: Promise<T>, deadline: number, onTimeout: () => T): Promise<T> {
+        let handle: unknown;
+        const bound = new Promise<T>((resolve) => {
+            handle = timers.setTimeout(() => resolve(onTimeout()), Math.max(0, deadline - timers.now()));
+        });
+        try {
+            return await Promise.race([promise, bound]);
+        } finally {
+            timers.clearTimeout(handle);
+        }
+    }
+
+    async function drainUntil(sessionId: string, deadline: number): Promise<boolean> {
         const tail = chains.get(sessionId);
         if (!tail) return true;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const bound = new Promise<false>((resolve) => {
-            timer = setTimeout(() => resolve(false), timeoutMs);
-        });
-        const drained = await Promise.race([tail.then(() => true as const), bound]);
-        clearTimeout(timer);
+        const drained = await until(
+            tail.then(() => true),
+            deadline,
+            () => false,
+        );
         if (!drained) report("streamer_session.persist_drain_timeout", new Error(`stream session writes still pending after ${timeoutMs} ms`), sessionId);
         return drained;
     }
 
+    const drain = (sessionId: string) => drainUntil(sessionId, timers.now() + timeoutMs);
+
     return {
         write,
-        request: enqueue,
+        request<T>(sessionId: string, event: string, run: () => Promise<T>, undo: () => Promise<unknown>): Promise<T> {
+            let abandoned = false;
+            const queued = enqueue(sessionId, async () => {
+                if (abandoned) throw new StreamerSessionError("busy");
+                const result = await run();
+                if (abandoned) {
+                    try {
+                        await undo();
+                    } catch (error) {
+                        report(event, storeFailure(error), sessionId);
+                    }
+                }
+                return result;
+            });
+            const answered = queued.then((result) => ({ result }));
+            // The caller may have gone already: a late failure is nobody's unhandled rejection.
+            answered.catch(() => undefined);
+            return until<{ result: T } | null>(answered, timers.now() + timeoutMs, () => {
+                abandoned = true;
+                return null;
+            }).then((outcome) => {
+                if (!outcome || abandoned) throw new StreamerSessionError("busy");
+                return outcome.result;
+            });
+        },
         roundResult(result, counted) {
             const { sessionId } = result;
             return enqueue(sessionId, async () => {
                 try {
                     await deps.store.addRoundResult(result);
                 } catch (error) {
-                    report("streamer_session.round_result_failed", error, sessionId);
+                    report("streamer_session.round_result_failed", storeFailure(error), sessionId);
                     return false;
                 }
                 const roundCount = counted();
                 try {
                     await deps.store.update(sessionId, { roundCount });
                 } catch (error) {
-                    report("streamer_session.round_count_failed", error, sessionId);
+                    report("streamer_session.round_count_failed", storeFailure(error), sessionId);
                 }
                 return true;
             });
         },
         async finalWrite(sessionId, event, patch) {
-            const drained = await drain(sessionId);
+            // One deadline for both waits: the pending writes, then this one, never twice the bound.
+            const deadline = timers.now() + timeoutMs;
+            const drained = await drainUntil(sessionId, deadline);
             void write(sessionId, event, () => deps.store.update(sessionId, patch()));
-            if (drained) await drain(sessionId);
+            if (drained) await drainUntil(sessionId, deadline);
         },
         drain,
         async drainAll() {

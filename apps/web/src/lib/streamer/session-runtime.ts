@@ -37,6 +37,7 @@ import {
     type WordFilters,
 } from "./session-settings";
 import type { StreamSessionRecord, StreamSessionStore, StreamSessionSummary } from "./session-store";
+import { realStreamerTimers, type StreamerTimers } from "./session-timers";
 import { createViewKey } from "./view-key";
 
 // Live stream sessions of this process (single realtime replica, ADR-003). The runtime is the
@@ -90,8 +91,10 @@ export interface StreamerSessionRuntimeDeps {
     onError?: StreamerErrorReporter;
     tickMs?: number;
     idleTimeoutMs?: number;
-    /** How long end, idle and stop wait for a session's pending writes (STREAM_PERSIST_DRAIN_TIMEOUT_MS). */
+    /** How long end, idle, stop and a key rotation wait for a session's pending writes (STREAM_PERSIST_DRAIN_TIMEOUT_MS). */
     drainTimeoutMs?: number;
+    /** The wall clock and timers of the ticks, the checks and the bounds (real ones when absent). */
+    timers?: StreamerTimers;
 }
 
 export interface StreamerSessionRuntime {
@@ -131,7 +134,7 @@ interface SessionEntry {
     roundCount: number;
     /** The last host action or guess the round took; chat that was not taken never counts. */
     lastActivityAt: number;
-    timer: ReturnType<typeof setInterval> | null;
+    timer: unknown;
     queue: Promise<unknown>;
     closed: boolean;
 }
@@ -154,7 +157,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     let onEnded: StreamerEndedListener = deps.onEnded ?? (() => undefined);
     let onViewKeyRotated: (sessionId: string) => void = () => undefined;
     const entries = new Map<string, SessionEntry>();
-    const writes = createStreamerSessionPersistence({ store: deps.store, report: onError, drainTimeoutMs: deps.drainTimeoutMs });
+    const timers = deps.timers ?? realStreamerTimers;
+    const writes = createStreamerSessionPersistence({ store: deps.store, report: onError, drainTimeoutMs: deps.drainTimeoutMs, timers });
 
     // ------------------------------------------------------------ plumbing
 
@@ -208,7 +212,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     }
 
     function clearTimer(entry: SessionEntry): void {
-        if (entry.timer) clearInterval(entry.timer);
+        if (entry.timer) timers.clearInterval(entry.timer);
         entry.timer = null;
     }
 
@@ -221,11 +225,9 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     function align(entry: SessionEntry): void {
         clearTimer(entry);
         if (entry.closed) return;
-        const timer = setInterval(() => {
+        entry.timer = timers.setInterval(() => {
             run(entry.id, tickEntry).catch((error: unknown) => reportTick(entry.id, error));
         }, tickMs);
-        timer.unref?.();
-        entry.timer = timer;
     }
 
     // ------------------------------------------------------------ rounds
@@ -388,8 +390,14 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             const entry = await hostAction(sessionId, async (live) => live);
             const { viewKey, hash } = createViewKey();
             // The key is handed out only once stored: a failed write leaves the old key valid and
-            // reaches the caller. The write takes its turn among the session's writes, off its queue.
-            await writes.request(entry.id, () => deps.store.update(entry.id, { viewKeyHash: hash }));
+            // reaches the caller. The write takes its turn among the session's writes, off its queue,
+            // and is waited for at most the drain bound (`busy`); one that lands later is undone.
+            await writes.request(
+                entry.id,
+                "streamer_session.view_key_undo_failed",
+                () => deps.store.update(entry.id, { viewKeyHash: hash }),
+                () => deps.store.update(entry.id, { viewKeyHash: entry.viewKeyHash }),
+            );
             if (entry.closed) throw new StreamerSessionError("not_found");
             entry.viewKeyHash = hash;
             guarded("streamer_session.on_view_key_rotated_failed", entry.id, () => onViewKeyRotated(entry.id));
