@@ -1,10 +1,11 @@
 import type { CameraSize, CameraSlot, HostStreamSnapshot, StreamPhase } from "@hushle/domain-streamer";
 import type { StreamerPlatform } from "@hushle/platform-streamer";
 import { cameraRect } from "@/components/stream/camera-rects";
+import { isViewKey } from "@/components/stream/stream-guards";
 import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import type { ScreenSettingsPatch } from "@/lib/streamer/session-settings";
-import type { StreamerEndedReason, StreamerHostNoticePayload } from "@/lib/streamer/socket-contract";
+import { STREAMER_SOCKET_EVENTS, type StreamerEndedReason, type StreamerHostNoticePayload } from "@/lib/streamer/socket-contract";
 import type { StreamSessionResponse, StreamSessionView, StreamUrls } from "@/types/streamer-session";
 
 // The host panel's pure parts: the event log read off host snapshots (no server event exists for
@@ -256,6 +257,33 @@ export function joinRefusalAction(code: unknown): JoinRefusalAction {
 /** A refused round action: streamer mode switched off stops the panel; anything else is shown. */
 export function actionRefusalAction(code: unknown): "disabled" | "failed" {
     return code === PlayerErrorCode.STREAMER_MODE_DISABLED ? "disabled" : "failed";
+}
+
+/** How long the panel waits for an ack before it reads as "no answer". */
+export const ACK_TIMEOUT_MS = 10_000;
+/**
+ * The key rotation's ack: the server sends it only after the session's queue turn (at most 10 s)
+ * and the new key's write (at most 10 s), so the panel waits past both.
+ */
+export const ROTATE_ACK_TIMEOUT_MS = 25_000;
+
+export function ackTimeoutFor(event: string): number {
+    return event === STREAMER_SOCKET_EVENTS.hostRotateKey ? ROTATE_ACK_TIMEOUT_MS : ACK_TIMEOUT_MS;
+}
+
+export type RotateAckOutcome = { kind: "rotated"; viewKey: string } | { kind: "refused" } | { kind: "unknown" };
+
+/**
+ * What a rotate ack means for the key the panel holds. A refusal (`ok: false`) rotated nothing:
+ * the old key still works. No answer in time, or an answer without a readable key, is unknown:
+ * the server may have stored a new key, so the one on the page may be dead.
+ */
+export function rotateAckOutcome(error: Error | null, reply: unknown): RotateAckOutcome {
+    if (error || typeof reply !== "object" || reply === null) return { kind: "unknown" };
+    const { ok, viewKey } = reply as { ok?: unknown; viewKey?: unknown };
+    if (ok === false) return { kind: "refused" };
+    if (ok === true && typeof viewKey === "string" && isViewKey(viewKey)) return { kind: "rotated", viewKey };
+    return { kind: "unknown" };
 }
 
 export type RereadStatus = "idle" | "loading" | "failed";

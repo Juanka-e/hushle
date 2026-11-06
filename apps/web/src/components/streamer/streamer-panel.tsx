@@ -6,7 +6,7 @@ import { io, type Socket } from "socket.io-client";
 import type { HostStreamSnapshot } from "@hushle/domain-streamer";
 import { DashboardSection } from "@/components/game/dashboard-page-shell";
 import { useI18n } from "@/components/providers/i18n-provider";
-import { createRevisionGuard, isViewKey } from "@/components/stream/stream-guards";
+import { createRevisionGuard } from "@/components/stream/stream-guards";
 import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
 import type { AppLocale } from "@/lib/i18n/config";
@@ -32,6 +32,8 @@ import type {
 import { StreamerCardView } from "./streamer-card-view";
 import { StreamerObsBox } from "./streamer-obs-box";
 import {
+    ACK_TIMEOUT_MS,
+    ackTimeoutFor,
     actionRefusalAction,
     appendLog,
     closedKindOf,
@@ -43,6 +45,7 @@ import {
     isHostSnapshot,
     isLivePhase,
     joinRefusalAction,
+    rotateAckOutcome,
     scoreKeys,
     summaryFromSnapshot,
     withCardNameRule,
@@ -72,7 +75,6 @@ import { ScreenSettingsFields, StreamerSetupForm } from "./streamer-setup-form";
 // through, or the host room said so); the session keeps running.
 
 const EVENTS = STREAMER_SOCKET_EVENTS;
-const ACK_TIMEOUT_MS = 10_000;
 const JOIN_RETRY_MS = 5_000;
 
 type HostActionEvent =
@@ -180,8 +182,12 @@ function Notice({ title, help, onNew }: { title: string; help: string; onNew: ()
 interface LiveSessionProps {
     session: StreamSessionView;
     viewKey: string | null;
+    /** A rotation got no readable answer; cleared by the next key. */
+    keyUnknown: boolean;
     cardBacks: CardBackOption[];
     onViewKey: (viewKey: string) => void;
+    /** A rotation got no readable answer: the key on the page may be dead. */
+    onKeyUnknown: () => void;
     onClosed: (outcome: ClosedOutcome) => void;
     /** The host room refused the session (gone or not ours): the caller reloads what is current. */
     onGone: (sessionId: string) => void;
@@ -191,7 +197,7 @@ interface LiveSessionProps {
     onNotice: (notice: StreamerHostNoticePayload) => void;
 }
 
-function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone, onJoined, onNotice }: LiveSessionProps) {
+function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKeyUnknown, onClosed, onGone, onJoined, onNotice }: LiveSessionProps) {
     const { t, locale } = useI18n();
     const [snapshot, setSnapshot] = useState<HostStreamSnapshot | null>(null);
     const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -375,15 +381,18 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone,
     const joined = connection === "joined";
     const busy = pending !== null;
 
-    const emitAction = (event: string, payload: unknown, onOk?: (reply: Record<string, unknown>) => void) => {
+    // `onNoAnswer` replaces the generic failure when the ack does not come in time.
+    const emitAction = (event: string, payload: unknown, onOk?: (reply: Record<string, unknown>) => void, onNoAnswer?: () => void) => {
         const socket = socketRef.current;
         if (!socket || !joined || busy) return;
         setPending(event);
         setFailure(null);
         const ack = (error: Error | null, reply: StreamerActionAck | StreamerRotateKeyAck) => {
             setPending(null);
-            if (error) setFailure({ payload: {} });
-            else if (reply?.ok !== true) {
+            if (error) {
+                if (onNoAnswer) onNoAnswer();
+                else setFailure({ payload: {} });
+            } else if (reply?.ok !== true) {
                 if (actionRefusalAction(errorCodeOf(reply)) === "disabled") {
                     haltRef.current?.();
                     showModeOff();
@@ -391,8 +400,8 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone,
             } else onOk?.(reply as unknown as Record<string, unknown>);
         };
         // Socket.IO sends `undefined` arguments as null: the round actions take none at all.
-        if (payload === undefined) socket.timeout(ACK_TIMEOUT_MS).emit(event, ack);
-        else socket.timeout(ACK_TIMEOUT_MS).emit(event, payload, ack);
+        if (payload === undefined) socket.timeout(ackTimeoutFor(event)).emit(event, ack);
+        else socket.timeout(ackTimeoutFor(event)).emit(event, payload, ack);
     };
 
     const act = (event: HostActionEvent) => emitAction(event, undefined);
@@ -402,15 +411,17 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone,
     const rotate = () => {
         if (!window.confirm(t("streamer.panel.rotateConfirm"))) return;
         setRotated(false);
+        // The ack may come only after the server's queue turn and key write (rotateAckOutcome);
+        // no answer in time, or no readable key, leaves the key unknown and the panel asks for a new one.
         emitAction(EVENTS.hostRotateKey, undefined, (reply) => {
-            const next = typeof reply.viewKey === "string" ? reply.viewKey : "";
-            if (!isViewKey(next)) {
-                setFailure({ payload: {} });
+            const outcome = rotateAckOutcome(null, reply);
+            if (outcome.kind !== "rotated") {
+                onKeyUnknown();
                 return;
             }
-            onViewKey(next);
+            onViewKey(outcome.viewKey);
             setRotated(true);
-        });
+        }, onKeyUnknown);
     };
 
     const end = async () => {
@@ -638,6 +649,7 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone,
                     rotating={pending === EVENTS.hostRotateKey}
                     disabled={disabled}
                     rotated={rotated}
+                    keyUnknown={keyUnknown}
                 />
                 {snapshot ? (
                     <DashboardSection title={t("streamer.panel.screenTitle")} description={t("streamer.panel.screenHelp")}>
@@ -697,6 +709,8 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
     const [data, setData] = useState<StreamSessionResponse>(initial.data);
     // The stream screen key: in memory only, from the create or rotate answer. Never stored.
     const [viewKey, setViewKey] = useState<string | null>(null);
+    // A rotation got no readable answer: the key was dropped and a new one is asked for.
+    const [keyIsUnknown, setKeyUnknown] = useState(false);
     const [summary, setSummary] = useState<PanelSummary | null>(null);
     // The session was closed by the idle timer or stopped by the service.
     const [notice, setNotice] = useState<"idle" | "stopped" | null>(null);
@@ -747,6 +761,19 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
         void rereader().run();
     };
 
+    // The server may have stored a new key: the one on the page may be dead. It is dropped, the
+    // session is re-read (still live?) and the OBS box asks for a new key.
+    const keyUnknown = () => {
+        setViewKey(null);
+        setKeyUnknown(true);
+        refresh();
+    };
+
+    const newKey = (key: string) => {
+        setKeyUnknown(false);
+        setViewKey(key);
+    };
+
     const created = (body: CreateStreamSessionResponse) => {
         // A re-read still on its way read the state before this session: it must not replace it.
         rereader().cancel();
@@ -754,6 +781,7 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
         goneRef.current = null;
         rejoinsRef.current = 0;
         setStale(false);
+        setKeyUnknown(false);
         setViewKey(body.viewKey);
         setSummary(null);
         setNotice(null);
@@ -762,6 +790,7 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
 
     const closedSession = (outcome: ClosedOutcome) => {
         setViewKey(null);
+        setKeyUnknown(false);
         if (outcome.kind === "interrupted") {
             setData((current) =>
                 current.session ? { ...current, session: { ...current.session, status: "interrupted", interrupted: true } } : current
@@ -784,6 +813,7 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
         setSummary(null);
         setNotice(null);
         setViewKey(null);
+        setKeyUnknown(false);
         setData((current) => ({ ...current, session: null }));
     };
 
@@ -850,8 +880,10 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
                     key={`${session.id}#${generation}`}
                     session={session}
                     viewKey={viewKey}
+                    keyUnknown={keyIsUnknown}
                     cardBacks={data.cardBacks}
-                    onViewKey={setViewKey}
+                    onViewKey={newKey}
+                    onKeyUnknown={keyUnknown}
                     onClosed={closedSession}
                     onGone={liveGone}
                     onJoined={joinedLive}

@@ -28,7 +28,9 @@ import {
 } from "@/components/streamer/streamer-panel-model";
 import { cameraRect } from "@/components/stream/camera-rects";
 import { dictionaries, translate, type TranslationKey } from "@/lib/i18n/dictionaries";
+import { STREAM_PERSIST_DRAIN_TIMEOUT_MS } from "@/lib/streamer/session-persistence";
 import { buildStreamUrls } from "@/lib/streamer/session-http";
+import { STREAMER_SOCKET_EVENTS } from "@/lib/streamer/socket-contract";
 import type { StreamerEndedReason } from "@/lib/streamer/socket-contract";
 import type { StreamSessionResponse, StreamSessionView } from "@/types/streamer-session";
 
@@ -689,6 +691,56 @@ test("X5 X7 each row's show/hide button is named with its row; the English warni
         dictionaries.en.streamer.panel.reconnectWarning,
         "Your channel link needs renewing; this stream keeps going. Reconnect in Settings before you open a new session."
     );
+});
+
+// ---------------------------------------------------------------- final fix wave
+
+type RotateOutcome = { kind: "rotated"; viewKey: string } | { kind: "refused" } | { kind: "unknown" };
+const panelModel = model as Record<string, unknown>;
+
+test("Z6 the rotate ack waits past the server's queue turn and key write; every other ack keeps 10 s", () => {
+    const ackTimeoutFor = panelModel.ackTimeoutFor as ((event: string) => number) | undefined;
+    assert.equal(typeof ackTimeoutFor, "function", "the panel's ack timeouts come from the model");
+    assert.equal(panelModel.ROTATE_ACK_TIMEOUT_MS, 25_000);
+    assert.equal(panelModel.ACK_TIMEOUT_MS, 10_000);
+    // The server may answer the rotation only after a full queue turn and then its key write, each bounded at 10 s.
+    assert.ok((panelModel.ROTATE_ACK_TIMEOUT_MS as number) > 2 * STREAM_PERSIST_DRAIN_TIMEOUT_MS, "past both server bounds");
+    assert.equal(ackTimeoutFor!(STREAMER_SOCKET_EVENTS.hostRotateKey), 25_000);
+    const others = Object.values(STREAMER_SOCKET_EVENTS).filter((event) => event.startsWith("streamer:host:") && event !== STREAMER_SOCKET_EVENTS.hostRotateKey);
+    assert.ok(others.length >= 8, `the other host events (${others.length})`);
+    for (const event of others) assert.equal(ackTimeoutFor!(event), 10_000, event);
+});
+
+test("Z6 a rotate ack that never came, or came without a readable key, leaves the key unknown; a refusal keeps the old key", () => {
+    const rotateAckOutcome = panelModel.rotateAckOutcome as ((error: Error | null, reply: unknown) => RotateOutcome) | undefined;
+    assert.equal(typeof rotateAckOutcome, "function");
+    const key = "Ab_9-".repeat(8) + "xyz";
+    assert.deepEqual(rotateAckOutcome!(null, { ok: true, viewKey: key }), { kind: "rotated", viewKey: key });
+    assert.deepEqual(rotateAckOutcome!(new Error("operation has timed out"), undefined), { kind: "unknown" }, "no answer in time");
+    for (const unreadable of [{ ok: true }, { ok: true, viewKey: "short" }, { ok: true, viewKey: 42 }, { ok: true, viewKey: `${key}!` }]) {
+        assert.deepEqual(rotateAckOutcome!(null, unreadable), { kind: "unknown" }, `the server rotated but its key is unreadable: ${JSON.stringify(unreadable)}`);
+    }
+    for (const code of ["RATE_LIMITED", "SERVER_BUSY", "STREAMER_SESSION_NOT_FOUND", "STREAMER_MODE_DISABLED"]) {
+        assert.deepEqual(rotateAckOutcome!(null, { ok: false, code, error: "x" }), { kind: "refused" }, `${code}: nothing was rotated`);
+    }
+    for (const odd of [undefined, null, "ok", {}]) assert.deepEqual(rotateAckOutcome!(null, odd), { kind: "unknown" }, `${JSON.stringify(odd)}`);
+});
+
+test("Z6 pins the panel's source: acks take ackTimeoutFor, a rotation that is unknown drops the key, re-reads the session and says so", () => {
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.ok(!/const ACK_TIMEOUT_MS = /.test(panel), "no timeout of its own is left in the panel");
+    assert.equal((panel.match(/socket\.timeout\(ackTimeoutFor\(event\)\)/g) ?? []).length, 2, "both action emits ask the model");
+    assert.ok(panel.includes("socket.timeout(ACK_TIMEOUT_MS).emit(EVENTS.hostJoin"), "the host join keeps the 10 s");
+    assert.match(panel, /rotateAckOutcome\(/, "the rotate ack goes through the model");
+    const rotate = panel.slice(panel.indexOf("const rotate = () => {"), panel.indexOf("const end = async () => {"));
+    assert.ok(rotate.includes("emitAction(EVENTS.hostRotateKey") && rotate.includes("onKeyUnknown"), "an unknown rotation tells the panel");
+    const parent = panel.slice(panel.indexOf("export function StreamerPanel("));
+    const unknown = parent.slice(parent.indexOf("const keyUnknown = () => {"), parent.indexOf("};", parent.indexOf("const keyUnknown = () => {")));
+    assert.ok(unknown.includes("setViewKey(null)") && unknown.includes("setKeyUnknown(true)") && unknown.includes("refresh()"), "it drops the key it held, says so and re-reads the session");
+    const obs = source("apps/web/src/components/streamer/streamer-obs-box.tsx");
+    assert.ok(obs.includes(`t("streamer.panel.rotateUnknown")`), "the OBS box shows it");
+    assert.equal(dictionaries.tr.streamer.panel.rotateUnknown, "Anahtar yenilendi mi bilinmiyor. Yeni anahtar üret ve OBS'deki adresi güncelle.");
+    assert.match(dictionaries.en.streamer.panel.rotateUnknown, /not known whether the key was renewed/);
 });
 
 // ---------------------------------------------------------------- batch 3b (W7)

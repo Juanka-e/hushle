@@ -42,9 +42,11 @@ export interface StreamerObsBoxProps {
     rotating: boolean;
     disabled: boolean;
     rotated: boolean;
+    /** A rotation got no readable answer: the key the page had may be dead, so a new one is asked for. */
+    keyUnknown: boolean;
 }
 
-export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating, disabled, rotated }: StreamerObsBoxProps) {
+export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating, disabled, rotated, keyUnknown }: StreamerObsBoxProps) {
     const { t } = useI18n();
     const [copied, setCopied] = useState<string | null>(null);
     const [copyFailed, setCopyFailed] = useState(false);
@@ -159,6 +161,14 @@ export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating
                             {t("streamer.panel.preview")}
                         </button>
                     </>
+                ) : keyUnknown ? (
+                    <p
+                        role="alert"
+                        data-testid="streamer-key-unknown"
+                        className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+                    >
+                        {t("streamer.panel.rotateUnknown")}
+                    </p>
                 ) : (
                     <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
                         {t("streamer.panel.keyHidden")}
