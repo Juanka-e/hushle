@@ -271,6 +271,16 @@ export function ackTimeoutFor(event: string): number {
     return event === STREAMER_SOCKET_EVENTS.hostRotateKey ? ROTATE_ACK_TIMEOUT_MS : ACK_TIMEOUT_MS;
 }
 
+/**
+ * Which live controls are open. The socket actions go one at a time: they wait for a pending ack,
+ * and for an end that runs. "Oturumu bitir" is an HTTP call, so only an end already running holds
+ * it: a key rotation may wait 25 s for its ack, and taking the stream off the air never waits
+ * behind it. Ending works without a joined host room too.
+ */
+export function liveControls(state: { joined: boolean; pendingAck: string | null; ending: boolean }): { actionsDisabled: boolean; endDisabled: boolean } {
+    return { actionsDisabled: !state.joined || state.pendingAck !== null || state.ending, endDisabled: state.ending };
+}
+
 export type RotateAckOutcome = { kind: "rotated"; viewKey: string } | { kind: "refused" } | { kind: "unknown" };
 
 /**

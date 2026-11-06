@@ -757,6 +757,36 @@ test("Z10 pins the source: the hide-card choice lives in the panel above the rej
     assert.match(panel, /<StreamerCardView state=\{snapshot\} hidden=\{cardHidden\} onToggleHidden=\{onToggleCard\} \/>/);
 });
 
+test("Y5 a pending socket ack closes the socket actions but never \"Oturumu bitir\"; only an end already running holds it", () => {
+    const liveControls = panelModel.liveControls as
+        | ((state: { joined: boolean; pendingAck: string | null; ending: boolean }) => { actionsDisabled: boolean; endDisabled: boolean })
+        | undefined;
+    assert.equal(typeof liveControls, "function", "the panel's control state comes from the model");
+    const rotating = STREAMER_SOCKET_EVENTS.hostRotateKey;
+    assert.deepEqual(liveControls!({ joined: true, pendingAck: rotating, ending: false }), { actionsDisabled: true, endDisabled: false }, "a key rotation can wait 25 s: End stays open");
+    for (const event of [STREAMER_SOCKET_EVENTS.hostStart, STREAMER_SOCKET_EVENTS.hostPass, STREAMER_SOCKET_EVENTS.hostSettings]) {
+        assert.deepEqual(liveControls!({ joined: true, pendingAck: event, ending: false }), { actionsDisabled: true, endDisabled: false }, event);
+    }
+    assert.deepEqual(liveControls!({ joined: true, pendingAck: null, ending: true }), { actionsDisabled: true, endDisabled: true }, "an end that runs holds everything");
+    assert.deepEqual(liveControls!({ joined: true, pendingAck: rotating, ending: true }), { actionsDisabled: true, endDisabled: true });
+    assert.deepEqual(liveControls!({ joined: false, pendingAck: null, ending: false }), { actionsDisabled: true, endDisabled: false }, "not joined: End still works over HTTP");
+    assert.deepEqual(liveControls!({ joined: true, pendingAck: null, ending: false }), { actionsDisabled: false, endDisabled: false });
+});
+
+test("Y5 pins the panel's source: End and the socket actions read liveControls; an ack that lands after the close changes nothing", () => {
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.match(panel, /const controls = liveControls\(\{ joined, pendingAck: pending, ending \}\);/);
+    assert.ok(!/\bconst busy\b/.test(panel), "no shared busy flag is left");
+    assert.ok(!panel.includes(`setPending("end")`), "the HTTP end is not a pending socket ack");
+    const end = panel.slice(panel.indexOf("const end = async () => {"), panel.indexOf("const phase = snapshot?.phase"));
+    assert.ok(end.includes("if (controls.endDisabled || !window.confirm(") && end.includes("setEnding(true)") && end.includes("setEnding(false)"), "End waits only for an end already running");
+    assert.match(panel, /disabled=\{controls\.endDisabled\} onClick=\{\(\) => void end\(\)\}/);
+    assert.match(panel, /const disabled = controls\.actionsDisabled;/);
+    const emit = panel.slice(panel.indexOf("const emitAction = ("), panel.indexOf("const act = (event"));
+    assert.ok(emit.includes("if (!socket || controls.actionsDisabled) return;"), "socket actions wait for the pending ack and the end");
+    assert.match(emit, /const ack = \([^)]*\) => \{\s*\/\/[^\n]*\n\s*if \(closedRef\.current\) return;/, "a late ack (the session already closed) is dropped first");
+});
+
 // ---------------------------------------------------------------- batch 3b (W7)
 
 /** Every source file the given files reach through value imports (relative and @/ ones), with the chain that got there. */

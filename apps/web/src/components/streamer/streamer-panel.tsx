@@ -45,6 +45,7 @@ import {
     isHostSnapshot,
     isLivePhase,
     joinRefusalAction,
+    liveControls,
     rotateAckOutcome,
     scoreKeys,
     summaryFromSnapshot,
@@ -204,7 +205,9 @@ function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKey
     const { t, locale } = useI18n();
     const [snapshot, setSnapshot] = useState<HostStreamSnapshot | null>(null);
     const [connection, setConnection] = useState<ConnectionState>("connecting");
+    // The socket action whose ack is awaited; the HTTP end is tracked apart (`ending`).
     const [pending, setPending] = useState<string | null>(null);
+    const [ending, setEnding] = useState(false);
     const [failure, setFailure] = useState<{ payload: unknown } | null>(null);
     const [log, setLog] = useState<LogEntry[]>([]);
     const [rotated, setRotated] = useState(false);
@@ -382,15 +385,17 @@ function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKey
     }, [sessionId]);
 
     const joined = connection === "joined";
-    const busy = pending !== null;
+    const controls = liveControls({ joined, pendingAck: pending, ending });
 
     // `onNoAnswer` replaces the generic failure when the ack does not come in time.
     const emitAction = (event: string, payload: unknown, onOk?: (reply: Record<string, unknown>) => void, onNoAnswer?: () => void) => {
         const socket = socketRef.current;
-        if (!socket || !joined || busy) return;
+        if (!socket || controls.actionsDisabled) return;
         setPending(event);
         setFailure(null);
         const ack = (error: Error | null, reply: StreamerActionAck | StreamerRotateKeyAck) => {
+            // The session closed meanwhile (an end ran beside a pending rotation): nothing to update.
+            if (closedRef.current) return;
             setPending(null);
             if (error) {
                 if (onNoAnswer) onNoAnswer();
@@ -428,9 +433,9 @@ function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKey
     };
 
     const end = async () => {
-        if (busy || !window.confirm(t("streamer.panel.endConfirm"))) return;
+        if (controls.endDisabled || !window.confirm(t("streamer.panel.endConfirm"))) return;
         endingRef.current = true;
-        setPending("end");
+        setEnding(true);
         setFailure(null);
         await runRequest(
             async () => {
@@ -451,7 +456,7 @@ function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKey
                 },
                 settle: () => {
                     endingRef.current = false;
-                    setPending(null);
+                    setEnding(false);
                 },
             }
         );
@@ -460,7 +465,7 @@ function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKey
     const phase = snapshot?.phase ?? "ready";
     const connectionKey = connectionLabel(connection);
     const failureText = failure ? resolveApiErrorMessage(locale, failure.payload, t("streamer.panel.actionFailed")) : null;
-    const disabled = !joined || busy;
+    const disabled = controls.actionsDisabled;
 
     const logText = (entry: LogEntry): string => {
         switch (entry.kind) {
@@ -554,8 +559,8 @@ function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKey
                                 </button>
                             ) : null}
                             {phase !== "ended" ? (
-                                <button type="button" disabled={busy} onClick={() => void end()} className={buttonClass("danger")}>
-                                    {pending === "end" ? t("streamer.panel.ending") : t("streamer.panel.end")}
+                                <button type="button" disabled={controls.endDisabled} onClick={() => void end()} className={buttonClass("danger")}>
+                                    {ending ? t("streamer.panel.ending") : t("streamer.panel.end")}
                                 </button>
                             ) : null}
                         </div>
