@@ -357,43 +357,25 @@ async function main(): Promise<void> {
         assert.equal((await dead.store.findByUserAndPlatform(42, "twitch"))!.status, "needs_reconnect");
     });
 
-    await test("a refresh that loses to a relink of the same channel uses the relinked tokens and revokes its own fresh ones (best effort)", async () => {
+    await test("a refresh that loses to a relink of the same channel uses the relinked tokens and revokes nothing (they may share one authorization)", async () => {
         const fake = createFakePlatformClient("twitch", { now: () => NOW.getTime() });
         const d = deps(fake);
         const seeded = d.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
-        const seen: { fresh: { accessToken: string; refreshToken: string | null } | null } = { fresh: null };
         const racing: StreamerPlatformClient = {
             ...fake,
             async refresh(token) {
                 const tokens = await fake.refresh(token);
-                seen.fresh = tokens;
-                // The streamer relinked while this refresh ran: a new grant on the same row.
+                // The streamer relinked the same channel while this refresh ran: same row, new tokens.
                 await d.store.upsertLinked(relinkInput());
                 return tokens;
             },
         };
         const result = await getAccessToken({ ...d, client: racing }, seeded);
         assert.equal(result.accessToken, "relinked-access-fake-deniz");
-        assert.ok(seen.fresh);
-        assert.deepEqual(fake.revoked, [seen.fresh.refreshToken], "the old grant's fresh tokens are revoked at the platform, refresh token first");
+        assert.deepEqual(fake.revoked, [], "a same-channel relink may share the platform authorization: revoking ours could revoke the relink's");
         const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
         assert.equal(stored.status, "active");
         assert.equal(decryptToken(stored.accessTokenEnc!, keyring, aad), "relinked-access-fake-deniz", "the relink stands");
-        // A revoke that fails, even with an unexpected error, never fails the caller.
-        const second = deps(fake);
-        const again = second.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
-        const exploding: StreamerPlatformClient = {
-            ...racing,
-            async refresh(token) {
-                const tokens = await fake.refresh(token);
-                await second.store.upsertLinked(relinkInput());
-                return tokens;
-            },
-            async revoke() {
-                throw new Error("socket hang up");
-            },
-        };
-        assert.equal((await getAccessToken({ ...second, client: exploding }, again)).accessToken, "relinked-access-fake-deniz");
     });
 
     await test("a relink to another channel never hands channel B's token to a caller holding channel A: refused, A's fresh tokens revoked, the row untouched", async () => {
@@ -416,6 +398,21 @@ async function main(): Promise<void> {
         assert.deepEqual([stored.status, stored.platformUserId], ["active", "fake-other"], "channel B's link is untouched, never marked");
         assert.equal(decryptToken(stored.accessTokenEnc!, keyring, otherAad), "relinked-access-fake-other");
         assert.deepEqual(fake.revoked, ["fake-refresh-deniz"], "channel A's fresh tokens are revoked");
+        // A revoke that fails, even with an unexpected error, never changes what the caller gets.
+        const second = deps(fake);
+        const again = second.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        const exploding: StreamerPlatformClient = {
+            ...fake,
+            async refresh(token) {
+                const tokens = await fake.refresh(token);
+                await second.store.upsertLinked(relinkInput("fake-other"));
+                return tokens;
+            },
+            async revoke() {
+                throw new Error("socket hang up");
+            },
+        };
+        await assert.rejects(() => getAccessToken({ ...second, client: exploding }, again), StreamerReconnectRequired);
         // invalid_grant for A's rotated-away token: B's newer tokens are not A's either.
         const dead = deps(fake);
         const current = dead.store.seed(row({ platformUserId: "fake-other", accessTokenEnc: encryptToken("fake-access-other-3", keyring, otherAad), refreshTokenEnc: encryptToken("fake-refresh-other", keyring, otherAad) }));

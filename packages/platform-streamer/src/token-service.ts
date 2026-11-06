@@ -6,9 +6,10 @@ import { connectionAad, decryptToken, encryptToken, TokenDecryptError, type Toke
 // platform no longer honours the tokens, delete them at once and ask for a reconnect.
 // A refresh that loses a race against a disconnect never resurrects tokens: the fresh
 // ones are revoked instead. A refresh that loses a race against another refresh never
-// breaks the connection: the tokens the winner stored are used. One that loses to a relink
-// (a new grant) revokes its fresh tokens of the old grant, and uses the relinked tokens only
-// for the same channel. A reconnect mark is conditional on the refresh token it judged.
+// breaks the connection: the tokens the winner stored are used. One that loses to a relink to
+// another channel revokes its fresh tokens of the old channel and is refused; a relink of the same
+// channel may share the platform authorization, so its tokens are used and ours only dropped. A
+// reconnect mark is conditional on the refresh token it judged.
 
 export const REFRESH_LEEWAY_MS = 60_000;
 
@@ -96,9 +97,9 @@ async function newerStoredTokens(deps: TokenServiceDeps, connection: StreamerCon
     return usableNewerTokens(deps, connection, await deps.store.findByUserAndPlatform(connection.userId, connection.platform));
 }
 
-/** A relink replaced the grant `connection` was read with: it was linked again, maybe to another channel. */
-function relinkedSince(connection: StreamerConnectionRecord, current: StreamerConnectionRecord): boolean {
-    return current.connectedAt.getTime() !== connection.connectedAt.getTime() || current.platformUserId !== connection.platformUserId;
+/** A relink moved the row to another channel since `connection` was read: its tokens are nobody's now. */
+function channelChangedSince(connection: StreamerConnectionRecord, current: StreamerConnectionRecord): boolean {
+    return current.platformUserId !== connection.platformUserId;
 }
 
 /** Revokes tokens nobody will use, best effort: whatever the platform answers, the caller goes on. */
@@ -136,10 +137,11 @@ async function storeTokens(
     // Lost the race to another writer.
     const current = await deps.store.findByUserAndPlatform(connection.userId, connection.platform);
     if (current && current.id === connection.id && current.status === "active") {
-        // A relink won: ours are the old grant's, nobody will use them, they are revoked (best
-        // effort). A concurrent refresh of the same grant won: ours are dropped, not revoked, as
-        // at a platform that revokes the whole grant that would revoke the winner's too.
-        if (relinkedSince(connection, current)) await revokeQuietly(deps.client, tokens);
+        // A relink to another channel won: ours belong to the old channel, nobody will use them,
+        // they are revoked (best effort). A concurrent refresh, or a relink of the same channel,
+        // won: ours are dropped, not revoked, as both may share one platform authorization and
+        // revoking ours could revoke the winner's.
+        if (channelChangedSince(connection, current)) await revokeQuietly(deps.client, tokens);
         // Newer tokens of the same channel stand and are used.
         const winner = usableNewerTokens(deps, connection, current);
         if (winner) return winner;
