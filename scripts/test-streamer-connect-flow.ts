@@ -46,6 +46,8 @@ interface Harness {
     deps: ConnectFlowDeps;
     store: ReturnType<typeof createMemoryStreamerConnectionStore>;
     fake: Record<StreamerPlatform, FakePlatformClient>;
+    /** "consume" for each state the callback takes, "exchange:<platform>" for each code exchanged, in order. */
+    log: string[];
     audits: Array<{ action: string; actorId: number | null; resourceId?: string | number | null; metadata?: Record<string, unknown> | null }>;
     events: Array<{ event: string; context?: Record<string, unknown> }>;
     rateLimited: boolean;
@@ -54,10 +56,23 @@ interface Harness {
 
 function harness(overrides: Partial<{ enabled: boolean; configured: StreamerPlatform[] }> = {}): Harness {
     const store = createMemoryStreamerConnectionStore();
-    const fake = { twitch: createFakePlatformClient("twitch"), kick: createFakePlatformClient("kick") };
+    const log: string[] = [];
+    const counted = (platform: StreamerPlatform): FakePlatformClient => {
+        const client = createFakePlatformClient(platform);
+        return {
+            ...client,
+            async exchangeCode(input) {
+                log.push(`exchange:${platform}`);
+                return client.exchangeCode(input);
+            },
+        };
+    };
+    const fake = { twitch: counted("twitch"), kick: counted("kick") };
+    const states = createMemoryConnectStateStore({ now: () => (h.deps.now ? h.deps.now() : new Date()).getTime() });
     const h: Harness = {
         store,
         fake,
+        log,
         audits: [],
         events: [],
         rateLimited: false,
@@ -67,7 +82,13 @@ function harness(overrides: Partial<{ enabled: boolean; configured: StreamerPlat
             keyring,
             secret,
             now: () => NOW,
-            stateStore: createMemoryConnectStateStore({ now: () => (h.deps.now ? h.deps.now() : new Date()).getTime() }),
+            stateStore: {
+                record: (hash, ttlMs) => states.record(hash, ttlMs),
+                async consume(hash) {
+                    log.push("consume");
+                    return states.consume(hash);
+                },
+            },
             isStreamerModeEnabled: async () => h.enabled,
             isPlatformConfigured: (platform) => (overrides.configured ?? ["twitch", "kick"]).includes(platform),
             clientFor: (platform) => fake[platform] as StreamerPlatformClient,
@@ -213,10 +234,12 @@ async function main(): Promise<void> {
         const h = harness();
         const { started, finished, state } = await startAndCallback(h, user1, "twitch");
         assert.equal(codeOf(finished.redirectTo).streamer, "linked");
+        assert.deepEqual(h.log, ["consume", "exchange:twitch"], "the state is taken before the code is exchanged");
         const replay = await completeConnect(h.deps, {
             user: user1, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state }), cookieValue: started.setCookie!.value, requestIp: "ip", origin,
         });
         assert.deepEqual(codeOf(replay.redirectTo), { streamer: "error", platform: "twitch", code: "state_invalid" });
+        assert.deepEqual(h.log, ["consume", "exchange:twitch", "consume"], "the replay never reaches exchangeCode");
         assert.equal(replay.clearCookie, true);
         assert.equal(h.store.rows.length, 1);
         assert.deepEqual(h.audits.map((a) => a.action), ["streamer.connection.linked"], "the replay relinked nothing");
@@ -245,7 +268,8 @@ async function main(): Promise<void> {
         const unknown = await completeConnect(h.deps, { user: user1, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state: otherState }), cookieValue: other.setCookie!.value, requestIp: "ip", origin });
         assert.equal(codeOf(unknown.redirectTo).code, "state_invalid");
         assert.equal(h.store.rows.length, 0);
-        assert.equal(h.fake.twitch.revoked.length, 0, "no code was exchanged");
+        assert.equal(h.fake.twitch.revoked.length, 0, "nothing was revoked");
+        assert.deepEqual(h.log.filter((entry) => entry.startsWith("exchange:")), [], "no code was exchanged");
     });
 
     await test("single use: the server keeps only the state's sha256, for ten minutes; a cookie refused first burns nothing", async () => {
@@ -527,6 +551,25 @@ async function main(): Promise<void> {
         assert.equal(validations, calls, "no platform call for a link that is not active");
         assert.equal(await validateConnection(h.deps, marked), "needs_reconnect");
         assert.equal(validations, calls);
+    });
+
+    await test("hourly check: a relink that lands while the old token is found invalid is kept, not marked", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "twitch");
+        const row = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        const client: StreamerPlatformClient = {
+            ...h.fake.twitch,
+            async validate() {
+                // The streamer relinks while the platform answers about the old token.
+                await startAndCallback(h, user1, "twitch");
+                return { ok: false, expiresInSeconds: null };
+            },
+        };
+        h.deps.clientFor = () => client;
+        assert.equal(await checkSessionConnection(h.deps, { id: row.id, userId: 1, platform: "twitch" }), "unavailable", "no verdict on a link that changed meanwhile");
+        const after = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        assert.equal(after.status, "active", "the relinked tokens are not wiped");
+        assert.notEqual(after.refreshTokenEnc, null);
     });
 
     await test("hourly check: a link that is gone, replaced or unconfigured here is judged without the platform", async () => {

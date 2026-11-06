@@ -204,6 +204,27 @@ async function storeTests(): Promise<void> {
         assert.equal(await store.consume("h2"), false);
         assert.equal(redis.keys.size, 0);
     });
+
+    await asyncTest("Redis store: a SET that landed but whose answer was lost is recorded in process too; one consume takes both, so no replay", async () => {
+        const clock = { now: NOW.getTime() };
+        const redis = fakeRedis(clock);
+        // The write reaches Redis, then the connection drops before the answer comes back.
+        const lossy = {
+            set: async (...args: Parameters<RedisLikeClient["set"]>) => {
+                await redis.client.set(...args);
+                throw new Error("connection reset after the write");
+            },
+            del: (...args: Parameters<RedisLikeClient["del"]>) => redis.client.del(...args),
+        } as unknown as RedisLikeClient;
+        const fallback = createMemoryConnectStateStore({ now: () => clock.now });
+        const store = createConnectStateStore({ redis: async () => lossy, fallback });
+        assert.equal(await store.record("lost-answer", CONNECT_STATE_TTL_MS), true, "the in-process record stands in");
+        assert.equal(redis.keys.size, 1, "and the key did land in Redis");
+        assert.equal(await store.consume("lost-answer"), true, "the callback consumes it once");
+        assert.equal(redis.keys.size, 0);
+        assert.equal(await store.consume("lost-answer"), false, "a replay finds neither record");
+        assert.equal(await fallback.consume("lost-answer"), false, "the in-process twin was taken with the Redis key");
+    });
 }
 
 storeTests()

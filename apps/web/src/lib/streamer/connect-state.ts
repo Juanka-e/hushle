@@ -208,7 +208,12 @@ export function createConnectStateStore(
             const redis = await client();
             if (redis) {
                 try {
-                    if ((await redis.del(redisStateKey(stateHash))) === 1) return true;
+                    if ((await redis.del(redisStateKey(stateHash))) === 1) {
+                        // A SET whose answer was lost after it landed was recorded in process too:
+                        // that twin is taken with it, or a replay would find it there.
+                        await fallback.consume(stateHash);
+                        return true;
+                    }
                 } catch {
                     // Redis failed mid-call: only the in-process record can still answer.
                 }

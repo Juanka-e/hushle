@@ -91,6 +91,14 @@ async function main(): Promise<void> {
         assert.equal((await store.findByUserAndPlatform(first, "twitch"))?.accessTokenEnc, "v1.r.a.1");
         console.log("PASS token refresh writes are compare-and-set over the refresh token they replace");
 
+        // A reconnect mark judged over a refresh token lands only while the row still holds it.
+        assert.equal(await store.markNeedsReconnect(before.id, "refresh_failed", NOW, "v1.s.t.ale"), null, "a stale refresh token marks nothing");
+        assert.equal(await store.markNeedsReconnect(before.id, "refresh_failed", NOW, null), null, "null is not the stored token");
+        assert.equal((await store.findByUserAndPlatform(first, "twitch"))?.status, "active", "the row is untouched");
+        const marked = await store.markNeedsReconnect(before.id, "refresh_failed", NOW, "v1.r.r.1");
+        assert.deepEqual([marked?.status, marked?.refreshTokenEnc], ["needs_reconnect", null]);
+        console.log("PASS a reconnect mark judged over a refresh token lands only while the row still holds it");
+
         await assert.rejects(
             () => store.upsertLinked({
                 userId: second, platform: "twitch", identity: identity("alpha"), scopes: [],
@@ -128,7 +136,7 @@ async function main(): Promise<void> {
         assert.equal(await store.findByPlatformUser("kick", identity("beta").platformUserId), null);
         userIds.splice(userIds.indexOf(second), 1);
         console.log("PASS deleting the user cascades to the connection");
-        console.log("7 checks passed (integration).");
+        console.log("8 checks passed (integration).");
     } finally {
         if (userIds.length) await prisma.user.deleteMany({ where: { id: { in: userIds } } });
         await prisma.$disconnect();

@@ -12,7 +12,6 @@ export interface StreamerPlatformEnvironment extends TwitchEnvironment, KickEnvi
     HUSHLE_E2E_SMOKE?: string;
 }
 
-
 export function isPlatformConfigured(platform: StreamerPlatform, env: StreamerPlatformEnvironment): boolean {
     if (isFakePlatformEnabled(env)) return true;
     if (platform === "twitch") return Boolean(env.STREAMER_TWITCH_CLIENT_ID?.trim() && env.STREAMER_TWITCH_CLIENT_SECRET?.trim());

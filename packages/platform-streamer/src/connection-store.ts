@@ -66,8 +66,12 @@ export interface StreamerConnectionStore {
      * means another write got there first (a concurrent refresh, a relink, a disconnect).
      */
     updateTokens(id: string, input: UpdateTokensInput): Promise<StreamerConnectionRecord | null>;
-    /** No-op on a `revoked` row: a late failure never downgrades an explicit disconnect. */
-    markNeedsReconnect(id: string, reason: StatusReason, now: Date): Promise<StreamerConnectionRecord | null>;
+    /**
+     * No-op on a `revoked` row: a late failure never downgrades an explicit disconnect. With
+     * `expectedRefreshTokenEnc` it marks only while the row still holds exactly that refresh-token
+     * ciphertext (null included), so a relink that landed meanwhile is never wiped. Null: not marked.
+     */
+    markNeedsReconnect(id: string, reason: StatusReason, now: Date, expectedRefreshTokenEnc?: string | null): Promise<StreamerConnectionRecord | null>;
     markRevoked(id: string, reason: StatusReason, now: Date): Promise<StreamerConnectionRecord>;
     deleteById(id: string): Promise<void>;
     touchUsed(id: string, now: Date): Promise<void>;
@@ -145,9 +149,13 @@ export const prismaStreamerConnectionStore: StreamerConnectionStore = {
         if (result.count === 0) return null;
         return prisma.streamerConnection.findUnique({ where: { id } });
     },
-    async markNeedsReconnect(id, reason, now) {
+    async markNeedsReconnect(id, reason, now, expectedRefreshTokenEnc) {
         const result = await prisma.streamerConnection.updateMany({
-            where: { id, status: { not: StreamerConnectionStatus.revoked } },
+            where: {
+                id,
+                status: { not: StreamerConnectionStatus.revoked },
+                ...(expectedRefreshTokenEnc === undefined ? {} : { refreshTokenEnc: expectedRefreshTokenEnc }),
+            },
             data: { status: StreamerConnectionStatus.needs_reconnect, statusReason: reason, accessTokenEnc: null, refreshTokenEnc: null, tokenKeyVersion: null, accessTokenExpiresAt: null, revokedAt: now },
         });
         if (result.count === 0) return null;
@@ -269,9 +277,10 @@ export function createMemoryStreamerConnectionStore(): MemoryStreamerConnectionS
             });
             return clone(record);
         },
-        async markNeedsReconnect(id, reason, now) {
+        async markNeedsReconnect(id, reason, now, expectedRefreshTokenEnc) {
             const record = byId(id);
             if (record.status === "revoked") return null;
+            if (expectedRefreshTokenEnc !== undefined && record.refreshTokenEnc !== expectedRefreshTokenEnc) return null;
             return clear(record, "needs_reconnect", reason, now);
         },
         async deleteById(id) {

@@ -99,8 +99,9 @@ export async function validateConnection(deps: ConnectionCheckDeps, record: Stre
         if (platformDeps.client.validate) {
             const result = await platformDeps.client.validate(accessToken);
             if (!result.ok) {
-                await deps.store.markNeedsReconnect(connection.id, "refresh_failed", clock(deps));
-                return "needs_reconnect";
+                // Conditional on the tokens validated: a relink that landed meanwhile is not wiped.
+                const marked = await deps.store.markNeedsReconnect(connection.id, "refresh_failed", clock(deps), connection.refreshTokenEnc);
+                return marked ? "needs_reconnect" : stillActive(deps, connection);
             }
         }
         await deps.store.touchValidated(connection.id, clock(deps));

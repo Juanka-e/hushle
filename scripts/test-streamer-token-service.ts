@@ -62,6 +62,24 @@ function deps(client: StreamerPlatformClient = createFakePlatformClient("twitch"
     return { store, client, keyring, now: () => NOW };
 }
 
+const otherAad = connectionAad("twitch", "fake-other");
+
+/** A relink of user 42's Twitch row, as the connect flow stores it: a new grant, maybe another channel. */
+function relinkInput(platformUserId = "fake-deniz", at = new Date(NOW.getTime() + 1_000)) {
+    const aadFor = platformUserId === "fake-deniz" ? aad : otherAad;
+    return {
+        userId: 42,
+        platform: "twitch" as const,
+        identity: { platformUserId, login: platformUserId.slice(5), displayName: "Yeni", avatarUrl: null, channelUrl: `https://twitch.tv/${platformUserId.slice(5)}` },
+        scopes: [],
+        accessTokenEnc: encryptToken(`relinked-access-${platformUserId}`, keyring, aadFor),
+        refreshTokenEnc: encryptToken(`relinked-refresh-${platformUserId}`, keyring, aadFor),
+        tokenKeyVersion: 1,
+        accessTokenExpiresAt: new Date(NOW.getTime() + 3_600_000),
+        now: at,
+    };
+}
+
 function deferred(): { promise: Promise<void>; resolve(): void } {
     let resolve!: () => void;
     const promise = new Promise<void>((done) => (resolve = done));
@@ -337,6 +355,112 @@ async function main(): Promise<void> {
         const held = dead.store.seed(row({ refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad), accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
         await assert.rejects(() => getAccessToken(dead, held), StreamerReconnectRequired);
         assert.equal((await dead.store.findByUserAndPlatform(42, "twitch"))!.status, "needs_reconnect");
+    });
+
+    await test("a refresh that loses to a relink of the same channel uses the relinked tokens and revokes its own fresh ones (best effort)", async () => {
+        const fake = createFakePlatformClient("twitch", { now: () => NOW.getTime() });
+        const d = deps(fake);
+        const seeded = d.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        const seen: { fresh: { accessToken: string; refreshToken: string | null } | null } = { fresh: null };
+        const racing: StreamerPlatformClient = {
+            ...fake,
+            async refresh(token) {
+                const tokens = await fake.refresh(token);
+                seen.fresh = tokens;
+                // The streamer relinked while this refresh ran: a new grant on the same row.
+                await d.store.upsertLinked(relinkInput());
+                return tokens;
+            },
+        };
+        const result = await getAccessToken({ ...d, client: racing }, seeded);
+        assert.equal(result.accessToken, "relinked-access-fake-deniz");
+        assert.ok(seen.fresh);
+        assert.deepEqual(fake.revoked, [seen.fresh.refreshToken], "the old grant's fresh tokens are revoked at the platform, refresh token first");
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.equal(stored.status, "active");
+        assert.equal(decryptToken(stored.accessTokenEnc!, keyring, aad), "relinked-access-fake-deniz", "the relink stands");
+        // A revoke that fails, even with an unexpected error, never fails the caller.
+        const second = deps(fake);
+        const again = second.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        const exploding: StreamerPlatformClient = {
+            ...racing,
+            async refresh(token) {
+                const tokens = await fake.refresh(token);
+                await second.store.upsertLinked(relinkInput());
+                return tokens;
+            },
+            async revoke() {
+                throw new Error("socket hang up");
+            },
+        };
+        assert.equal((await getAccessToken({ ...second, client: exploding }, again)).accessToken, "relinked-access-fake-deniz");
+    });
+
+    await test("a relink to another channel never hands channel B's token to a caller holding channel A: refused, A's fresh tokens revoked, the row untouched", async () => {
+        const fake = createFakePlatformClient("twitch", { now: () => NOW.getTime() });
+        const d = deps(fake);
+        const seeded = d.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        const racing: StreamerPlatformClient = {
+            ...fake,
+            async refresh(token) {
+                const tokens = await fake.refresh(token);
+                await d.store.upsertLinked(relinkInput("fake-other"));
+                return tokens;
+            },
+        };
+        await assert.rejects(
+            () => getAccessToken({ ...d, client: racing }, seeded),
+            (error: unknown) => error instanceof StreamerReconnectRequired && !error.message.includes("relinked"),
+        );
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.deepEqual([stored.status, stored.platformUserId], ["active", "fake-other"], "channel B's link is untouched, never marked");
+        assert.equal(decryptToken(stored.accessTokenEnc!, keyring, otherAad), "relinked-access-fake-other");
+        assert.deepEqual(fake.revoked, ["fake-refresh-deniz"], "channel A's fresh tokens are revoked");
+        // invalid_grant for A's rotated-away token: B's newer tokens are not A's either.
+        const dead = deps(fake);
+        const current = dead.store.seed(row({ platformUserId: "fake-other", accessTokenEnc: encryptToken("fake-access-other-3", keyring, otherAad), refreshTokenEnc: encryptToken("fake-refresh-other", keyring, otherAad) }));
+        const stale: StreamerConnectionRecord = { ...current, platformUserId: "fake-deniz", refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad), accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) };
+        await assert.rejects(() => getAccessToken(dead, stale), StreamerReconnectRequired);
+        assert.equal((await dead.store.findByUserAndPlatform(42, "twitch"))!.status, "active", "B's link is not marked for A's dead grant");
+    });
+
+    await test("a refresh-failure mark is conditional on the refresh token it tried: a relink that lands just before the mark is kept", async () => {
+        const d = deps();
+        const seeded = d.store.seed(row({ refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad), accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        let armed = true;
+        const store = {
+            ...d.store,
+            async findByUserAndPlatform(userId: number, platform: "twitch" | "kick") {
+                const found = await d.store.findByUserAndPlatform(userId, platform);
+                // Between the lost-race re-read and the mark, the streamer relinks.
+                if (armed) {
+                    armed = false;
+                    await d.store.upsertLinked(relinkInput());
+                }
+                return found;
+            },
+        };
+        await assert.rejects(() => getAccessToken({ ...d, store }, seeded), StreamerReconnectRequired);
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.equal(stored.status, "active", "the relink is not wiped by the late mark");
+        assert.equal(decryptToken(stored.refreshTokenEnc!, keyring, aad), "relinked-refresh-fake-deniz");
+        // Without a relink the same failure still marks the row.
+        const plain = deps();
+        const held = plain.store.seed(row({ refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad), accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        await assert.rejects(() => getAccessToken(plain, held), StreamerReconnectRequired);
+        assert.equal((await plain.store.findByUserAndPlatform(42, "twitch"))!.status, "needs_reconnect");
+    });
+
+    await test("memory store: markNeedsReconnect with an expected refresh token marks only while the row still holds it", async () => {
+        const store = createMemoryStreamerConnectionStore();
+        const seeded = store.seed(row());
+        assert.equal(await store.markNeedsReconnect(seeded.id, "refresh_failed", NOW, "v1.o.t.h"), null, "another refresh token: no mark");
+        assert.equal(await store.markNeedsReconnect(seeded.id, "refresh_failed", NOW, null), null, "null is not the stored token");
+        assert.equal(store.rows[0].status, "active");
+        const marked = await store.markNeedsReconnect(seeded.id, "refresh_failed", NOW, seeded.refreshTokenEnc);
+        assert.equal(marked?.status, "needs_reconnect");
+        const unconditional = store.seed(row({ id: "55555555-5555-4555-8555-555555555555", userId: 43, platformUserId: "fake-five" }));
+        assert.equal((await store.markNeedsReconnect(unconditional.id, "dormant", NOW))?.status, "needs_reconnect", "without an expected token the mark stays unconditional");
     });
 
     await test("memory store: updateTokens writes only over the refresh token it replaces, and only on an active row", async () => {
