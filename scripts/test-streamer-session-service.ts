@@ -4,7 +4,15 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { NextRequest } from "next/server";
 import type { z } from "zod";
-import type { ChatGuess, HostStreamSnapshot, PublicStreamSnapshot, StreamCard } from "@hushle/domain-streamer";
+import {
+    boundCardBack,
+    createStreamSession,
+    type ChatGuess,
+    type HostStreamSnapshot,
+    type PublicStreamSnapshot,
+    type StreamCard,
+    type StreamCardBack,
+} from "@hushle/domain-streamer";
 import { resetObservabilityForTests } from "@hushle/platform-observability";
 import {
     createMemoryStreamerConnectionStore,
@@ -12,7 +20,7 @@ import {
     type StreamerConnectionStatusValue,
     type StreamerPlatform,
 } from "@hushle/platform-streamer";
-import { createSessionInputSchema, type CreateSessionInput } from "../apps/web/src/lib/streamer/session-settings";
+import { createSessionInputSchema, resolvedScreenPatchSchema, toScreenSettings, type CreateSessionInput } from "../apps/web/src/lib/streamer/session-settings";
 import {
     createMemoryStreamSessionStore,
     streamSessionSummarySchema,
@@ -1085,6 +1093,60 @@ async function main(): Promise<void> {
         const response = streamerSessionErrorResponse(new StreamerSessionError("invalid_settings"));
         assert.equal(response?.status, 400);
         assert.equal(((await response?.json()) as { code: string }).code, "INVALID_REQUEST");
+        assert.deepEqual(h.errors, []);
+    });
+
+    await test("applySettings bounds a resolved card back with the public projection's own rules before it is kept", async () => {
+        const h = harness();
+        const row = await h.sessions.create({ userId: 1, connectionId: null, platform: "twitch", settings: INPUT, viewKeyHash: "f".repeat(64), startedAt: new Date(START) });
+        const state = createStreamSession(toScreenSettings(INPUT, null), START);
+        h.runtime.open(row, state);
+        const theme = (await resolveCardBackSelection(1, 10, h.features, CARD_BACK_LOADERS)).theme;
+        const hostile: StreamCardBack = {
+            itemId: 10,
+            name: `  Kor\u0007${"x".repeat(200)}`,
+            theme: {
+                ...theme,
+                surfaceColor: "red; background:url(https://evil.example/x)",
+                borderColor: "#12345",
+                pattern: "spiral",
+                motionPreset: "explode",
+                patternScale: 9_999,
+                patternOpacity: -3,
+                motionSpeedMs: 1e12,
+                glowBlur: 1.7,
+                renderSpecVersion: -2.5,
+                overlayImageUrl: "javascript:alert(1)",
+                overlayOpacity: 9,
+            },
+            imageUrl: "//evil.example/back.png",
+        };
+        await h.runtime.applySettings(row.id, { cardBack: hostile });
+        const kept = state.settings.cardBack;
+        assert.deepEqual(kept, boundCardBack(hostile), "the session keeps exactly what the public projection makes of it");
+        assert.ok(kept);
+        assert.equal(kept.name.length, 60);
+        assert.equal(kept.name.startsWith("Korx"), true, "control characters dropped, trimmed");
+        assert.equal(kept.theme.surfaceColor, "#0f172a", "a colour that is no hex colour takes its default");
+        assert.equal(kept.theme.borderColor, "#475569");
+        assert.equal(kept.theme.pattern, "none");
+        assert.equal(kept.theme.motionPreset, "none");
+        assert.equal(kept.theme.patternScale, 42);
+        assert.equal(kept.theme.patternOpacity, 0);
+        assert.equal(kept.theme.motionSpeedMs, 12_000);
+        assert.equal(kept.theme.glowBlur, 8);
+        assert.equal(kept.theme.renderSpecVersion, 0);
+        assert.equal(kept.theme.overlayImageUrl, null);
+        assert.equal(kept.theme.overlayOpacity, 0.45);
+        assert.equal(kept.imageUrl, null);
+        assert.deepEqual(h.lastPublic().cardBack, kept, "the stream screen shows what the session keeps");
+        assert.deepEqual(h.lastHost().cardBack, kept);
+        // One validator: the schema's output is the domain projection, a well-formed card back passes unchanged.
+        const owned = await resolveCardBackSelection(1, 10, h.features, CARD_BACK_LOADERS);
+        assert.deepEqual(resolvedScreenPatchSchema.parse({ cardBack: owned }).cardBack, boundCardBack(owned));
+        assert.deepEqual(boundCardBack(owned), owned, "a resolved card back is already within the bounds");
+        await h.runtime.applySettings(row.id, { cardBack: owned });
+        assert.deepEqual(state.settings.cardBack, owned);
         assert.deepEqual(h.errors, []);
     });
 

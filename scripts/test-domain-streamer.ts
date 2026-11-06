@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+    boundCardBack,
     BROADCAST_THEMES,
     MAX_STREAM_PLAYERS,
     PASSED_TARGET_MAX,
@@ -479,6 +480,24 @@ test("the public card back copies only the known theme fields, each bounded; not
     }
     // The host projection shows the same card back.
     assert.deepEqual(hostSnapshot(s, 1).cardBack, back);
+});
+
+test("boundCardBack is the public projection's card back: the snapshot carries exactly its answer", () => {
+    const hostile = {
+        itemId: 4,
+        name: "\u0000  Ember  ",
+        theme: { surfaceColor: "url(x)", pattern: "spiral", patternScale: 2, extra: "drop me" },
+        imageUrl: "https://user:pw@evil.example/x.png",
+        more: true,
+    } as never;
+    const s = fresh({ cardBack: hostile });
+    assert.deepEqual(publicSnapshot(s, 1).cardBack, boundCardBack(hostile));
+    assert.deepEqual(hostSnapshot(s, 1).cardBack, boundCardBack(hostile));
+    assert.equal(boundCardBack(null), null);
+    assert.equal(boundCardBack({ itemId: 1.5, name: "x", theme: {}, imageUrl: null } as never), null);
+    const bounded = boundCardBack(hostile);
+    assert.ok(bounded);
+    assert.deepEqual(boundCardBack(bounded), bounded, "bounding twice changes nothing");
 });
 
 test("card-back numbers clamp into the ranges the screen draws; an unusable one takes its default", () => {

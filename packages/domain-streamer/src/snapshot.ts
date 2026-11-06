@@ -87,7 +87,13 @@ function publicCardTheme(theme: Bag): ResolvedCardThemeLike {
     };
 }
 
-function publicCardBack(cardBack: StreamCardBack | null | undefined): StreamCardBack | null {
+/**
+ * A card back as the stream screen may draw it: the known fields only, each bounded (hex colours,
+ * fixed vocabularies, clamped numbers, image URL rules, a 60-character name); null when it has no
+ * integer item id or no theme. The one validator for card backs: the public projection and the
+ * session runtime's live settings both use it, and bounding twice changes nothing.
+ */
+export function boundCardBack(cardBack: StreamCardBack | null | undefined): StreamCardBack | null {
     if (!cardBack || !Number.isInteger(cardBack.itemId)) return null;
     const theme: unknown = cardBack.theme;
     if (!theme || typeof theme !== "object" || Array.isArray(theme)) return null;
@@ -144,7 +150,7 @@ function baseSnapshot(
             .slice(0, 3)
             .map((player) => ({ name: player.name, points: player.points, rank: player.rank, tied: player.tied })),
         lastCorrect: state.lastCorrect ? { ...state.lastCorrect } : null,
-        cardBack: publicCardBack(settings.cardBack),
+        cardBack: boundCardBack(settings.cardBack),
         connected: options.connected !== false,
         reveal: revealedCard(state),
     };

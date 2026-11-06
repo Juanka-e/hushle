@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+    boundCardBack,
     BROADCAST_THEMES,
     CAMERA_SIZES,
     CAMERA_SLOTS,
@@ -73,7 +74,9 @@ export function wordFiltersOf(input: CreateSessionInput): WordFilters {
 /** A live patch whose card back the caller already resolved (and checked) into what the screen shows. */
 export type ResolvedScreenPatch = Omit<ScreenSettingsPatch, "cardBack"> & { cardBack?: StreamCardBack | null };
 
-// The shape of a resolved card back (card-backs.ts builds it); unknown keys are dropped.
+// The shape of a resolved card back (card-backs.ts builds it); unknown keys are dropped. The values
+// are then bounded by the domain's own card-back validator (boundCardBack), the one the public
+// projection uses: a live patch keeps nothing the stream screen would not draw.
 const cardBackThemeSchema = z.object({
     renderSpecVersion: z.number(),
     requestedRenderSpecVersion: z.number(),
@@ -96,12 +99,15 @@ const cardBackThemeSchema = z.object({
     overlayOpacity: z.number(),
 }) satisfies z.ZodType<ResolvedCardThemeLike>;
 
-const resolvedCardBackSchema = z.object({
-    itemId: z.number().int().positive(),
-    name: z.string(),
-    theme: cardBackThemeSchema,
-    imageUrl: z.string().nullable(),
-}) satisfies z.ZodType<StreamCardBack>;
+const resolvedCardBackSchema = z
+    .object({
+        itemId: z.number().int().positive(),
+        name: z.string(),
+        theme: cardBackThemeSchema,
+        imageUrl: z.string().nullable(),
+    })
+    // A positive integer item id and a theme object: boundCardBack always answers a card back here.
+    .transform((cardBack) => boundCardBack(cardBack) ?? cardBack) satisfies z.ZodType<StreamCardBack>;
 
 /** What the runtime takes as a live patch: `screenSettingsPatchSchema`, with the card back already resolved. */
 export const resolvedScreenPatchSchema = screenSettingsPatchSchema.extend({
