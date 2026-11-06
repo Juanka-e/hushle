@@ -13,6 +13,10 @@ import {
 } from "@hushle/domain-streamer";
 import { buildCosmeticPatternStyle, getCosmeticMotionClass, getCosmeticMotionStyle } from "@/lib/cosmetics/effects";
 import type { CosmeticMotionPreset, CosmeticPattern } from "@/types/economy";
+import { cameraRect } from "./camera-rects";
+
+// The streamer panel still imports the camera hole from here; it moves to ./camera-rects next.
+export { cameraRect };
 
 // The public stream screen's renderer, ported from the V4 prototype
 // (scripts/design-prototypes/hushle-streamer-studio/public.js). It draws only what readSnapshot
@@ -30,7 +34,6 @@ const THEME_CLOCK: Record<BroadcastTheme, ClockStyle> = {
 };
 const BULBS = 36;
 const SEGMENTS = 20;
-const SIZES: Record<CameraSize, [number, number]> = { s: [480, 270], m: [560, 315], l: [640, 360] };
 const PLATFORM_NAMES: Record<ChannelPlatform, string> = { twitch: "Twitch", kick: "Kick", youtube: "YouTube" };
 const ROMAN = ["I", "II", "III"];
 const SCORE_TITLES: Record<BroadcastTheme, string> = {
@@ -260,27 +263,6 @@ export function offlineState(state: StreamState): StreamState {
 }
 
 // ---------------------------------------------------------------- layouts
-
-/** Where the webcam hole sits on the 1920x1080 canvas (70 px from the edges; halves are exact). */
-export function cameraRect(slot: CameraSlot, size: CameraSize): { x: number; y: number; w: number; h: number } | null {
-    const [w, h] = SIZES[size] ?? SIZES.m;
-    switch (slot) {
-        case "tl":
-            return { x: 70, y: 70, w, h };
-        case "tr":
-            return { x: 1850 - w, y: 70, w, h };
-        case "bl":
-            return { x: 70, y: 1010 - h, w, h };
-        case "br":
-            return { x: 1850 - w, y: 1010 - h, w, h };
-        case "left":
-            return { x: 0, y: 0, w: 960, h: 1080 };
-        case "right":
-            return { x: 960, y: 0, w: 960, h: 1080 };
-        default:
-            return null;
-    }
-}
 
 export type StreamMode = "scene" | "half" | "strip";
 

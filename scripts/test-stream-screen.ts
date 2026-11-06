@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import type { PublicStreamSnapshot } from "@hushle/domain-streamer";
-import { cameraRect, offlineState, readSnapshot, urlLookSnapshot, type StreamState } from "@/components/stream/stream-renderer";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { CAMERA_SIZES, CAMERA_SLOTS } from "@hushle/domain-streamer";
+import { CAMERA_HOLE_SIZES, cameraRect, type CameraRect, type CameraSize, type CameraSlot } from "@/components/stream/camera-rects";
+import {
+    cameraRect as rendererCameraRect,
+    offlineState,
+    readSnapshot,
+    urlLookSnapshot,
+    type StreamState,
+} from "@/components/stream/stream-renderer";
 import {
     connectStreamTransport,
     createReloadCounter,
@@ -15,8 +25,15 @@ import {
 import type { StreamerEndedReason } from "@/lib/streamer/socket-contract";
 
 // The stream screen's pure parts: the snapshot reader (the screen's allowlist), the camera hole
-// geometry, the revision guard and the transport (against a fake socket and a fake clock). The
-// DOM side is covered by tests/streamer-stream-screen.spec.ts.
+// geometry, the revision guard and the transport (against a fake socket and a fake clock), plus
+// static checks on how the screen's modules import each other. The DOM side is covered by
+// tests/streamer-stream-screen.spec.ts.
+
+const STREAM_DIR = path.join(process.cwd(), "apps", "web", "src", "components", "stream");
+
+function source(...segments: string[]): string {
+    return readFileSync(path.join(process.cwd(), ...segments), "utf8");
+}
 
 let count = 0;
 async function test(name: string, run: () => void | Promise<void>): Promise<void> {
@@ -366,14 +383,36 @@ async function main(): Promise<void> {
         assert.equal(offlineState(look).remaining, look.duration);
     });
 
-    await test("the camera hole sits 70 px from the edges; the halves are exact", () => {
-        assert.deepEqual(cameraRect("br", "m"), { x: 1290, y: 695, w: 560, h: 315 });
-        assert.deepEqual(cameraRect("tl", "s"), { x: 70, y: 70, w: 480, h: 270 });
-        assert.deepEqual(cameraRect("tr", "l"), { x: 1210, y: 70, w: 640, h: 360 });
-        assert.deepEqual(cameraRect("bl", "m"), { x: 70, y: 695, w: 560, h: 315 });
-        assert.deepEqual(cameraRect("left", "s"), { x: 0, y: 0, w: 960, h: 1080 });
-        assert.deepEqual(cameraRect("right", "l"), { x: 960, y: 0, w: 960, h: 1080 });
-        assert.equal(cameraRect("none", "m"), null);
+    await test("the camera hole matches the guide's 1080p table for every slot and size", () => {
+        // docs/stream/platform-connections-guide.md §8.3: corners 70 px in, halves exact, none: no hole.
+        const table: Record<CameraSlot, Record<CameraSize, CameraRect | null>> = {
+            tl: { s: { x: 70, y: 70, w: 480, h: 270 }, m: { x: 70, y: 70, w: 560, h: 315 }, l: { x: 70, y: 70, w: 640, h: 360 } },
+            tr: { s: { x: 1370, y: 70, w: 480, h: 270 }, m: { x: 1290, y: 70, w: 560, h: 315 }, l: { x: 1210, y: 70, w: 640, h: 360 } },
+            bl: { s: { x: 70, y: 740, w: 480, h: 270 }, m: { x: 70, y: 695, w: 560, h: 315 }, l: { x: 70, y: 650, w: 640, h: 360 } },
+            br: { s: { x: 1370, y: 740, w: 480, h: 270 }, m: { x: 1290, y: 695, w: 560, h: 315 }, l: { x: 1210, y: 650, w: 640, h: 360 } },
+            left: { s: { x: 0, y: 0, w: 960, h: 1080 }, m: { x: 0, y: 0, w: 960, h: 1080 }, l: { x: 0, y: 0, w: 960, h: 1080 } },
+            right: { s: { x: 960, y: 0, w: 960, h: 1080 }, m: { x: 960, y: 0, w: 960, h: 1080 }, l: { x: 960, y: 0, w: 960, h: 1080 } },
+            none: { s: null, m: null, l: null },
+        };
+        assert.deepEqual(Object.keys(table).sort(), [...CAMERA_SLOTS].sort(), "the table covers every slot");
+        for (const slot of CAMERA_SLOTS) {
+            for (const size of CAMERA_SIZES) assert.deepEqual(cameraRect(slot, size), table[slot][size], `${slot} ${size}`);
+        }
+        assert.deepEqual(CAMERA_HOLE_SIZES, { s: [480, 270], m: [560, 315], l: [640, 360] });
+        // An unknown size from an old caller falls back to m, as before.
+        assert.deepEqual(cameraRect("br", "xl" as CameraSize), table.br.m);
+        // The renderer draws with the same function (the panel still imports it from there).
+        assert.equal(rendererCameraRect, cameraRect);
+    });
+
+    await test("camera-rects is pure: type imports only, no DOM, no demo, no socket", () => {
+        const rects = source("apps", "web", "src", "components", "stream", "camera-rects.ts");
+        const imports = rects.match(/^import .*$/gm) ?? [];
+        for (const line of imports) assert.match(line, /^import type /, line);
+        assert.doesNotMatch(rects, /\b(document|window|navigator)\.|socket\.io|stream-(transport|demo|renderer)/);
+        const renderer = readFileSync(path.join(STREAM_DIR, "stream-renderer.ts"), "utf8");
+        assert.match(renderer, /from "\.\/camera-rects"/);
+        assert.doesNotMatch(renderer, /\[480, 270\]|function cameraRect/, "the renderer keeps no copy of the table");
     });
 
     await test("the revision guard takes only newer states; a reset starts it again", () => {
