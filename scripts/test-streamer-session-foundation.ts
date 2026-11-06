@@ -331,4 +331,28 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.match(read(`${routeBase}/current/end/route.ts`), /always\s+(?:\/\/\s*)?safe/, "end explains in a comment why it has no account gate");
 }
 
+// --- Gap batch 2: the leak guard, the session lifecycle --------------------------
+
+{
+    const socketSource = read("apps/web/src/lib/socket/streamer-socket.ts");
+    // Every fixed vocabulary the guard skips is an exhaustive record of its union: a new member
+    // (a theme, a clock, a pattern...) fails tsc until the guard lists it.
+    for (const union of [
+        'PublicStreamSnapshot["type"]',
+        "StreamPhase",
+        "BroadcastTheme",
+        "CameraSlot",
+        "CameraSize",
+        "ClockStyle",
+        'PublicStreamSnapshot["pack"]',
+        "ChannelPlatform",
+        "CosmeticPattern",
+        "CosmeticMotionPreset",
+        "Extract<keyof ResolvedCardThemeLike, `${string}Color`>",
+    ]) {
+        assert.ok(socketSource.includes(`: Record<${union}, true> = {`), `the leak guard's ${union} list is an exhaustive Record<${union}, true>`);
+    }
+    assert.ok(!/readonly string\[\]>\(\[/.test(socketSource), "no hand-written vocabulary list is left in the guard");
+}
+
 console.log("PASS streamer session foundation contract");

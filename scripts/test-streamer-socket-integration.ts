@@ -4,7 +4,16 @@ import { createServer, type Server as HttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Server } from "socket.io";
 import { io as connectClient, type Socket as ClientSocket } from "socket.io-client";
-import type { HostStreamSnapshot, PublicStreamSnapshot, StreamCard } from "@hushle/domain-streamer";
+import {
+    BROADCAST_THEMES,
+    CAMERA_SIZES,
+    CAMERA_SLOTS,
+    CHANNEL_PLATFORMS,
+    TIMER_STYLES,
+    type HostStreamSnapshot,
+    type PublicStreamSnapshot,
+    type StreamCard,
+} from "@hushle/domain-streamer";
 import {
     createMemoryStreamerConnectionStore,
     type StreamerConnectionRecord,
@@ -66,9 +75,6 @@ function within<T>(promise: Promise<T>, label: string, ms = STEP_TIMEOUT_MS): Pr
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-function pause(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 // ---------------------------------------------------------------- fixtures
 
@@ -267,6 +273,16 @@ function received(client: Client, event: string, since = 0): Recorded[] {
     return client.events.slice(since).filter((entry) => entry.event === event);
 }
 
+/**
+ * A round trip on `client`'s own socket: a malformed public join, refused before any limit or
+ * room is touched. Socket.IO keeps one socket's packets in order, so once its reply is in, every
+ * event the server sent this socket before it has arrived too: "nothing came" can be asserted
+ * after it without a fixed sleep.
+ */
+async function barrier(client: Client): Promise<void> {
+    assertError(await ask(client, "streamer:public:join", { viewKey: "barrier" }), "INVALID_REQUEST", "barrier");
+}
+
 function assertError(ack: Ack, code: string, label: string): void {
     assert.equal(ack.ok, false, `${label}: expected a failure ack, got ${JSON.stringify(ack)}`);
     if (ack.ok) return;
@@ -291,6 +307,18 @@ function assertPublicShape(state: unknown, label: string): asserts state is Publ
     const record = state as Record<string, unknown>;
     assert.equal(record.type, "public-state", label);
     for (const key of ["card", "players", "tolerance", "pool"]) assert.ok(!(key in record), `${label}: public state has "${key}"`);
+}
+
+/** The guard refuses `payload` with exactly `rule` (the rule id it carries, not its message). */
+function assertTrips(payload: unknown, rule: string, label: string, against: Parameters<typeof assertNoSecret>[1]): void {
+    assert.throws(
+        () => assertNoSecret(payload, against),
+        (error: unknown) => {
+            assert.equal((error as { rule?: unknown } | null)?.rule, rule, `${label}: ${String(error)}`);
+            return true;
+        },
+        label,
+    );
 }
 
 function roomOf(io: Server, room: string): Set<string> {
@@ -336,21 +364,35 @@ async function main(): Promise<void> {
 
     const limiter = countingLimiter();
     const socketErrors: Array<{ event: string; error: unknown }> = [];
+    // Failure switches: a reporter that throws after recording, a limiter and a row lookup that throw.
+    const failing = { reporter: false, limiter: false, lookup: false };
     const options: StreamerSocketOptions = {
         resolveUser: async (socket) => {
             const who = (socket.handshake.auth as { testUser?: unknown } | undefined)?.testUser;
             return typeof who === "string" && TEST_USERS[who] ? { ...TEST_USERS[who] } : { userId: null, isSuspended: false };
         },
-        rateLimit: limiter.consume,
+        rateLimit: async (limit) => {
+            if (failing.limiter) throw new Error("limiter down");
+            return limiter.consume(limit);
+        },
         features: async () => ({ ...features }),
         resolveCardBack: (userId, itemId, flags) => resolveCardBackSelection(userId, itemId, flags, CARD_BACK_LOADERS),
         now: () => socketClock.now,
-        onError: (event, error) => socketErrors.push({ event, error }),
+        onError: (event, error) => {
+            socketErrors.push({ event, error });
+            if (failing.reporter) throw new Error("reporter down");
+        },
+    };
+    const lookup: Parameters<typeof setupStreamerSocket>[2] = {
+        async findByViewKeyHash(hash) {
+            if (failing.lookup) throw new Error("db down");
+            return sessions.findByViewKeyHash(hash);
+        },
     };
 
     const httpServer: HttpServer = createServer();
     const io = new Server(httpServer, { path: SOCKET_PATH });
-    setupStreamerSocket(io, wiredRuntime, sessions, options);
+    setupStreamerSocket(io, wiredRuntime, lookup, options);
     await within(new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", () => resolve())), "listen");
     const { port } = httpServer.address() as AddressInfo;
     const url = `http://127.0.0.1:${port}`;
@@ -459,8 +501,11 @@ async function main(): Promise<void> {
             assertPublicShape(pub, "running public state");
             assert.equal(pub.reveal, null);
             assertNoWords(pub, DECK[0], "running public state");
-            await pause(50);
-            assert.equal(stranger.events.length, strangerMark, "the stranger got nothing");
+            const anonymousMark = anonymous.events.length;
+            await barrier(stranger);
+            await barrier(anonymous);
+            assert.deepEqual(stranger.events.slice(strangerMark).map((entry) => entry.event), [], "the stranger got nothing before its barrier reply");
+            assert.deepEqual(anonymous.events.slice(anonymousMark).map((entry) => entry.event), []);
             assert.equal(received(anonymous, "streamer:host:state").length + received(anonymous, "streamer:public:state").length, 0);
         });
 
@@ -517,8 +562,34 @@ async function main(): Promise<void> {
             const owned = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.cardBack?.itemId === 10);
             assertOk(await ask(owner, "streamer:host:settings", { cardBack: { itemId: 10 } }), "owned card back");
             const pub = await owned;
-            assert.equal(pub.cardBack?.name, "Kor");
-            assert.equal(typeof pub.cardBack?.theme, "object");
+            // Exactly the inventory item's resolved look, bounded by the public projection.
+            assert.deepEqual(pub.cardBack, {
+                itemId: 10,
+                name: "Kor",
+                theme: {
+                    renderSpecVersion: 1,
+                    requestedRenderSpecVersion: 1,
+                    usedRenderSpecFallback: false,
+                    surfaceColor: "#102030",
+                    borderColor: "#405060",
+                    accentColor: "#c084fc",
+                    secondaryColor: "#ddd6fe",
+                    titleColor: "#f5f3ff",
+                    detailColor: "#ddd6fe",
+                    pattern: "dots",
+                    patternOpacity: 0.22,
+                    patternScale: 18,
+                    motionPreset: "pulse",
+                    motionSpeedMs: 5000,
+                    glowColor: "#a855f7",
+                    glowBlur: 28,
+                    glowOpacity: 0.24,
+                    overlayImageUrl: null,
+                    overlayOpacity: 0,
+                },
+                imageUrl: "/cosmetics/10.svg",
+            });
+            assert.deepEqual(pub.cardBack, (await resolveCardBackSelection(1, 10, { streamerShowcaseAllCosmetics: false }, CARD_BACK_LOADERS)), "the resolver's own answer");
             assertError(
                 await ask(owner, "streamer:host:settings", { cardBack: { itemId: 11 } }),
                 "STREAMER_CARD_NOT_ALLOWED",
@@ -677,7 +748,7 @@ async function main(): Promise<void> {
             await hostAfter;
             assert.equal(roomOf(io, publicRoom).size, 0, "the public room was emptied");
             assert.ok(roomOf(io, hostRoom).has(owner.socket.id!) && roomOf(io, hostRoom).has(ownerTab.socket.id!), "the host room is untouched");
-            await pause(50);
+            for (const client of watchers) await barrier(client);
             watchers.forEach((client, index) => {
                 const seen = JSON.stringify(client.events.slice(marks[index]));
                 assert.ok(!seen.includes(rotated), "no other socket saw the new key");
@@ -711,7 +782,7 @@ async function main(): Promise<void> {
             assertOk(await ask(ownerTab, "streamer:host:join", { sessionId }), "another owner tab");
             assertError(await ask(ownerTab, "streamer:host:rotate-key"), "RATE_LIMITED", "rotation from another tab");
             assert.equal(runtime.get(sessionId)?.viewKeyHash, keyHash, "no rotation happened");
-            await pause(50);
+            await barrier(viewer);
             assert.equal(received(viewer, "streamer:ended", mark).length, 0, "the stream screen was not closed");
             assert.ok(roomOf(io, publicRoom).has(viewer.socket.id!), "the viewer stays in the public room");
             const reload = await connect(url);
@@ -758,7 +829,7 @@ async function main(): Promise<void> {
             assert.equal(roomOf(io, streamerPublicRoom(orphan.id)).size, 0);
         });
 
-        await test("the leak guard passes a real public state and trips on tampered ones", () => {
+        await test("the leak guard passes a real public state and trips on tampered ones, naming the rule that fired", () => {
             const live = runtime.get(sessionId);
             assert.ok(live);
             const host = live.hostSnapshot();
@@ -768,26 +839,26 @@ async function main(): Promise<void> {
             const source = { hostSnapshot: () => host };
             // A passed word that is a taboo of the live card is no leak: viewers never see the taboos.
             assertNoSecret({ ...pub, passed: { round: 1, target: card.taboos[2] } }, source);
-            const trips = (payload: unknown, label: string, against: Parameters<typeof assertNoSecret>[1] = source) =>
-                assert.throws(() => assertNoSecret(payload, against), /secret|host-only|public/i, label);
-            trips({ ...pub, card }, "card key");
-            trips({ ...pub, type: "host-state" }, "host type");
-            trips({ ...pub, players: [] }, "players key");
-            trips({ ...pub, reveal: { target: card.target, taboos: card.taboos, solved: false } }, "reveal while running");
-            trips(null, "not an object");
-            // (a) The live word anywhere, in any letter case or padding.
-            trips({ ...pub, pack: card.target }, "target in another field");
-            trips({ ...pub, extra: { nested: [`  ${card.target.toLocaleLowerCase("tr")}! `] } }, "target, lower-cased and padded, nested");
-            // (c) The live word recycled into the passed card.
-            trips({ ...pub, passed: { round: 1, target: card.target } }, "the live word in the passed card");
+            const trips = (payload: unknown, rule: string, label: string, against: Parameters<typeof assertNoSecret>[1] = source) =>
+                assertTrips(payload, rule, label, against);
+            trips({ ...pub, card }, "host-field", "card key");
+            trips({ ...pub, type: "host-state" }, "not-public", "host type");
+            trips({ ...pub, players: [] }, "host-field", "players key");
+            trips({ ...pub, reveal: { target: card.target, taboos: card.taboos, solved: false } }, "early-reveal", "reveal while running");
+            trips(null, "not-public", "not an object");
+            // The live word anywhere, in any letter case or padding.
+            trips({ ...pub, pack: card.target }, "target", "target in another field");
+            trips({ ...pub, extra: { nested: [`  ${card.target.toLocaleLowerCase("tr")}! `] } }, "target", "target, lower-cased and padded, nested");
+            // The live word recycled into the passed card.
+            trips({ ...pub, passed: { round: 1, target: card.target } }, "passed-target", "the live word in the passed card");
             const longWord = `${"UZUN".repeat(12)} KELİME`;
             const longCard = { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: longWord, taboos: [] } }) };
-            trips({ ...pub, passed: { round: 1, target: longWord.slice(0, 40) } }, "a long live word, cut as the passed card shows it", longCard);
-            // (b) A taboo anywhere but the passed card's word.
-            trips({ ...pub, extra: { nested: [card.taboos[4]] } }, "nested taboo");
-            trips({ ...pub, lastCorrect: { eventId: card.taboos[0], name: "Luna", round: 1, pointsGranted: 1, solveMs: 900 } }, "taboo beside a name");
-            trips({ ...pub, passed: { round: 1, target: "BAŞKA", note: card.taboos[1] } }, "taboo in another field of the passed card");
-            trips({ ...pub, channel: { platform: card.taboos[3], name: "kanal" } }, "taboo as the channel platform");
+            trips({ ...pub, passed: { round: 1, target: longWord.slice(0, 40) } }, "passed-target", "a long live word, cut as the passed card shows it", longCard);
+            // A taboo anywhere but the passed card's word.
+            trips({ ...pub, extra: { nested: [card.taboos[4]] } }, "taboo", "nested taboo");
+            trips({ ...pub, lastCorrect: { eventId: card.taboos[0], name: "Luna", round: 1, pointsGranted: 1, solveMs: 900 } }, "taboo", "taboo beside a name");
+            trips({ ...pub, passed: { round: 1, target: "BAŞKA", note: card.taboos[1] } }, "taboo", "taboo in another field of the passed card");
+            trips({ ...pub, channel: { platform: card.taboos[3], name: "kanal" } }, "taboo", "taboo as the channel platform");
             // Viewer, channel and card-back names are chat or catalogue text, never card data: a viewer named like a taboo is no leak.
             const named = {
                 ...pub,
@@ -801,7 +872,7 @@ async function main(): Promise<void> {
             const finished = { hostSnapshot: () => ({ ...host, phase: "finished" as const }) };
             const revealed = { ...pub, phase: "finished", reveal: { target: card.target, taboos: card.taboos, solved: true } };
             assertNoSecret(revealed, finished);
-            trips({ ...revealed, pack: card.target }, "the live word outside the reveal of a finished round", finished);
+            trips({ ...revealed, pack: card.target }, "target", "the live word outside the reveal of a finished round", finished);
             // A field's fixed vocabulary (phase, theme, clock, pattern, ...) is no card data, even when a taboo is spelt
             // the same; keys are never compared. Outside that vocabulary, the same field is checked.
             const vocabulary = {
@@ -815,10 +886,139 @@ async function main(): Promise<void> {
                 cardBack: { itemId: 10, name: "Kor", theme: { pattern: "rings", motionPreset: "pulse", surfaceColor: "#102030" }, imageUrl: null },
             };
             assertNoSecret(styled, vocabulary);
-            trips({ ...styled, theme: "Sakura" }, "a taboo outside the vocabulary of its field", vocabulary);
-            trips({ ...styled, cardBack: { ...styled.cardBack, theme: { pattern: "Rings" } } }, "a taboo as an unknown pattern", vocabulary);
+            trips({ ...styled, theme: "Sakura" }, "taboo", "a taboo outside the vocabulary of its field", vocabulary);
+            trips({ ...styled, cardBack: { ...styled.cardBack, theme: { pattern: "Rings" } } }, "taboo", "a taboo as an unknown pattern", vocabulary);
             // Fails closed: a live card without a word to compare against.
-            trips(pub, "a live card without a target", { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: " ", taboos: [] } }) });
+            trips(pub, "no-target", "a live card without a target", { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: " ", taboos: [] } }) });
+        });
+
+        await test("leak guard: paths are segments, so a key holding a dot or a star never forges an exempt path", () => {
+            const live = runtime.get(sessionId);
+            assert.ok(live);
+            const host = live.hostSnapshot();
+            const card = host.card as StreamCard;
+            const pub = live.publicSnapshot();
+            const source = { hostSnapshot: () => host };
+            const [target, taboo] = [card.target, card.taboos[0]];
+            assertTrips({ ...pub, "channel.name": target }, "target", "a dotted key is not channel.name", source);
+            assertTrips({ ...pub, "cardBack.name": taboo }, "taboo", "a dotted key is not cardBack.name", source);
+            assertTrips({ ...pub, scores: { "*": { name: target } } }, "target", "a * key is no array index", source);
+            assertTrips({ ...pub, scores: [{ "*": { name: taboo } }] }, "taboo", "a * key inside an item is no array index either", source);
+            assertTrips({ ...pub, "passed.target": taboo }, "taboo", "a dotted key is not the passed card's word", source);
+            assertTrips({ ...pub, lastCorrect: { eventId: 1, name: "Luna", round: 1 }, "lastCorrect.name": target }, "target", "nor the last correct name", source);
+            const finished = { hostSnapshot: () => ({ ...host, phase: "finished" as const }) };
+            const revealed = { ...pub, phase: "finished", reveal: { target, taboos: card.taboos, solved: true } };
+            assertNoSecret(revealed, finished);
+            assertTrips({ ...revealed, "reveal.x": target }, "target", "a dotted key is not the reveal", finished);
+            assertTrips({ ...revealed, revealed: { target } }, "target", "a key that starts with reveal is not the reveal", finished);
+            const vocabulary = { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: "DOĞUM GÜNÜ", taboos: ["Candle", "Rings"] } }) };
+            assertTrips({ ...pub, "cardBack.theme.pattern": "rings" }, "taboo", "a dotted key has no vocabulary", vocabulary);
+            assertTrips({ ...pub, extra: { clock: "candle" } }, "taboo", "a vocabulary field is matched at its own path only", vocabulary);
+            // The real paths still pass: names are no card data, an array index is a wildcard.
+            assertNoSecret(
+                {
+                    ...pub,
+                    scores: [{ name: "Luna", points: 2, rank: 1, tied: true }, { name: target, points: 2, rank: 1, tied: true }],
+                    channel: { platform: "twitch", name: taboo },
+                },
+                source,
+            );
+        });
+
+        await test("leak guard: it walks what Socket.IO sends (the JSON of the payload), not the live object", () => {
+            const live = runtime.get(sessionId);
+            assert.ok(live);
+            const host = live.hostSnapshot();
+            const card = host.card as StreamCard;
+            const pub = live.publicSnapshot();
+            const source = { hostSnapshot: () => host };
+            assertTrips({ ...pub, extra: { toJSON: () => card.target } }, "target", "a value that serializes to the live word", source);
+            assertTrips({ ...pub, extra: new String(card.taboos[1]) }, "taboo", "a boxed string", source);
+            assertTrips({ ...pub, extra: [new Date(0), { toJSON: () => [card.taboos[2]] }] }, "taboo", "nested toJSON", source);
+            // What never reaches the wire is no leak: an undefined field, a function, a symbol key.
+            assertNoSecret({ ...pub, card: undefined, extra: () => card.target, [Symbol("x")]: card.target }, source);
+            const circular: Record<string, unknown> = { ...pub };
+            circular.self = circular;
+            assertTrips(circular, "not-public", "a payload Socket.IO cannot serialize", source);
+            assertTrips({ ...pub, big: BigInt(1) }, "not-public", "a BigInt", source);
+            assertTrips({ toJSON: () => null }, "not-public", "a payload that serializes to no object", source);
+        });
+
+        await test("leak guard: words are compared folded (normal tolerance), as the domain drops a recycled pass", () => {
+            const live = runtime.get(sessionId);
+            assert.ok(live);
+            const host = live.hostSnapshot();
+            const pub = live.publicSnapshot();
+            const folded = { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: "ŞEMSİYE", taboos: ["Islanmak", "Yağmur", "Gökkuşağı"] } }) };
+            assertNoSecret(pub, folded);
+            assertTrips({ ...pub, extra: "semsiye" }, "target", "the live word without its Turkish letters", folded);
+            assertTrips({ ...pub, extra: "islanmak" }, "taboo", "a taboo with a dotted i", folded);
+            assertTrips({ ...pub, extra: ["YAGMUR!"] }, "taboo", "a taboo folded and shouted", folded);
+            assertTrips({ ...pub, extra: { deep: "gokkusagi" } }, "taboo", "a taboo folded, nested", folded);
+            assertTrips({ ...pub, passed: { round: 1, target: "Semsiye" } }, "passed-target", "the live word folded in the passed card", folded);
+            // The passed card is compared with the live word only, folded too.
+            assertNoSecret({ ...pub, passed: { round: 1, target: "yagmur" } }, folded);
+            const long = "ŞEMSİYE".repeat(8);
+            const longCard = { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: long, taboos: [] } }) };
+            assertTrips({ ...pub, passed: { round: 1, target: "SEMSIYE".repeat(8).slice(0, 40) } }, "passed-target", "a long live word, folded and cut", longCard);
+        });
+
+        await test("leak guard: a card-back colour field is skipped only while it holds a hex colour", () => {
+            const live = runtime.get(sessionId);
+            assert.ok(live);
+            const host = live.hostSnapshot();
+            const pub = live.publicSnapshot();
+            const decade = { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: "DOĞUM GÜNÜ", taboos: ["Decade", "Facade", "Bead", "Cafe", "Ace"] } }) };
+            const colours = {
+                surfaceColor: "#DECADE",
+                borderColor: "#FACADE",
+                accentColor: "#BEAD",
+                secondaryColor: "#CAFE",
+                titleColor: "#ACE",
+                detailColor: "#decade",
+                glowColor: "#DECADE80",
+            };
+            const withTheme = (theme: Record<string, unknown>) => ({ ...pub, cardBack: { itemId: 10, name: "Kor", theme: { pattern: "grid", ...theme }, imageUrl: null } });
+            assertNoSecret(withTheme(colours), decade);
+            for (const field of Object.keys(colours)) {
+                assertTrips(withTheme({ ...colours, [field]: "decade" }), "taboo", `${field}: a value that is no hex colour is compared`, decade);
+                assertTrips(withTheme({ ...colours, [field]: "#Decade!" }), "taboo", `${field}: a near-hex value is compared`, decade);
+            }
+            assertTrips({ ...pub, extra: "#DECADE" }, "taboo", "a hex colour outside the colour fields is compared", decade);
+            assertTrips(withTheme({ pattern: "#DECADE" }), "taboo", "a hex value in a non-colour card-back field is compared", decade);
+        });
+
+        await test("leak guard: every member of each fixed vocabulary is skipped at its field, even spelt like a taboo", () => {
+            const live = runtime.get(sessionId);
+            assert.ok(live);
+            const host = live.hostSnapshot();
+            const pub = live.publicSnapshot();
+            const vocabularies: Array<[string, readonly string[], (value: string) => Record<string, unknown>]> = [
+                ["phase", ["ready", "running", "paused", "finished", "ended"], (value) => ({ ...pub, phase: value, reveal: null })],
+                ["theme", BROADCAST_THEMES, (value) => ({ ...pub, theme: value })],
+                ["camera", CAMERA_SLOTS, (value) => ({ ...pub, camera: value })],
+                ["cameraSize", CAMERA_SIZES, (value) => ({ ...pub, cameraSize: value })],
+                ["clock", TIMER_STYLES, (value) => ({ ...pub, clock: value })],
+                ["pack", ["TR", "EN"], (value) => ({ ...pub, pack: value })],
+                ["channel.platform", CHANNEL_PLATFORMS, (value) => ({ ...pub, channel: { platform: value, name: "kanal" } })],
+                [
+                    "pattern",
+                    ["none", "grid", "dots", "diagonal", "chevrons", "rings", "noise"],
+                    (value) => ({ ...pub, cardBack: { itemId: 10, name: "Kor", theme: { pattern: value }, imageUrl: null } }),
+                ],
+                [
+                    "motionPreset",
+                    ["none", "pulse", "drift", "shimmer"],
+                    (value) => ({ ...pub, cardBack: { itemId: 10, name: "Kor", theme: { motionPreset: value }, imageUrl: null } }),
+                ],
+            ];
+            for (const [field, members, payload] of vocabularies) {
+                for (const member of members) {
+                    const spelt = { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: "DOĞUM GÜNÜ", taboos: [member] } }) };
+                    assertNoSecret(payload(member), spelt);
+                    assertTrips({ ...payload(member), extra: member }, "taboo", `${field} ${member}: the same word elsewhere is compared`, spelt);
+                }
+            }
         });
 
         await test("a public broadcast that fails the guard is dropped and reported", async () => {
@@ -827,16 +1027,89 @@ async function main(): Promise<void> {
             assert.ok(live);
             const mark = viewer.events.length;
             const errorsBefore = socketErrors.length;
+            const followUp = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state");
             wiredEmit(sessionId, "public", { ...live.publicSnapshot(), card: live.hostSnapshot().card } as unknown as PublicStreamSnapshot);
-            await pause(100);
-            assert.equal(received(viewer, "streamer:public:state", mark).length, 0, "the tampered state never left the server");
+            // A valid state sent right after: the viewer gets it, and nothing before it.
+            const valid = live.publicSnapshot();
+            wiredEmit(sessionId, "public", valid);
+            assert.deepEqual(await followUp, valid, "the follow-up state arrives");
+            assert.deepEqual(received(viewer, "streamer:public:state", mark).map((entry) => entry.args[0]), [valid], "the tampered state never left the server");
             assert.equal(socketErrors.length, errorsBefore + 1);
             assert.equal(socketErrors[errorsBefore].event, "streamer_socket.public_state_blocked");
+            assert.equal((socketErrors[errorsBefore].error as { rule?: unknown }).rule, "host-field");
             // Fails closed: a public state with no live session and no host projection to check against.
             wiredEmit(randomUUID(), "public", live.publicSnapshot());
             assert.equal(socketErrors.length, errorsBefore + 2);
             assert.equal(socketErrors[errorsBefore + 1].event, "streamer_socket.public_state_blocked");
-            assert.match((socketErrors[errorsBefore + 1].error as Error).message, /no host projection/);
+            assert.equal((socketErrors[errorsBefore + 1].error as { rule?: unknown }).rule, "no-reference");
+        });
+
+        await test("a blocked public state is reported once per session, round and rule", async () => {
+            const round = liveRound() + 1;
+            const passed = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.round === round);
+            assertOk(await ask(owner, "streamer:host:pass"), "a new round");
+            await passed;
+            const live = runtime.get(sessionId);
+            assert.ok(live && wiredEmit);
+            const emit = wiredEmit;
+            const errorsBefore = socketErrors.length;
+            const blocked = () => socketErrors.slice(errorsBefore).filter((entry) => entry.event === "streamer_socket.public_state_blocked");
+            const withCard = () => ({ ...live.publicSnapshot(), card: live.hostSnapshot().card }) as unknown as PublicStreamSnapshot;
+            const withWord = () => ({ ...live.publicSnapshot(), extra: liveCard().target }) as unknown as PublicStreamSnapshot;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                emit(sessionId, "host", live.hostSnapshot());
+                emit(sessionId, "public", withCard());
+                emit(sessionId, "public", withWord());
+            }
+            assert.deepEqual(blocked().map((entry) => (entry.error as { rule?: unknown }).rule), ["host-field", "target"], "one report per rule in this round");
+            // Another session's blocked state is its own report.
+            const other = randomUUID();
+            emit(other, "public", live.publicSnapshot());
+            emit(other, "public", live.publicSnapshot());
+            assert.equal(blocked().length, 3);
+            // The next round reports again.
+            const next = liveRound() + 1;
+            const afterPass = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.round === next);
+            assertOk(await ask(owner, "streamer:host:pass"), "the next round");
+            await afterPass;
+            emit(sessionId, "public", withCard());
+            emit(sessionId, "public", withCard());
+            assert.deepEqual(blocked().map((entry) => (entry.error as { rule?: unknown }).rule), ["host-field", "target", "no-reference", "host-field"]);
+        });
+
+        await test("every event is answered exactly once even when the error reporter throws; nothing is left unhandled", async () => {
+            const unhandled: unknown[] = [];
+            const onUnhandled = (reason: unknown) => unhandled.push(reason);
+            process.on("unhandledRejection", onUnhandled);
+            const errorsBefore = socketErrors.length;
+            failing.reporter = true;
+            try {
+                failing.limiter = true;
+                assertError(await ask(owner, "streamer:host:rotate-key"), "UNKNOWN_ERROR", "a limiter that throws, then a reporter that throws");
+                failing.limiter = false;
+                failing.lookup = true;
+                assertError(await ask(viewer, "streamer:public:join", { viewKey }), "UNKNOWN_ERROR", "a lookup that throws");
+                // Without an ack the failure comes as one hata, before the reply to a later event.
+                const mark = viewer.events.length;
+                viewer.socket.emit("streamer:public:join", { viewKey });
+                await barrier(viewer);
+                const hatas = received(viewer, "hata", mark);
+                assert.equal(hatas.length, 1, "one hata for the event without an ack");
+                assert.equal((hatas[0].args[1] as { code: string }).code, "UNKNOWN_ERROR");
+            } finally {
+                failing.reporter = false;
+                failing.limiter = false;
+                failing.lookup = false;
+            }
+            assert.deepEqual(
+                socketErrors.slice(errorsBefore).map((entry) => entry.event),
+                ["streamer_socket.host_rotate-key_failed", "streamer_socket.public_join_failed", "streamer_socket.public_join_failed"],
+                "each failure reached the reporter once",
+            );
+            await new Promise((resolve) => setImmediate(resolve));
+            process.off("unhandledRejection", onUnhandled);
+            assert.deepEqual(unhandled, [], "no handler promise rejected");
+            assertOk(await ask(viewer, "streamer:public:join", { viewKey }), "the socket still works");
         });
 
         await test("end: both rooms get the final state and streamer:ended { reason: ended }; both rooms are emptied", async () => {

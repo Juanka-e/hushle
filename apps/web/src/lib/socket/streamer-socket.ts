@@ -1,14 +1,16 @@
 import type { Server, Socket } from "socket.io";
 import { z } from "zod";
 import {
-    BROADCAST_THEMES,
-    CAMERA_SIZES,
-    CAMERA_SLOTS,
-    CHANNEL_PLATFORMS,
     normalizeGuess,
     PASSED_TARGET_MAX,
-    TIMER_STYLES,
+    type BroadcastTheme,
+    type CameraSize,
+    type CameraSlot,
+    type ChannelPlatform,
+    type ClockStyle,
     type HostStreamSnapshot,
+    type PublicStreamSnapshot,
+    type ResolvedCardThemeLike,
     type StreamCardBack,
     type StreamPhase,
 } from "@hushle/domain-streamer";
@@ -42,6 +44,9 @@ export const STREAMER_HOST_ACTION_BURST = { windowMs: 10_000, maxRequests: 10 } 
 export const STREAMER_HOST_JOIN_BURST = { windowMs: 10_000, maxRequests: 10 } as const;
 export const STREAMER_PUBLIC_JOIN_LIMIT = { bucket: "streamer-public-join", windowMs: 60_000, maxRequests: 30 } as const;
 
+/** Distinct (round, rule) pairs a session's blocked-state reports remember before starting over. */
+const MAX_BLOCKED_REPORTS_PER_SESSION = 256;
+
 // base64url of 32 random bytes, without padding.
 const VIEW_KEY_LENGTH = Math.ceil((VIEW_KEY_BYTES * 4) / 3);
 
@@ -71,95 +76,162 @@ export interface StreamerSocketOptions {
 
 // ---------------------------------------------------------------- leak guard
 
+/** Which rule refused a public state: tests and reports name the rule, never the text it matched. */
+export type StreamerLeakRule =
+    | "not-public"
+    | "host-field"
+    | "early-reveal"
+    | "no-reference"
+    | "no-target"
+    | "target"
+    | "taboo"
+    | "passed-target";
+
 export class StreamerSecretLeakError extends Error {
-    constructor(reason: string) {
-        super(`public state blocked: ${reason}`);
+    readonly rule: StreamerLeakRule;
+
+    constructor(rule: StreamerLeakRule, reason: string) {
+        super(`public state blocked (${rule}): ${reason}`);
         this.name = "StreamerSecretLeakError";
+        this.rule = rule;
     }
 }
 
 const HOST_ONLY_FIELDS = ["card", "players", "tolerance", "pool"] as const;
 
-const STREAM_PHASES = ["ready", "running", "paused", "finished", "ended"] as const satisfies readonly StreamPhase[];
-const COSMETIC_PATTERNS = ["none", "grid", "dots", "diagonal", "chevrons", "rings", "noise"] as const satisfies readonly CosmeticPattern[];
-const COSMETIC_MOTION_PRESETS = ["none", "pulse", "drift", "shimmer"] as const satisfies readonly CosmeticMotionPreset[];
+// A path is a list of segments: an object key (a string, whatever it holds) or an array index
+// (a number). A pattern matches segment by segment; INDEX matches any array index and nothing
+// else, so a key spelt "*", "channel.name" or "reveal.x" never forges an exempt path.
+type PathSegment = string | number;
+const INDEX = Symbol("array index");
+type Pattern = ReadonlyArray<string | typeof INDEX>;
+
+function matches(pattern: Pattern, path: readonly PathSegment[]): boolean {
+    return pattern.length === path.length && pattern.every((segment, at) => (segment === INDEX ? typeof path[at] === "number" : segment === path[at]));
+}
 
 // Fields filled from a fixed vocabulary: a member carries no card data, even when a taboo is
 // spelt the same (the taboo "Candle" and the candle clock). Any other value there is compared.
-const FIELD_VOCABULARY = new Map<string, readonly string[]>([
-    ["type", ["public-state"]],
-    ["phase", STREAM_PHASES],
-    ["theme", BROADCAST_THEMES],
-    ["camera", CAMERA_SLOTS],
-    ["cameraSize", CAMERA_SIZES],
-    ["clock", TIMER_STYLES],
-    ["pack", ["TR", "EN"]],
-    ["channel.platform", CHANNEL_PLATFORMS],
-    ["cardBack.theme.pattern", COSMETIC_PATTERNS],
-    ["cardBack.theme.motionPreset", COSMETIC_MOTION_PRESETS],
-]);
+// Each vocabulary is an exhaustive record of its union: a new member fails tsc until listed here.
+const TYPES: Record<PublicStreamSnapshot["type"], true> = { "public-state": true };
+const PHASES: Record<StreamPhase, true> = { ready: true, running: true, paused: true, finished: true, ended: true };
+const THEMES: Record<BroadcastTheme, true> = { "oyun-gecesi": true, studyo: true, "gece-altini": true, sakura: true, sade: true };
+const CAMERAS: Record<CameraSlot, true> = { none: true, tl: true, tr: true, bl: true, br: true, left: true, right: true };
+const CAMERA_SIZES: Record<CameraSize, true> = { s: true, m: true, l: true };
+const CLOCKS: Record<ClockStyle, true> = { hourglass: true, candle: true, bulbs: true, incense: true, ring: true, counter: true };
+const PACKS: Record<PublicStreamSnapshot["pack"], true> = { TR: true, EN: true };
+const CHANNEL_PLATFORMS: Record<ChannelPlatform, true> = { twitch: true, kick: true, youtube: true };
+const PATTERNS: Record<CosmeticPattern, true> = { none: true, grid: true, dots: true, diagonal: true, chevrons: true, rings: true, noise: true };
+const MOTIONS: Record<CosmeticMotionPreset, true> = { none: true, pulse: true, drift: true, shimmer: true };
+
+function vocabulary(pattern: Pattern, members: Record<string, true>): readonly [Pattern, ReadonlySet<string>] {
+    return [pattern, new Set(Object.keys(members))];
+}
+
+const VOCABULARY_FIELDS = [
+    vocabulary(["type"], TYPES),
+    vocabulary(["phase"], PHASES),
+    vocabulary(["theme"], THEMES),
+    vocabulary(["camera"], CAMERAS),
+    vocabulary(["cameraSize"], CAMERA_SIZES),
+    vocabulary(["clock"], CLOCKS),
+    vocabulary(["pack"], PACKS),
+    vocabulary(["channel", "platform"], CHANNEL_PLATFORMS),
+    vocabulary(["cardBack", "theme", "pattern"], PATTERNS),
+    vocabulary(["cardBack", "theme", "motionPreset"], MOTIONS),
+];
+
+// The card-back colours: skipped only while they hold a hex colour (`#DECADE` is no taboo
+// "Decade"); any other value there is compared.
+const COLOUR_KEYS: Record<Extract<keyof ResolvedCardThemeLike, `${string}Color`>, true> = {
+    surfaceColor: true,
+    borderColor: true,
+    accentColor: true,
+    secondaryColor: true,
+    titleColor: true,
+    detailColor: true,
+    glowColor: true,
+};
+const COLOUR_FIELDS: Pattern[] = Object.keys(COLOUR_KEYS).map((key) => ["cardBack", "theme", key]);
+const HEX_COLOUR = /^#[0-9a-f]{3,8}$/i;
 
 // Viewer, channel and card-back names are chat or catalogue text, never card data: a viewer
 // whose name equals a taboo word is no leak, so those fields are not compared.
-const NAME_FIELDS = new Set(["scores.*.name", "lastCorrect.name", "channel.name", "cardBack.name"]);
+const NAME_FIELDS: Pattern[] = [["scores", INDEX, "name"], ["lastCorrect", "name"], ["channel", "name"], ["cardBack", "name"]];
 
 // The previous pass's word stays on the stream screen. A taboo of the live card may be spelt the
 // same (viewers never see the taboos); only the live word itself is a leak there.
-const PASSED_WORD_FIELD = "passed.target";
+const PASSED_WORD_FIELD: Pattern = ["passed", "target"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// Folded as the domain drops a recycled pass (normal tolerance: ı/i, ş/s, ğ/g, ç/c, ö/o, ü/u).
 function comparable(word: string): string {
-    return normalizeGuess(word, "strict");
+    return normalizeGuess(word, "normal");
 }
 
-/** Calls `visit` with every string value and its path ("scores.*.name": array items are `*`). */
-function eachString(value: unknown, path: string, visit: (path: string, text: string) => void): void {
+/** Calls `visit` with every string value and its path. */
+function eachString(value: unknown, path: PathSegment[], visit: (path: readonly PathSegment[], text: string) => void): void {
     if (typeof value === "string") visit(path, value);
-    else if (Array.isArray(value)) value.forEach((item) => eachString(item, path ? `${path}.*` : "*", visit));
+    else if (Array.isArray(value)) value.forEach((item, index) => eachString(item, [...path, index], visit));
     else if (isRecord(value)) {
-        for (const [key, child] of Object.entries(value)) eachString(child, path ? `${path}.${key}` : key, visit);
+        for (const [key, child] of Object.entries(value)) eachString(child, [...path, key], visit);
     }
+}
+
+/** Exactly what Socket.IO puts on the wire for `payload`; fails closed when it cannot be sent as JSON. */
+function onTheWire(payload: unknown): Record<string, unknown> {
+    let wire: unknown;
+    try {
+        const json = JSON.stringify(payload);
+        wire = json === undefined ? undefined : JSON.parse(json);
+    } catch {
+        throw new StreamerSecretLeakError("not-public", "the payload does not serialize");
+    }
+    if (!isRecord(wire) || wire.type !== "public-state") throw new StreamerSecretLeakError("not-public", "not a public state");
+    return wire;
 }
 
 /**
- * Throws unless `payload` may go to the public room of `live`: a public projection with no
- * host-only field, no reveal while the round is not over, and no string value equal to the live
- * card's word or one of its taboos once both are normalized (strict tolerance). Keys are never
- * compared, and neither are names or a field's fixed vocabulary. The passed card's word is
- * compared with the live word only. A finished round's reveal is on the stream screen by
- * design, so it is not compared; the rest of that payload is. Fails closed when the live card
- * has no word to compare against.
+ * Throws unless `payload` may go to the public room of `live`. The JSON of the payload (what
+ * Socket.IO sends) is checked: a public projection with no host-only field, no reveal while the
+ * round is not over, and no string value equal to the live card's word or one of its taboos once
+ * both are folded (normal tolerance). Keys are never compared, and neither are names, a field's
+ * fixed vocabulary or a card-back hex colour. The passed card's word is compared with the live
+ * word only. A finished round's reveal is on the stream screen by design, so it is not compared;
+ * the rest of that payload is. Fails closed when the live card has no word to compare against.
+ * Each refusal names its rule (`StreamerSecretLeakError.rule`).
  */
 export function assertNoSecret(payload: unknown, live: Pick<LiveStreamSession, "hostSnapshot">): void {
-    if (!isRecord(payload) || payload.type !== "public-state") throw new StreamerSecretLeakError("not a public state");
+    const wire = onTheWire(payload);
     for (const field of HOST_ONLY_FIELDS) {
-        if (field in payload) throw new StreamerSecretLeakError(`host-only field "${field}"`);
+        if (field in wire) throw new StreamerSecretLeakError("host-field", `host-only field "${field}"`);
     }
     const host = live.hostSnapshot();
     const finished = host.phase === "finished";
-    if (!finished && payload.reveal !== null && payload.reveal !== undefined) throw new StreamerSecretLeakError("reveal before the round is over");
+    if (!finished && wire.reveal !== null && wire.reveal !== undefined) throw new StreamerSecretLeakError("early-reveal", "reveal before the round is over");
     const card = host.card;
     if (!card) return;
     const target = typeof card.target === "string" ? comparable(card.target) : "";
-    if (!target) throw new StreamerSecretLeakError("the live card has no word to compare against");
+    if (!target) throw new StreamerSecretLeakError("no-target", "the live card has no word to compare against");
     // The passed card cuts its word: the live word cut the same way is the same leak.
     const shownTarget = comparable(card.target.slice(0, PASSED_TARGET_MAX));
-    const taboos = Array.isArray(card.taboos) ? card.taboos.filter((word) => typeof word === "string").map(comparable) : [];
-    const secrets = new Set([target, ...taboos].filter(Boolean));
-    eachString(payload, "", (path, text) => {
-        if (NAME_FIELDS.has(path)) return;
-        if (finished && (path === "reveal" || path.startsWith("reveal."))) return;
-        if (FIELD_VOCABULARY.get(path)?.includes(text)) return;
+    const taboos = new Set((Array.isArray(card.taboos) ? card.taboos : []).filter((word) => typeof word === "string").map(comparable).filter(Boolean));
+    eachString(wire, [], (path, text) => {
+        if (NAME_FIELDS.some((pattern) => matches(pattern, path))) return;
+        if (finished && path[0] === "reveal") return;
+        if (VOCABULARY_FIELDS.some(([pattern, members]) => members.has(text) && matches(pattern, path))) return;
+        if (HEX_COLOUR.test(text) && COLOUR_FIELDS.some((pattern) => matches(pattern, path))) return;
         const word = comparable(text);
         if (!word) return;
-        if (path === PASSED_WORD_FIELD) {
-            if (word === target || word === shownTarget) throw new StreamerSecretLeakError("the live word in the passed card");
+        if (matches(PASSED_WORD_FIELD, path)) {
+            if (word === target || word === shownTarget) throw new StreamerSecretLeakError("passed-target", "the live word in the passed card");
             return;
         }
-        if (secrets.has(word)) throw new StreamerSecretLeakError("a secret word in the payload");
+        if (word === target) throw new StreamerSecretLeakError("target", "the live word in the payload");
+        if (taboos.has(word)) throw new StreamerSecretLeakError("taboo", "a taboo of the live card in the payload");
     });
 }
 
@@ -258,9 +330,31 @@ export function setupStreamerSocket(
     const features = options.features ?? showcaseFeatures;
     const resolveCardBack: NonNullable<StreamerSocketOptions["resolveCardBack"]> =
         options.resolveCardBack ?? ((userId, itemId, flags) => resolveCardBackSelection(userId, itemId, flags));
-    const report = options.onError ?? reportStreamerSocketError;
+    const reporter = options.onError ?? reportStreamerSocketError;
     const burst = createBurstLimiter(options.now ?? Date.now);
     const EVENTS = STREAMER_SOCKET_EVENTS;
+
+    // A reporter that throws never costs a caller its answer, nor the runtime its emit.
+    function report(event: string, error: unknown): void {
+        try {
+            reporter(event, error);
+        } catch {
+            // Reporting is best effort.
+        }
+    }
+
+    // A blocked state is reported once per session, round and rule: a projection that keeps
+    // tripping the guard (each tick, each join) would otherwise flood observability.
+    const blockedReports = new Map<string, Set<string>>();
+    function reportBlocked(sessionId: string, round: unknown, error: StreamerSecretLeakError): void {
+        let seen = blockedReports.get(sessionId);
+        if (!seen) blockedReports.set(sessionId, (seen = new Set()));
+        const key = `${typeof round === "number" ? round : "?"}:${error.rule}`;
+        if (seen.has(key)) return;
+        if (seen.size >= MAX_BLOCKED_REPORTS_PER_SESSION) seen.clear();
+        seen.add(key);
+        report("streamer_socket.public_state_blocked", error);
+    }
 
     // ------------------------------------------------------------ runtime -> rooms
 
@@ -278,10 +372,12 @@ export function setupStreamerSocket(
         pendingHost.delete(sessionId);
         const reference = runtime.get(sessionId) ?? (host ? { hostSnapshot: () => host } : null);
         try {
-            if (!reference) throw new StreamerSecretLeakError("no host projection to check against");
+            if (!reference) throw new StreamerSecretLeakError("no-reference", "no host projection to check against");
             assertNoSecret(payload, reference);
         } catch (error) {
-            report("streamer_socket.public_state_blocked", error);
+            const round = host ? host.round : (payload as { round?: unknown }).round;
+            if (error instanceof StreamerSecretLeakError) reportBlocked(sessionId, round, error);
+            else report("streamer_socket.public_state_blocked", error);
             return;
         }
         io.to(streamerPublicRoom(sessionId)).emit(EVENTS.publicState, payload);
@@ -289,6 +385,7 @@ export function setupStreamerSocket(
 
     runtime.setOnEnded((sessionId, reason) => {
         pendingHost.delete(sessionId);
+        blockedReports.delete(sessionId);
         const rooms = [streamerHostRoom(sessionId), streamerPublicRoom(sessionId)];
         const ended: StreamerEndedPayload = { reason };
         io.to(rooms).emit(EVENTS.ended, ended);
@@ -308,28 +405,35 @@ export function setupStreamerSocket(
     function failureCode(event: string, error: unknown): PlayerErrorCode {
         if (error instanceof Refusal) return error.code;
         if (isStreamerSessionError(error)) return SESSION_ERROR_CODES[error.code] ?? PlayerErrorCode.UNKNOWN_ERROR;
-        if (error instanceof StreamerSecretLeakError) {
-            report("streamer_socket.public_state_blocked", error);
-            return PlayerErrorCode.UNKNOWN_ERROR;
-        }
+        if (error instanceof StreamerSecretLeakError) return PlayerErrorCode.UNKNOWN_ERROR;
         report(`streamer_socket.${event.slice("streamer:".length).replaceAll(":", "_")}_failed`, error);
         return PlayerErrorCode.UNKNOWN_ERROR;
     }
 
-    /** Runs a handler with one optional payload; acks `{ ok: true, ...result }` or `playerErrorAck(code)` (`hata` without an ack). */
+    /**
+     * Runs a handler with one optional payload; acks `{ ok: true, ...result }` or `playerErrorAck(code)`
+     * (`hata` without an ack). The answer leaves exactly once, from `finally`, whatever fails on the way.
+     */
     function handle(socket: Socket, event: string, run: (payload: unknown) => Promise<Record<string, unknown> | void>): void {
         socket.on(event, async (...args: unknown[]) => {
             const ack = typeof args[args.length - 1] === "function" ? (args.pop() as (reply: unknown) => void) : null;
-            let reply: { ok: boolean };
+            let reply: unknown = playerErrorAck(PlayerErrorCode.UNKNOWN_ERROR);
+            let failed: PlayerErrorCode | null = PlayerErrorCode.UNKNOWN_ERROR;
             try {
                 if (args.length > 1) throw new Refusal(PlayerErrorCode.INVALID_REQUEST);
                 reply = { ok: true, ...(await run(args[0])) };
+                failed = null;
             } catch (error) {
-                const code = failureCode(event, error);
-                reply = playerErrorAck(code);
-                if (!ack) emitPlayerError(socket, code);
+                failed = failureCode(event, error);
+                reply = playerErrorAck(failed);
+            } finally {
+                try {
+                    if (ack) ack(reply);
+                    else if (failed) emitPlayerError(socket, failed);
+                } catch {
+                    // The socket went away: there is nobody left to answer.
+                }
             }
-            ack?.(reply);
         });
     }
 
@@ -432,7 +536,12 @@ export function setupStreamerSocket(
             const live = row?.status === "active" ? runtime.get(row.id) : null;
             if (!live || live.viewKeyHash !== hash) throw new Refusal(PlayerErrorCode.STREAMER_VIEW_KEY_INVALID);
             const state = live.publicSnapshot();
-            assertNoSecret(state, live);
+            try {
+                assertNoSecret(state, live);
+            } catch (error) {
+                if (error instanceof StreamerSecretLeakError) reportBlocked(live.id, state.round, error);
+                throw error;
+            }
             const data = dataOf(socket);
             if (data.streamerPublicSessionId && data.streamerPublicSessionId !== live.id) {
                 void socket.leave(streamerPublicRoom(data.streamerPublicSessionId));
