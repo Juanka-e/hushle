@@ -2,20 +2,36 @@ import { expect, test, type Page } from "@playwright/test";
 import bcryptjs from "bcryptjs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
+import { closeRedisClient } from "@hushle/platform-cache";
 import { prisma } from "@hushle/platform-db";
+import { invalidateSystemSettingsCache } from "../apps/web/src/lib/cache/application-cache";
 import { dictionaries } from "../apps/web/src/lib/i18n/dictionaries";
+import { invalidateCategoryCache } from "../apps/web/src/lib/socket/category-service";
 
 // The host panel (/streamer) end to end against the fake platform: link a channel, open a
-// session from the form, copy the stream screen address, run rounds with the private card while
-// the public screen stays wordless, take a test guess, pass and end; then, with a session cut
-// short by a restart, the panel shows the "oturum kesildi" notice and opens no socket. The server needs
-// STREAMER_FAKE_PLATFORM=1, STREAMER_TOKEN_KEY and an OAuth public origin equal to the base URL
-// (STREAMER_OAUTH_PUBLIC_ORIGIN or NEXT_PUBLIC_SITE_URL); this process needs DATABASE_URL and
-// STREAMER_TOKEN_KEY. The run seeds its own category and words and removes them afterwards.
+// session from the form (its toggle groups are labelled), copy the stream screen address (shown
+// masked; each row reveals its own), run rounds with the private card (which can be hidden off
+// the page) while the public screen stays wordless, take a test guess and pass; with the channel
+// link marked for a reconnect mid-session the panel still opens with a warning and ends the
+// session; then, with a session cut short by a restart, the panel shows the "oturum kesildi"
+// notice and opens no socket. The server needs STREAMER_FAKE_PLATFORM=1, STREAMER_TOKEN_KEY and
+// an OAuth public origin equal to the base URL (STREAMER_OAUTH_PUBLIC_ORIGIN or
+// NEXT_PUBLIC_SITE_URL); this process needs DATABASE_URL and STREAMER_TOKEN_KEY. The run seeds
+// its own category and words and removes them afterwards.
 // Screenshots of the panel land in test-results/streamer-panel/ (git-ignored) for an eye check.
 
 const SHOTS = path.join("test-results", "streamer-panel");
 const live = process.env.STREAMER_FAKE_PLATFORM === "1" && Boolean(process.env.STREAMER_TOKEN_KEY);
+// The Playwright smoke server takes its cache store from PLAYWRIGHT_REDIS_URL (see
+// scripts/start-playwright-smoke-server.ts). Sharing it lets this process clear the server's
+// category and settings caches after seeding. A server on a memory cache (no Redis) cannot be
+// reached this way: there the polls below wait its TTLs out instead.
+if (!process.env.REDIS_URL && process.env.PLAYWRIGHT_REDIS_URL) process.env.REDIS_URL = process.env.PLAYWRIGHT_REDIS_URL;
+
+/** Case-folded the Turkish way and then some (I, ı, İ, i alike), so a word in another case still counts. */
+function fold(text: string): string {
+    return text.toLocaleLowerCase("tr").replace(/ı/g, "i").normalize("NFD").replace(/̇/g, "");
+}
 
 test.describe("streamer host panel", () => {
     test.skip(!live, "set STREAMER_FAKE_PLATFORM=1 and STREAMER_TOKEN_KEY (and start the server with them) to run");
@@ -57,6 +73,12 @@ test.describe("streamer host panel", () => {
         return page.evaluate(() => navigator.clipboard.readText());
     }
 
+    /** None of the card's words (target and every taboo), in any case, is in the page's HTML. */
+    async function expectWordless(target: Page, card: { target: string; taboos: string[] }, label: string): Promise<void> {
+        const content = fold(await target.content());
+        for (const word of [card.target, ...card.taboos]) expect(content.includes(fold(word)), `${label} shows ${word}`).toBe(false);
+    }
+
     function cardOf(target: string) {
         const card = cards.find((entry) => entry.target === target);
         expect(card, `the dealt word ${target} is one of this run's words`).toBeTruthy();
@@ -88,6 +110,8 @@ test.describe("streamer host panel", () => {
             });
         }
         await setStreamerMode(true);
+        // The new category and the switched-on mode reach a server sharing this cache store at once.
+        await Promise.all([invalidateCategoryCache(), invalidateSystemSettingsCache()]);
     });
 
     test.afterAll(async () => {
@@ -104,11 +128,14 @@ test.describe("streamer host panel", () => {
         }
         await prisma.word.deleteMany({ where: { locale: "tr", wordText: { in: cards.map((card) => card.target) } } });
         if (categoryId !== null) await prisma.category.deleteMany({ where: { id: categoryId } });
+        await Promise.all([invalidateCategoryCache(), invalidateSystemSettingsCache()]);
+        await closeRedisClient();
         await prisma.$disconnect();
     });
 
     test("sets up a session, hands out the stream address and runs the rounds", async ({ page }) => {
-        // The settings cache (15 s TTL) and the category cache (60 s TTL) may each be waited out once.
+        // On a server this process cannot clear the caches of (memory cache), the settings cache
+        // (15 s TTL) and the category cache (60 s TTL) may each be waited out once.
         test.setTimeout(150_000);
         await login(page);
         await expect
@@ -140,7 +167,8 @@ test.describe("streamer host panel", () => {
             const setup = page.getByTestId("streamer-setup");
             await expect(setup).toBeVisible();
             const categoryChip = setup.getByRole("button", { name: categoryName, exact: true });
-            // The visible-category cache may still hold the list from before this run's category.
+            // Fallback only: a server on its own memory cache may still list the categories from
+            // before this run's one (the invalidation in beforeAll reaches a shared store only).
             await expect
                 .poll(
                     async () => {
@@ -159,8 +187,16 @@ test.describe("streamer host panel", () => {
             }).toPass({ timeout: 20_000 });
             await categoryChip.click();
             await expect(categoryChip).toHaveAttribute("aria-pressed", "true");
-            await setup.getByRole("button", { name: "30 sn", exact: true }).click();
-            await expect(setup.getByRole("button", { name: "30 sn", exact: true })).toHaveAttribute("aria-pressed", "true");
+            // Every toggle group is a group named by its label.
+            for (const name of ["Kanal", "Kelime dili", "Kategoriler", "Zorluk", "Tur süresi", "Tahmin kontrolü"]) {
+                const group = setup.getByRole("group", { name, exact: true });
+                await expect(group, `the ${name} group`).toHaveCount(1);
+                await expect(group.locator("button[aria-pressed]").first()).toBeVisible();
+            }
+            await expect(setup.getByRole("group", { name: "Kategoriler", exact: true }).getByRole("button", { name: categoryName, exact: true })).toBeVisible();
+            const thirty = setup.getByRole("group", { name: "Tur süresi", exact: true }).getByRole("button", { name: "30 sn", exact: true });
+            await thirty.click();
+            await expect(thirty).toHaveAttribute("aria-pressed", "true");
             await page.screenshot({ path: path.join(SHOTS, "setup.png"), fullPage: true });
             await setup.getByRole("button", { name: "Oturumu aç" }).click();
 
@@ -168,15 +204,31 @@ test.describe("streamer host panel", () => {
             const obs = page.getByTestId("streamer-obs");
             await expect(obs).toBeVisible({ timeout: 20_000 });
             const fullRow = obs.getByTestId("streamer-url-full");
+            const halfRow = obs.getByTestId("streamer-url-half");
+            const rows: Array<[string, string]> = [
+                ["streamer-url-full", ""],
+                ["streamer-url-half", "?layout=half"],
+                ["streamer-url-strip-top", "?overlay=top"],
+                ["streamer-url-strip-bottom", "?overlay=bottom"],
+            ];
+            // Masked by default: a captured display never shows the key.
+            const masked = `${origin}/stream/••••••`;
+            for (const [testId, query] of rows) await expect(obs.getByTestId(testId).getByRole("textbox")).toHaveValue(`${masked}${query}`);
             await fullRow.getByRole("button", { name: "Kopyala" }).click();
             await expect(fullRow.getByRole("button", { name: "Kopyalandı" })).toBeVisible();
+            // Copy takes the real address without revealing it.
             const firstUrl = await readClipboard(page);
             expect(firstUrl).toMatch(new RegExp(`^${origin}/stream/[A-Za-z0-9_-]{43}$`));
-            await expect(obs.getByTestId("streamer-url-half").getByRole("textbox")).toHaveValue(`${firstUrl}?layout=half`);
-            await expect(obs.getByTestId("streamer-url-strip-top").getByRole("textbox")).toHaveValue(`${firstUrl}?overlay=top`);
-            await expect(obs.getByTestId("streamer-url-strip-bottom").getByRole("textbox")).toHaveValue(`${firstUrl}?overlay=bottom`);
-            await expect(obs.getByRole("link", { name: "Yeni sekmede önizle" })).toHaveAttribute("href", firstUrl);
             const firstKey = firstUrl.slice(firstUrl.lastIndexOf("/") + 1);
+            for (const [testId, query] of rows) await expect(obs.getByTestId(testId).getByRole("textbox")).toHaveValue(`${masked}${query}`);
+            expect(await obs.innerText()).not.toContain(firstKey);
+            // Each row's "Göster" reveals that row only; "Gizle" masks it again.
+            await halfRow.getByRole("button", { name: "Göster" }).click();
+            await expect(halfRow.getByRole("textbox")).toHaveValue(`${firstUrl}?layout=half`);
+            await expect(fullRow.getByRole("textbox")).toHaveValue(masked);
+            await halfRow.getByRole("button", { name: "Gizle" }).click();
+            await expect(halfRow.getByRole("textbox")).toHaveValue(`${masked}?layout=half`);
+            await expect(obs.getByRole("link", { name: "Yeni sekmede önizle" })).toHaveAttribute("href", firstUrl);
 
             // A reload never shows the key again: the server keeps only its hash, the page keeps nothing.
             await page.reload();
@@ -192,6 +244,10 @@ test.describe("streamer host panel", () => {
             const url = await readClipboard(page);
             expect(url).toMatch(new RegExp(`^${origin}/stream/[A-Za-z0-9_-]{43}$`));
             expect(url).not.toBe(firstUrl);
+            await expect(fullRow.getByRole("textbox")).toHaveValue(masked);
+            await fullRow.getByRole("button", { name: "Göster" }).click();
+            await expect(fullRow.getByRole("textbox")).toHaveValue(url);
+            await fullRow.getByRole("button", { name: "Gizle" }).click();
 
             // ---------------------------------------------------------------- the stream screen
             const screen = await page.context().newPage();
@@ -220,10 +276,18 @@ test.describe("streamer host panel", () => {
             const first = cardOf((await targetOf.innerText()).trim());
             await expect(secretCard.getByTestId("streamer-card-taboos").locator("li")).toHaveCount(5);
             await expect(root).toHaveAttribute("data-phase", "running", { timeout: 10_000 });
-            const running = await screen.content();
-            for (const word of [first.target, ...first.taboos]) expect(running).not.toContain(word);
+            await expectWordless(screen, first, "round 1's stream screen");
             await expect(log.getByText("1. tur başladı")).toBeVisible();
             await page.screenshot({ path: path.join(SHOTS, "running.png"), fullPage: true });
+            // Hidden, the card's words leave the panel page itself; shown again, they are back.
+            await secretCard.getByRole("button", { name: "Kartı gizle" }).click();
+            await expect(secretCard.getByTestId("streamer-card-hidden")).toBeVisible();
+            await expect(targetOf).toHaveCount(0);
+            await expect(secretCard.getByTestId("streamer-card-taboos")).toHaveCount(0);
+            await expectWordless(page, first, "the panel with the card hidden");
+            await secretCard.getByRole("button", { name: "Kartı göster" }).click();
+            await expect(targetOf).toHaveText(first.target);
+            await expect(secretCard.getByTestId("streamer-card-taboos").locator("li")).toHaveCount(5);
 
             const guess = await page.request.post("/api/streamer/sessions/current/test-guess", {
                 headers: { origin },
@@ -246,7 +310,7 @@ test.describe("streamer host panel", () => {
             const second = cardOf((await targetOf.innerText()).trim());
             expect(second.target).not.toBe(first.target);
             await expect(root).toHaveAttribute("data-phase", "running", { timeout: 10_000 });
-            expect(await screen.content()).not.toContain(second.target);
+            await expectWordless(screen, second, "round 2's stream screen");
             await controls.getByRole("button", { name: "Pas geç" }).click();
             await expect(log.getByText(`2. tur pas geçildi: ${second.target}`)).toBeVisible({ timeout: 10_000 });
             await expect(screen.locator("#verdict")).toHaveAttribute("data-kind", "pass", { timeout: 10_000 });
@@ -254,8 +318,26 @@ test.describe("streamer host panel", () => {
             // Round 3 runs: its word is on the panel only.
             await expect(log.getByText("3. tur başladı")).toBeVisible();
             const third = cardOf((await targetOf.innerText()).trim());
-            const afterPass = await screen.content();
-            for (const word of [third.target, ...third.taboos]) expect(afterPass).not.toContain(word);
+            await expectWordless(screen, third, "round 3's stream screen");
+
+            // ---------------------------------------------------------------- channel link goes bad mid-session
+            // The hourly check marks the link for a reconnect; the session keeps running. After a
+            // reload the gate still opens the panel (with the warning) so the session can be ended.
+            await prisma.streamerConnection.updateMany({
+                where: { userId: userId!, platform: "twitch" },
+                data: { status: "needs_reconnect", statusReason: "refresh_failed" },
+            });
+            await page.reload();
+            const warning = page.getByTestId("streamer-reconnect-warning");
+            await expect(warning).toBeVisible({ timeout: 20_000 });
+            await expect(warning).toContainText("Kanal bağlantın yenilenmeli; bu yayın sürüyor, yeni oturum için ayarlardan yeniden bağlan.");
+            await expect(warning.getByRole("link", { name: "Ayarlar'a git" })).toHaveAttribute("href", "/dashboard?tab=settings");
+            await expect(page.getByRole("heading", { name: "Kanal bağlantını yenile" })).toBeVisible();
+            // The live controls stay: the host room is joined again, the round still runs.
+            await expect(page.getByText("Bağlı", { exact: true })).toBeVisible({ timeout: 15_000 });
+            await expect(controls.getByRole("button", { name: "Pas geç" })).toBeVisible();
+            await expect(targetOf).toHaveText(third.target);
+            await page.screenshot({ path: path.join(SHOTS, "reconnect-warning.png"), fullPage: true });
 
             // ---------------------------------------------------------------- end: summary and finale
             page.once("dialog", (dialog) => void dialog.accept());
@@ -277,6 +359,8 @@ test.describe("streamer host panel", () => {
         } finally {
             // A failed run must not leave its session live on the server.
             await page.request.post("/api/streamer/sessions/current/end", { headers: { origin } }).catch(() => undefined);
+            // The next test opens the panel through the gate: the link is active again.
+            await prisma.streamerConnection.updateMany({ where: { userId: userId!, platform: "twitch" }, data: { status: "active", statusReason: null } });
         }
     });
 
