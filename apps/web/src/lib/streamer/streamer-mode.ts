@@ -24,14 +24,18 @@ export interface StreamerModeReaderDeps {
     cacheMs?: number;
 }
 
-/** A reader of the switch: "on" or "off" from the stored row (normalized as the settings service does), else "unknown". */
+/**
+ * A reader of the switch: "on" or "off" from the stored row (normalized as the settings service
+ * does), else "unknown". Concurrent callers share one read in flight, whatever it answers, so a
+ * database outage never piles queries on the pool; "unknown" is never kept once it settled.
+ */
 export function createStreamerModeReader(deps: StreamerModeReaderDeps): () => Promise<StreamerModeState> {
     const timers = deps.timers ?? realStreamerTimers;
     const timeoutMs = deps.timeoutMs ?? STREAMER_MODE_READ_TIMEOUT_MS;
     const cacheMs = deps.cacheMs ?? STREAMER_MODE_CACHE_MS;
     let cached: { state: "on" | "off"; at: number } | null = null;
-    return async () => {
-        if (cached && timers.now() - cached.at < cacheMs) return cached.state;
+    let inFlight: Promise<StreamerModeState> | null = null;
+    const readOnce = async (): Promise<StreamerModeState> => {
         let handle: unknown;
         const timedOut = new Promise<never>((_, reject) => {
             handle = timers.setTimeout(() => reject(new Error(`the streamer-mode read took longer than ${timeoutMs} ms`)), timeoutMs);
@@ -48,6 +52,17 @@ export function createStreamerModeReader(deps: StreamerModeReaderDeps): () => Pr
         } finally {
             timers.clearTimeout(handle);
         }
+    };
+    return () => {
+        if (cached && timers.now() - cached.at < cacheMs) return Promise.resolve(cached.state);
+        if (!inFlight) {
+            const read = readOnce();
+            inFlight = read;
+            void read.then(() => {
+                if (inFlight === read) inFlight = null;
+            });
+        }
+        return inFlight;
     };
 }
 

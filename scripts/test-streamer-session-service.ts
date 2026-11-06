@@ -2335,6 +2335,33 @@ async function main(): Promise<void> {
         assert.equal(clock.timeouts.size, 0, "no read timeout is left pending");
     });
 
+    await test("streamer mode read: concurrent callers share one in-flight read, so an outage never piles queries on the pool; unknown is still not kept", async () => {
+        const clock = manualTimers();
+        let reads = 0;
+        let answer: "hang" | "on" = "hang";
+        const read = createStreamerModeReader({
+            timers: clock.timers,
+            timeoutMs: 2_000,
+            readFeatures: async () => {
+                reads += 1;
+                if (answer === "hang") return new Promise<never>(() => undefined);
+                return { streamerModeEnabled: true };
+            },
+        });
+        const callers = Array.from({ length: 5 }, () => read());
+        await turn();
+        assert.equal(reads, 1, "one query for five callers while it hangs");
+        assert.equal(clock.timeouts.size, 1, "one timeout for them all");
+        clock.elapse(2_000);
+        assert.deepEqual(await Promise.all(callers), ["unknown", "unknown", "unknown", "unknown", "unknown"]);
+        answer = "on";
+        assert.equal(await read(), "on", "unknown was not kept: the next call reads again");
+        assert.equal(reads, 2);
+        clock.advance(5_000);
+        assert.deepEqual(await Promise.all([read(), read(), read()]), ["on", "on", "on"], "a successful read is shared too");
+        assert.equal(reads, 3);
+    });
+
     await test("streamer mode switched off: the 15 s check ends every live session with reason stopped; unknown or a failed check changes nothing", async () => {
         assert.equal(STREAMER_MODE_CHECK_MS, 15_000);
         const clock = manualTimers();
