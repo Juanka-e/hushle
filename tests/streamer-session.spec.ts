@@ -228,8 +228,21 @@ test.describe("streamer host panel", () => {
             for (const [testId, query] of rows) await expect(obs.getByTestId(testId).getByRole("textbox")).toHaveValue(`${masked}${query}`);
             // A masked field is never selected on focus: a copy by hand would copy the dots.
             const fullBox = fullRow.getByRole("textbox");
+            const selectedLength = () => fullBox.evaluate((input) => (input as HTMLInputElement).selectionEnd! - (input as HTMLInputElement).selectionStart!);
             await fullBox.focus();
-            expect(await fullBox.evaluate((input) => (input as HTMLInputElement).selectionEnd! - (input as HTMLInputElement).selectionStart!)).toBe(0);
+            expect(await selectedLength()).toBe(0);
+            // Nor by a mouse drag across it, a double click or Ctrl+A.
+            const fullBounds = (await fullBox.boundingBox())!;
+            await page.mouse.move(fullBounds.x + 4, fullBounds.y + fullBounds.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(fullBounds.x + fullBounds.width - 4, fullBounds.y + fullBounds.height / 2, { steps: 8 });
+            await page.mouse.up();
+            await expect.poll(selectedLength, { message: "a drag selects nothing in a masked field" }).toBe(0);
+            await fullBox.dblclick();
+            await expect.poll(selectedLength, { message: "a double click selects nothing" }).toBe(0);
+            await fullBox.press("ControlOrMeta+A");
+            await expect.poll(selectedLength, { message: "select-all selects nothing" }).toBe(0);
+            expect(await fullBox.getAttribute("draggable")).toBe("false");
             await fullRow.getByRole("button", { name: "Kopyala" }).click();
             await expect(fullRow.getByRole("button", { name: "Kopyalandı" })).toBeVisible();
             // Copy takes the real address without revealing it.

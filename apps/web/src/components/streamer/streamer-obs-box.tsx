@@ -15,7 +15,8 @@ import { cameraMeasurements, maskStreamUrl, streamUrlsFor } from "./streamer-pan
 // new tab with window.open (a client-side navigation would draw it inside the app chrome;
 // framing is refused), so no href ever holds the address. The fields show the addresses masked
 // (a captured display must not show the key); each row's "Göster" reveals its own, and a new
-// key masks them all again. Copy always takes the real one; a masked field is never selected.
+// key masks them all again. Copy always takes the real one; a masked field keeps no selection and
+// is never dragged, so a copy by hand cannot pick up the dots.
 
 const URL_ROWS: Array<{ key: keyof StreamUrls; testId: string; label: TranslationKey; size: [number, number] }> = [
     { key: "full", testId: "streamer-url-full", label: "streamer.panel.urlFull", size: [1920, 1080] },
@@ -25,6 +26,12 @@ const URL_ROWS: Array<{ key: keyof StreamUrls; testId: string; label: Translatio
 ];
 
 const COPIED_FOR_MS = 2_000;
+
+// Chromium ignores user-select on a text field, so a selection made in a masked one (a drag, a
+// double click, Ctrl+A) is collapsed as soon as it is made.
+function unselect(input: HTMLInputElement): void {
+    if (input.selectionStart !== input.selectionEnd) input.setSelectionRange(0, 0);
+}
 
 export interface StreamerObsBoxProps {
     viewKey: string | null;
@@ -106,11 +113,20 @@ export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating
                                             readOnly
                                             value={revealed ? urls[row.key] : maskStreamUrl(urls[row.key])}
                                             aria-label={label}
-                                            // Copying a masked field by hand would copy the dots.
+                                            // Copying a masked field by hand would copy the dots: it is
+                                            // never selected (focus, drag, double click, select-all)
+                                            // nor dragged out.
                                             onFocus={(event) => {
                                                 if (revealed) event.currentTarget.select();
                                             }}
-                                            className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                            onSelect={(event) => {
+                                                if (!revealed) unselect(event.currentTarget);
+                                            }}
+                                            draggable={false}
+                                            onDragStart={(event) => {
+                                                if (!revealed) event.preventDefault();
+                                            }}
+                                            className={`min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200${revealed ? "" : " select-none"}`}
                                         />
                                         <button
                                             type="button"

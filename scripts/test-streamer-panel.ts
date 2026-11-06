@@ -616,6 +616,18 @@ test("X1 a masked address is never selected on focus, and the copy-failure text 
     assert.ok(!obs.includes("onFocus={(event) => event.currentTarget.select()}"), "no unconditional select is left");
 });
 
+test("E6 a masked address keeps no selection and cannot be dragged, so no copy by hand picks up the dots", () => {
+    const obs = source("apps/web/src/components/streamer/streamer-obs-box.tsx");
+    const input = obs.slice(obs.indexOf("<input"), obs.indexOf("/>", obs.indexOf("<input")));
+    assert.ok(input.length > 0, "the address field");
+    // Chromium ignores user-select on a text field: a drag, a double click or Ctrl+A is undone as it happens.
+    assert.match(input, /onSelect=\{\(event\) => \{\s*if \(!revealed\) unselect\(event\.currentTarget\);\s*\}\}/, "a selection in a masked field is collapsed");
+    assert.match(obs, /function unselect\(input: HTMLInputElement\): void \{\s*if \(input\.selectionStart !== input\.selectionEnd\) input\.setSelectionRange\(0, 0\);\s*\}/);
+    assert.match(input, /draggable=\{false\}/, "the field is never a drag source");
+    assert.match(input, /onDragStart=\{\(event\) => \{\s*if \(!revealed\) event\.preventDefault\(\);\s*\}\}/, "a masked value is never dragged out");
+    assert.match(input, /\$\{revealed \? "" : " select-none"\}/, "user-select: none while masked");
+});
+
 test("X2 a re-read after a refused join rejoins the same live session, a few times in a row at most", () => {
     const live = (id: string) => ({ enabled: true, session: sessionView({ id }), lastSettings: null, cardBacks: [] }) as StreamSessionResponse;
     assert.equal(goneRereadAction(null, 0, live("s-1")), "none", "no refused join: nothing to do");
