@@ -866,6 +866,33 @@ async function main(): Promise<void> {
         assert.deepEqual(host.passed, { round: 1, target: DECK[0].target });
     });
 
+    await test("a slow pass draw does not shorten the new round: it starts when the card arrived; chat sent meanwhile is stale", async () => {
+        const source = cyclingSource();
+        const h = harness({ source });
+        const draw = source.next.bind(source);
+        // The pass's draw takes 10 s.
+        source.next = async (poolKey, filters) => {
+            if (source.calls.length === 1) h.advance(10_000);
+            return draw(poolKey, filters);
+        };
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        h.advance(30_000);
+        const handledAt = h.clock.now;
+        await h.runtime.pass(session.id);
+        const arrivedAt = handledAt + 10_000;
+        assert.equal(h.clock.now, arrivedAt);
+        await h.runtime.flush();
+        assert.equal(h.sessions.results[0].endedAt.getTime(), handledAt, "the passed round ended when the pass was handled");
+        assert.equal(await h.runtime.guess(session.id, chat(h, "buzdolabi", "mira", { sentAt: handledAt + 5_000 })), "stale", "sent during the draw");
+        h.advance(59_000);
+        await h.runtime.tickAll();
+        assert.equal(h.lastHost().phase, "running", "59 s after the card arrived the round still runs");
+        assert.equal(h.lastHost().remaining, 1);
+        assert.equal(await h.runtime.guess(session.id, chat(h, "buzdolabi", "luna", { sentAt: arrivedAt })), "correct");
+        assert.equal(h.lastHost().lastCorrect?.solveMs, 59_000, "the solve time counts from when the card arrived");
+    });
+
     await test("next after finished → new round, reveal gone; next while running is refused", async () => {
         const h = harness();
         const { session } = await opened(h);

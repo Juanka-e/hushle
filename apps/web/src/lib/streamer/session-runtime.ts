@@ -266,7 +266,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             hostAction(sessionId, async (entry) => {
                 if (entry.state.phase !== phase) throw invalidPhase();
                 const card = await drawCard(entry);
-                beginRound(entry.state, card, clock());
+                if (!beginRound(entry.state, card, clock())) throw invalidPhase();
                 align(entry);
                 emitState(entry);
             });
@@ -353,8 +353,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                 const card = await drawCard(entry);
                 const before = markRound(entry.state);
                 // Judged at `now`, when the pass was handled: one in time keeps the card it drew even
-                // if the deadline went by while the card was drawn.
-                if (!skipRound(entry.state, now, card)) throw invalidPhase();
+                // if the deadline went by while it was drawn. The new round starts once the card is here.
+                if (!skipRound(entry.state, now, card, clock())) throw invalidPhase();
                 align(entry);
                 settle(entry, before, now, true);
             }),

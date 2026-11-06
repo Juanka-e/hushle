@@ -97,7 +97,9 @@ function trackPlayer(state: StreamSessionState, id: string, name: string): Strea
     return player;
 }
 
+/** Starts a round with `card`; false, changing nothing, while a round is live or without a card. */
 export function beginRound(state: StreamSessionState, card: StreamCard, now: number): boolean {
+    if (!card) return false;
     if (state.phase === "running" || state.phase === "paused") return false;
     if (state.phase === "ended") {
         state.players.clear();
@@ -147,9 +149,11 @@ export function resume(state: StreamSessionState, now: number): boolean {
 /**
  * Passes the current card (it is turned face up for everyone) and moves to the next round
  * in the same phase with `nextCard`. Returns null, changing nothing, when there is nothing to
- * skip or no next card: a live round never goes on without a card.
+ * skip or no next card: a live round never goes on without a card. The pass is judged at `now`
+ * (when it was handled); the new round starts at `startedAt` (when its card arrived, never before
+ * `now`), so a slow draw does not shorten it and chat sent meanwhile is stale for the new card.
  */
-export function skipRound(state: StreamSessionState, now: number, nextCard: StreamCard): { passed: StreamCard } | null {
+export function skipRound(state: StreamSessionState, now: number, nextCard: StreamCard, startedAt = now): { passed: StreamCard } | null {
     if (!nextCard) return null;
     if (state.phase !== "running" && state.phase !== "paused") return null;
     if (state.phase === "running") {
@@ -165,8 +169,8 @@ export function skipRound(state: StreamSessionState, now: number, nextCard: Stre
     dropRecycledPass(state);
     state.winner = null;
     state.remaining = state.duration;
-    state.roundStartedAt = now;
-    state.deadline = now + state.remaining * 1000;
+    state.roundStartedAt = Math.max(now, startedAt);
+    state.deadline = state.roundStartedAt + state.remaining * 1000;
     return { passed };
 }
 

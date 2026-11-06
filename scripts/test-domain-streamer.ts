@@ -194,6 +194,54 @@ test("skip is refused outside a live round", () => {
     assert.equal(s.phase, "finished");
 });
 
+test("a pass is judged when it was handled, but the new round starts when its card arrived", () => {
+    const s = fresh();
+    beginRound(s, card, 0);
+    // Handled at 59 s (in time); the next card took until 62 s to arrive.
+    assert.deepEqual(skipRound(s, 59_000, otherCard, 62_000), { passed: card });
+    assert.equal(s.round, 2);
+    assert.equal(s.roundStartedAt, 62_000);
+    assert.equal(s.deadline, 62_000 + 60_000, "the new round is full length from when its card arrived");
+    assert.equal(s.remaining, 60);
+    assert.equal(guess(s, { text: "Buzdolabı", messageId: "sent-during-the-draw", sentAt: 61_000 }, 62_500), "stale", "a guess sent during the draw is stale for the new card");
+    tick(s, 62_000 + 59_999);
+    assert.equal(s.phase, "running", "the draw did not shorten the new round");
+    assert.equal(guess(s, { text: "Buzdolabı", messageId: "sent-after", sentAt: 62_100 }, 62_000 + 59_999), "correct");
+    // Judged at the handling time: a pass handled after the deadline is refused, however early the start.
+    const late = fresh();
+    beginRound(late, card, 0);
+    assert.equal(skipRound(late, 61_000, otherCard, 59_000), null);
+    assert.equal(late.phase, "finished");
+    // Without a start time the new round starts when the pass was handled; an earlier start never shortens it.
+    const plain = fresh();
+    beginRound(plain, card, 0);
+    skipRound(plain, 5_000, otherCard);
+    assert.equal(plain.roundStartedAt, 5_000);
+    const early = fresh();
+    beginRound(early, card, 0);
+    skipRound(early, 5_000, otherCard, 4_000);
+    assert.equal(early.roundStartedAt, 5_000);
+    assert.equal(early.deadline, 65_000);
+});
+
+test("a round never starts without a card: beginRound refuses a missing card and changes nothing", () => {
+    const ready = fresh();
+    const finished = fresh();
+    beginRound(finished, card, 0);
+    tick(finished, 61_000);
+    const ended = fresh();
+    beginRound(ended, card, 0);
+    endSession(ended, 5_000);
+    for (const [label, s] of [["ready", ready], ["finished", finished], ["ended", ended]] as const) {
+        const before = structuredClone(s);
+        for (const missing of [null, undefined]) {
+            assert.equal(beginRound(s, missing as never, 70_000), false, `${label}: no card, no round`);
+            assert.deepEqual(s, before, `${label}: nothing changed`);
+        }
+        assert.notEqual(s.phase, "running");
+    }
+});
+
 test("a pass without a next card is refused and changes nothing (running or paused)", () => {
     for (const paused of [false, true]) {
         const s = fresh();
