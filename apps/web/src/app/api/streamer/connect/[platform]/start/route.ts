@@ -1,4 +1,4 @@
-import { StreamerConfigError } from "@hushle/platform-streamer";
+import { isStreamerConfigError } from "@hushle/platform-streamer";
 import { NextResponse, type NextRequest } from "next/server";
 import { getRequestIp } from "@/lib/security/client-ip";
 import { getSessionUser } from "@/lib/session";
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     try {
         deps = createConnectFlowDeps(request);
     } catch (error) {
-        if (error instanceof StreamerConfigError) {
+        if (isStreamerConfigError(error)) {
             return NextResponse.redirect(new URL(settingsRedirect("error", platform, "platform_unavailable"), base), 302);
         }
         throw error;

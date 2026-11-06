@@ -1,4 +1,4 @@
-import { StreamerConfigError } from "@hushle/platform-streamer";
+import { isStreamerConfigError } from "@hushle/platform-streamer";
 import { NextResponse } from "next/server";
 import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 import { getSessionUser } from "@/lib/session";
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
         const view: StreamerConnectionsResponse = await listConnectionsView(createConnectFlowDeps(request), sessionUser.id);
         return NextResponse.json(view, { headers: { "cache-control": "no-store" } });
     } catch (error) {
-        if (error instanceof StreamerConfigError) {
+        if (isStreamerConfigError(error)) {
             // Not configured on this deployment: the section simply stays hidden.
             const empty: StreamerConnectionsResponse = { enabled: false, platforms: [] };
             return NextResponse.json(empty, { headers: { "cache-control": "no-store" } });

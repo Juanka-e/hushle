@@ -1,3 +1,5 @@
+import { brandError, hasErrorBrand } from "./error-brand";
+
 // The one shape every streaming platform adapter fills in. Game code never sees platform
 // payloads: it gets token sets, identities and classified errors.
 
@@ -42,6 +44,8 @@ export interface StreamerPlatformClient {
 
 export type StreamerPlatformErrorKind = "invalid_grant" | "unauthorized" | "rate_limited" | "network" | "unexpected";
 
+const STREAMER_PLATFORM_ERROR_BRAND = Symbol.for("hushle.platform-streamer.platform-error");
+
 export class StreamerPlatformError extends Error {
     readonly platform: StreamerPlatform;
     readonly operation: string;
@@ -56,7 +60,13 @@ export class StreamerPlatformError extends Error {
         this.operation = operation;
         this.kind = kind;
         this.status = status;
+        brandError(this, STREAMER_PLATFORM_ERROR_BRAND);
     }
+}
+
+/** A StreamerPlatformError from any copy of this package (see error-brand.ts). */
+export function isStreamerPlatformError(error: unknown): error is StreamerPlatformError {
+    return hasErrorBrand(error, STREAMER_PLATFORM_ERROR_BRAND);
 }
 
 // ---------------------------------------------------------------- shared HTTP helpers

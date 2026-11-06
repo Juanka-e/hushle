@@ -2,6 +2,8 @@ export {
     connectionAad,
     decryptToken,
     encryptToken,
+    isStreamerConfigError,
+    isTokenDecryptError,
     loadTokenKeyring,
     StreamerConfigError,
     TokenDecryptError,
@@ -12,6 +14,7 @@ export {
 } from "./token-crypto";
 export {
     isStreamerPlatform,
+    isStreamerPlatformError,
     PLATFORM_LABELS,
     STREAMER_PLATFORMS,
     StreamerPlatformError,
@@ -46,6 +49,7 @@ export {
 export {
     callWithToken,
     getAccessToken,
+    isStreamerReconnectRequired,
     REFRESH_LEEWAY_MS,
     revokeAtPlatform,
     revokeConnectionTokens,

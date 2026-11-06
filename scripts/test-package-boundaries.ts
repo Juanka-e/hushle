@@ -65,6 +65,23 @@ for (const directory of ["apps/api/src", "apps/web/src", "scripts"]) {
     }
 }
 
+// The custom server and the Next route bundles each load @hushle/platform-streamer, so its error
+// classes exist twice at run time: the apps check them with the package's brand guards, never with
+// `instanceof` (which fails for an error built by the other copy).
+{
+    const streamerErrorInstanceof = /\binstanceof\s+(?:StreamerConfigError|StreamerPlatformError|StreamerReconnectRequired|TokenDecryptError)\b/;
+    const offenders = ["apps/web/src", "apps/jobs/src"].flatMap((directory) =>
+        listTypeScriptFiles(join(root, directory))
+            .filter((file) => streamerErrorInstanceof.test(readFileSync(file, "utf8")))
+            .map((file) => relative(root, file))
+    );
+    assert.deepEqual(offenders, [], "the apps check platform-streamer errors with the is… guards");
+    const streamerIndexLines = readFileSync(join(root, "packages/platform-streamer/src/index.ts"), "utf8").split(/\r?\n/).map((line) => line.trim());
+    for (const guard of ["isStreamerConfigError", "isTokenDecryptError", "isStreamerPlatformError", "isStreamerReconnectRequired"]) {
+        assert.ok(streamerIndexLines.includes(`${guard},`), `the package root exports ${guard}`);
+    }
+}
+
 assert.match(
     readFileSync(join(root, "apps/web/src/lib/prisma.ts"), "utf8"),
     /@hushle\/platform-db/

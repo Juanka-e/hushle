@@ -1,9 +1,9 @@
 import { emitObservabilityEvent } from "@hushle/platform-observability";
 import {
     createStreamerPlatformClient,
+    isStreamerConfigError,
     loadTokenKeyring,
     prismaStreamerConnectionStore,
-    StreamerConfigError,
     type TokenKeyring,
 } from "@hushle/platform-streamer";
 import { getSystemSettings } from "@/lib/system-settings/service";
@@ -51,7 +51,7 @@ async function checkLiveConnection(connection: SessionConnection): Promise<Conne
     try {
         keyringCache ??= loadTokenKeyring(process.env);
     } catch (error) {
-        if (error instanceof StreamerConfigError) return "unavailable";
+        if (isStreamerConfigError(error)) return "unavailable";
         throw error;
     }
     const keyring = keyringCache;

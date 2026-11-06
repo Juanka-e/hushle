@@ -1,4 +1,5 @@
 import type { StatusReason, StreamerConnectionRecord, StreamerConnectionStore } from "./connection-store";
+import { brandError, hasErrorBrand } from "./error-brand";
 import { StreamerPlatformError, type StreamerPlatformClient, type TokenHint, type TokenSet } from "./platform-client";
 import { connectionAad, decryptToken, encryptToken, TokenDecryptError, type TokenKeyring } from "./token-crypto";
 
@@ -30,6 +31,8 @@ interface AccessResult {
 const globalForRefreshes = globalThis as typeof globalThis & { __hushleStreamerTokenRefreshes?: Map<string, Promise<AccessResult>> };
 const refreshes = (globalForRefreshes.__hushleStreamerTokenRefreshes ??= new Map<string, Promise<AccessResult>>());
 
+const STREAMER_RECONNECT_REQUIRED_BRAND = Symbol.for("hushle.platform-streamer.reconnect-required");
+
 export class StreamerReconnectRequired extends Error {
     readonly connectionId: string;
     readonly reason: StatusReason;
@@ -39,7 +42,16 @@ export class StreamerReconnectRequired extends Error {
         this.name = "StreamerReconnectRequired";
         this.connectionId = connectionId;
         this.reason = reason;
+        brandError(this, STREAMER_RECONNECT_REQUIRED_BRAND);
     }
+}
+
+/**
+ * A StreamerReconnectRequired from any copy of this package (see error-brand.ts): a refresh shared
+ * across bundles (the in-flight map is on globalThis) rejects with the copy that started it.
+ */
+export function isStreamerReconnectRequired(error: unknown): error is StreamerReconnectRequired {
+    return hasErrorBrand(error, STREAMER_RECONNECT_REQUIRED_BRAND);
 }
 
 function clock(deps: TokenServiceDeps): Date {

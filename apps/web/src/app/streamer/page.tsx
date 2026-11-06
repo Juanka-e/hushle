@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { StreamerConfigError } from "@hushle/platform-streamer";
+import { isStreamerConfigError } from "@hushle/platform-streamer";
 import { StreamerPanel } from "@/components/streamer/streamer-panel";
 import { streamerGateState } from "@/components/streamer/streamer-panel-model";
 import type { AppLocale } from "@/lib/i18n/config";
@@ -79,7 +79,7 @@ export default async function StreamerPage() {
     try {
         view = await verifyActiveConnections(createConnectFlowDeps(null), sessionUser.id);
     } catch (error) {
-        if (!(error instanceof StreamerConfigError)) throw error;
+        if (!isStreamerConfigError(error)) throw error;
     }
     const activePlatforms = view.platforms.filter((entry) => entry.connection?.status === "active").map((entry) => entry.platform);
     const broken = view.platforms.find((entry) => entry.connection?.status === "needs_reconnect");

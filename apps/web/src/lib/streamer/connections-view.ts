@@ -1,12 +1,12 @@
 import {
     getAccessToken,
+    isStreamerConfigError,
     isStreamerPlatform,
+    isStreamerPlatformError,
+    isStreamerReconnectRequired,
     PLATFORM_LABELS,
     revokeConnectionTokens,
     STREAMER_PLATFORMS,
-    StreamerConfigError,
-    StreamerPlatformError,
-    StreamerReconnectRequired,
     type StatusReason,
     type StreamerConnectionRecord,
     type StreamerPlatform,
@@ -63,7 +63,7 @@ async function revokeRecord(deps: ConnectFlowDeps, record: StreamerConnectionRec
     try {
         platformDeps = tokenDeps(deps, record.platform);
     } catch (error) {
-        if (!(error instanceof StreamerConfigError)) throw error;
+        if (!isStreamerConfigError(error)) throw error;
         if (status === "revoked") await deps.store.markRevoked(record.id, reason, clock(deps));
         else await deps.store.markNeedsReconnect(record.id, reason, clock(deps));
         return;
@@ -91,7 +91,7 @@ export async function validateConnection(deps: ConnectionCheckDeps, record: Stre
     try {
         platformDeps = tokenDeps(deps, record.platform);
     } catch (error) {
-        if (error instanceof StreamerConfigError) return "unavailable";
+        if (isStreamerConfigError(error)) return "unavailable";
         throw error;
     }
     try {
@@ -109,8 +109,8 @@ export async function validateConnection(deps: ConnectionCheckDeps, record: Stre
     } catch (error) {
         // Usually already marked by the token service (a lost race is not); transient platform
         // errors leave the row alone.
-        if (error instanceof StreamerReconnectRequired) return stillActive(deps, record);
-        if (error instanceof StreamerPlatformError) return "unavailable";
+        if (isStreamerReconnectRequired(error)) return stillActive(deps, record);
+        if (isStreamerPlatformError(error)) return "unavailable";
         throw error;
     }
 }
@@ -198,7 +198,7 @@ export async function revokeStreamerConnectionsForUser(userId: number, request: 
     try {
         return await revokeAllForUser(createConnectFlowDeps(request), userId, "account_closed");
     } catch (error) {
-        if (error instanceof StreamerConfigError) return 0;
+        if (isStreamerConfigError(error)) return 0;
         console.error("streamer connections could not be revoked for a closed account", error instanceof Error ? error.name : error);
         return 0;
     }

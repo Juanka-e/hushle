@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { brandError, hasErrorBrand } from "./error-brand";
 
 // Platform tokens at rest: AES-256-GCM with a versioned keyring so the key can be
 // rotated without re-encrypting every row at once. The ciphertext is bound to its
@@ -11,11 +12,20 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const ALGORITHM = "aes-256-gcm";
 
+const STREAMER_CONFIG_ERROR_BRAND = Symbol.for("hushle.platform-streamer.config-error");
+const TOKEN_DECRYPT_ERROR_BRAND = Symbol.for("hushle.platform-streamer.token-decrypt-error");
+
 export class StreamerConfigError extends Error {
     constructor(message: string) {
         super(message);
         this.name = "StreamerConfigError";
+        brandError(this, STREAMER_CONFIG_ERROR_BRAND);
     }
+}
+
+/** A StreamerConfigError from any copy of this package (see error-brand.ts). */
+export function isStreamerConfigError(error: unknown): error is StreamerConfigError {
+    return hasErrorBrand(error, STREAMER_CONFIG_ERROR_BRAND);
 }
 
 export type TokenDecryptReason = "unknown_version" | "tampered" | "malformed";
@@ -27,7 +37,13 @@ export class TokenDecryptError extends Error {
         super(`stored token could not be decrypted (${reason})`);
         this.name = "TokenDecryptError";
         this.reason = reason;
+        brandError(this, TOKEN_DECRYPT_ERROR_BRAND);
     }
+}
+
+/** A TokenDecryptError from any copy of this package (see error-brand.ts). */
+export function isTokenDecryptError(error: unknown): error is TokenDecryptError {
+    return hasErrorBrand(error, TOKEN_DECRYPT_ERROR_BRAND);
 }
 
 export interface TokenKey {

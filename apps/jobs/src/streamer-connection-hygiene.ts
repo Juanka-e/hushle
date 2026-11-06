@@ -1,10 +1,10 @@
 import { prisma } from "@hushle/platform-db";
 import {
     createStreamerPlatformClient,
+    isStreamerConfigError,
     loadTokenKeyring,
     prismaStreamerConnectionStore,
     revokeConnectionTokens,
-    StreamerConfigError,
     type StreamerConnectionStore,
     type StreamerPlatform,
     type StreamerPlatformClient,
@@ -72,7 +72,7 @@ export async function runStreamerConnectionHygiene(input: {
                 try {
                     clientCache.set(platform, input.clients ? input.clients(platform) : createStreamerPlatformClient(platform, process.env));
                 } catch (error) {
-                    if (!(error instanceof StreamerConfigError)) throw error;
+                    if (!isStreamerConfigError(error)) throw error;
                     clientCache.set(platform, null);
                 }
             }

@@ -1,4 +1,4 @@
-import { StreamerConfigError } from "@hushle/platform-streamer";
+import { isStreamerConfigError } from "@hushle/platform-streamer";
 import { NextResponse } from "next/server";
 import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 import { isTrustedStateChangeRequest } from "@/lib/security/request-origin";
@@ -38,7 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pla
         }
         return NextResponse.json({ ok: true });
     } catch (error) {
-        if (error instanceof StreamerConfigError) {
+        if (isStreamerConfigError(error)) {
             return NextResponse.json(playerError(PlayerErrorCode.STREAMER_PLATFORM_UNAVAILABLE), { status: 503 });
         }
         console.error("streamer disconnect failed", error);

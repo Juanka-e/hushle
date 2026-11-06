@@ -8,10 +8,16 @@ import {
     decryptToken,
     encryptToken,
     getAccessToken,
+    isStreamerConfigError,
+    isStreamerPlatformError,
+    isStreamerReconnectRequired,
+    isTokenDecryptError,
     loadTokenKeyring,
     revokeConnectionTokens,
+    StreamerConfigError,
     StreamerPlatformError,
     StreamerReconnectRequired,
+    TokenDecryptError,
     type StreamerConnectionRecord,
     type StreamerPlatformClient,
     type TokenServiceDeps,
@@ -534,6 +540,44 @@ async function main(): Promise<void> {
         const dormant = await store.findDormant(cutoff, 10);
         assert.deepEqual(dormant.map((entry) => entry.platformUserId).sort(), ["fake-never", "fake-old"]);
         assert.equal((await store.findDormant(cutoff, 1)).length, 1);
+    });
+
+    await test("the error guards recognise a branded error from another copy of the package; a plain Error is never one", () => {
+        // What a route bundle sees when the custom server's copy of the package throws: the same
+        // brand and fields on an object its own class never built.
+        const foreign = (brand: string, fields: Record<string, unknown>) =>
+            Object.defineProperty(Object.assign(new Error("from another copy"), fields), Symbol.for(brand), { value: true });
+        const cases: Array<[string, (error: unknown) => boolean, string, Error, Record<string, unknown>]> = [
+            ["isStreamerConfigError", isStreamerConfigError, "hushle.platform-streamer.config-error", new StreamerConfigError("STREAMER_TOKEN_KEY is missing"), { name: "StreamerConfigError" }],
+            ["isTokenDecryptError", isTokenDecryptError, "hushle.platform-streamer.token-decrypt-error", new TokenDecryptError("tampered"), { name: "TokenDecryptError", reason: "tampered" }],
+            [
+                "isStreamerPlatformError",
+                isStreamerPlatformError,
+                "hushle.platform-streamer.platform-error",
+                new StreamerPlatformError("twitch", "refresh", "network", null),
+                { name: "StreamerPlatformError", platform: "twitch", operation: "refresh", kind: "network", status: null },
+            ],
+            [
+                "isStreamerReconnectRequired",
+                isStreamerReconnectRequired,
+                "hushle.platform-streamer.reconnect-required",
+                new StreamerReconnectRequired("11111111-1111-4111-8111-111111111111", "refresh_failed"),
+                { name: "StreamerReconnectRequired", connectionId: "11111111-1111-4111-8111-111111111111", reason: "refresh_failed" },
+            ],
+        ];
+        for (const [label, guard, brand, own, fields] of cases) {
+            assert.equal(guard(own), true, `${label}: an error of its own class`);
+            const other = foreign(brand, fields);
+            assert.equal(other instanceof (own.constructor as new (...args: never[]) => Error), false, `${label}: not built by the class`);
+            assert.equal(guard(other), true, `${label}: the brand alone is recognised`);
+            assert.equal(guard(Object.assign(new Error("look-alike"), fields)), false, `${label}: same name and fields, no brand`);
+            assert.equal(guard(Object.defineProperty(Object.assign(new Error("x"), fields), Symbol.for(brand), { value: "true" })), false, `${label}: a brand that is not true`);
+            assert.equal(guard(new Error("plain")), false, `${label}: a plain Error`);
+            for (const value of [null, undefined, "StreamerConfigError", 0, Symbol.for(brand)]) assert.equal(guard(value), false, `${label}: ${String(value)}`);
+            for (const [otherLabel, otherGuard] of cases.map(([name, check]) => [name, check] as const)) {
+                if (otherLabel !== label) assert.equal(otherGuard(own), false, `${otherLabel} does not take a ${label.slice(2)}`);
+            }
+        }
     });
 
     console.log(`${count} checks passed.`);

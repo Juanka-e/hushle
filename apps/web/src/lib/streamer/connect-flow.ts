@@ -4,9 +4,9 @@ import {
     decryptToken,
     encryptToken,
     isStreamerPlatform,
+    isStreamerPlatformError,
+    isTokenDecryptError,
     revokeAtPlatform,
-    StreamerPlatformError,
-    TokenDecryptError,
     type StreamerConnectionRecord,
     type StreamerConnectionStore,
     type StreamerPlatform,
@@ -102,7 +102,7 @@ function decryptStored(deps: ConnectFlowDeps, record: StreamerConnectionRecord, 
     try {
         return decryptToken(encoded, deps.keyring, connectionAad(record.platform, record.platformUserId));
     } catch (error) {
-        if (error instanceof TokenDecryptError) return null;
+        if (isTokenDecryptError(error)) return null;
         throw error;
     }
 }
@@ -247,7 +247,7 @@ async function decideCallback(
             // Nothing was stored: do not leave a live grant behind.
             await revokeAtPlatform(client, [[tokens.refreshToken, "refresh_token"], [tokens.accessToken, "access_token"]]).catch(() => undefined);
         }
-        if (error instanceof StreamerPlatformError) {
+        if (isStreamerPlatformError(error)) {
             await safely(deps.emitEvent({ event: "streamer.connect.platform_error", level: "warn", context: { platform, operation: error.operation, kind: error.kind, status: error.status } }));
             return fail(platform, "platform_error");
         }
