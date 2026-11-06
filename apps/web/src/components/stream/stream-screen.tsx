@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { loadDemoScene } from "./stream-demo-loader";
 import { streamFontClassName } from "./stream-fonts";
 import { createStreamRenderer, offlineState, urlLookSnapshot, viewFromParams } from "./stream-renderer";
 import { connectStreamTransport, createStreamSocket } from "./stream-transport";
@@ -11,7 +12,8 @@ import "./stream-screen.css";
 // this markup once; stream-renderer.ts drives it from the snapshots, as public.js did, and
 // stream-transport.ts brings them from the public room. Until the first state arrives the look
 // chosen in the URL shows; without one for a while, the offline scene does. The demo scenes
-// (stream-demo.ts) are a chunk of their own, fetched only for an allowed ?demo=.
+// (stream-demo.ts) are a chunk of their own, fetched only for an allowed ?demo=; a chunk that
+// fails to load draws the URL look's offline scene (stream-demo-loader.ts).
 
 export function StreamScreen({ demoAllowed }: { demoAllowed: boolean }) {
     const rootRef = useRef<HTMLElement>(null);
@@ -24,19 +26,9 @@ export function StreamScreen({ demoAllowed }: { demoAllowed: boolean }) {
         const demo = demoAllowed && params.has("demo");
         const renderer = createStreamRenderer(root, viewFromParams(params, demo));
         if (demo) {
-            let stop: (() => void) | null = null;
-            let unmounted = false;
-            import("./stream-demo")
-                .then(({ startDemo }) => {
-                    if (!unmounted) stop = startDemo(renderer, params.get("demo") ?? "", params);
-                })
-                .catch(() => {
-                    // The demo chunk did not load: the URL look's offline scene, as for a dead link.
-                    if (!unmounted) renderer.render(offlineState(urlLookSnapshot(params)));
-                });
+            const stopDemo = loadDemoScene(renderer, params, () => import("./stream-demo"));
             return () => {
-                unmounted = true;
-                stop?.();
+                stopDemo();
                 renderer.destroy();
             };
         }

@@ -4,19 +4,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { CAMERA_SIZES, CAMERA_SLOTS } from "@hushle/domain-streamer";
 import { CAMERA_HOLE_SIZES, cameraRect, type CameraRect, type CameraSize, type CameraSlot } from "@/components/stream/camera-rects";
-import {
-    cameraRect as rendererCameraRect,
-    offlineState,
-    readSnapshot,
-    urlLookSnapshot,
-    type StreamState,
-} from "@/components/stream/stream-renderer";
+import { createRevisionGuard, isViewKey } from "@/components/stream/stream-guards";
+import { offlineState, readSnapshot, urlLookSnapshot, type StreamState } from "@/components/stream/stream-renderer";
 import {
     connectStreamTransport,
     createReloadCounter,
-    createRevisionGuard,
     isProtocolRefusal,
-    isViewKey,
     protocolReloadDelayMs,
     type ReloadCounter,
     type StreamSocketLike,
@@ -404,8 +397,20 @@ async function main(): Promise<void> {
         assert.deepEqual(CAMERA_HOLE_SIZES, { s: [480, 270], m: [560, 315], l: [640, 360] });
         // An unknown size from an old caller falls back to m, as before.
         assert.deepEqual(cameraRect("br", "xl" as CameraSize), table.br.m);
-        // The renderer draws with the same function (the panel still imports it from there).
-        assert.equal(rendererCameraRect, cameraRect);
+    });
+
+    await test("W5 the camera hole table is frozen all the way down: no caller can change the geometry", () => {
+        assert.ok(Object.isFrozen(CAMERA_HOLE_SIZES), "the table");
+        for (const size of CAMERA_SIZES) assert.ok(Object.isFrozen(CAMERA_HOLE_SIZES[size]), `the ${size} pair`);
+        // Reflect.set reports a refused write whatever the caller's mode; a strict caller would throw.
+        assert.equal(Reflect.set(CAMERA_HOLE_SIZES, "m", [1, 1]), false);
+        assert.equal(Reflect.set(CAMERA_HOLE_SIZES.m, 0, 1), false);
+        assert.throws(() => {
+            "use strict";
+            (CAMERA_HOLE_SIZES.l as unknown as number[])[1] = 1;
+        }, TypeError);
+        assert.deepEqual(CAMERA_HOLE_SIZES, { s: [480, 270], m: [560, 315], l: [640, 360] });
+        assert.deepEqual(cameraRect("tl", "m"), { x: 70, y: 70, w: 560, h: 315 });
     });
 
     await test("camera-rects is pure: type imports only, no DOM, no demo, no socket", () => {
@@ -416,6 +421,19 @@ async function main(): Promise<void> {
         const renderer = streamSource("stream-renderer.ts");
         assert.match(renderer, /from "\.\/camera-rects"/);
         assert.doesNotMatch(renderer, /\[480, 270\]|function cameraRect/, "the renderer keeps no copy of the table");
+        // W8: the panel takes it from camera-rects now; the renderer re-exports nothing of it.
+        assert.doesNotMatch(renderer, /export \{[^}]*\bcameraRect\b[^}]*\}/, "no cameraRect re-export");
+    });
+
+    await test("W7 the key check and the revision guard live in a module with no imports at all", () => {
+        const guards = streamSource("stream-guards.ts");
+        assert.doesNotMatch(guards, /^\s*(import|export)\s[^;]*\bfrom\s/m, "no imports, no re-exports");
+        assert.doesNotMatch(guards, /\bimport\(|\b(document|window|navigator)\.|socket\.io-client|\bio\(/, "no DOM, no socket");
+        assert.match(guards, /^export function isViewKey\(/m);
+        assert.match(guards, /^export function createRevisionGuard\(/m);
+        const transport = streamSource("stream-transport.ts");
+        assert.match(transport, /^import \{ createRevisionGuard, isViewKey \} from "\.\/stream-guards";$/m, "the transport uses them");
+        assert.doesNotMatch(transport, /function (isViewKey|createRevisionGuard)\(/, "and keeps no copy");
     });
 
     await test("the page shell reads the fake-platform switch from the package, not the server wiring", () => {
@@ -440,10 +458,63 @@ async function main(): Promise<void> {
         // No other screen module reaches the demo or its sample data.
         const demo = streamSource("stream-demo.ts");
         assert.match(demo, /^export function startDemo\(/m);
-        for (const file of ["stream-renderer.ts", "stream-transport.ts", "stream-fonts.ts", "camera-rects.ts"]) {
+        for (const file of ["stream-renderer.ts", "stream-transport.ts", "stream-fonts.ts", "camera-rects.ts", "stream-guards.ts"]) {
             const text = streamSource(file);
             assert.doesNotMatch(text, /stream-demo|startDemo|denizoynuyor|MANDALİNA|xXx_KaraSavasci/, file);
         }
+        // W4: the screen hands its dynamic import to the loader, which never imports the demo itself.
+        assert.match(screen, /loadDemoScene\(renderer, params, \(\) => import\("\.\/stream-demo"\)\)/);
+        const loader = streamSource("stream-demo-loader.ts");
+        assert.doesNotMatch(loader, /["']\.\/stream-demo["']/, "the loader gets the module from its caller");
+        assert.doesNotMatch(loader, /denizoynuyor|MANDALİNA|xXx_KaraSavasci/, "and holds no sample data");
+    });
+
+    await test("W4 a demo chunk that fails to load draws the URL look's offline scene; after cleanup nothing happens", async () => {
+        const { loadDemoScene } = await import("@/components/stream/stream-demo-loader");
+        const drawn: StreamState[] = [];
+        const renderer = {
+            render: (state: StreamState) => void drawn.push(state),
+            current: () => drawn[drawn.length - 1] ?? null,
+            destroy: () => undefined,
+        };
+        const params = new URLSearchParams("demo=running&theme=sakura&camera=tl&size=l");
+        const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+        // The chunk request failed (a deploy removed it, the network dropped it).
+        loadDemoScene(renderer, params, () => Promise.reject(new Error("ChunkLoadError")));
+        await settle();
+        assert.equal(drawn.length, 1, "one draw");
+        assert.deepEqual(drawn[0], offlineState(urlLookSnapshot(params)), "the URL look's offline scene");
+        assert.equal(drawn[0].theme, "sakura");
+        assert.equal(drawn[0].connected, false);
+
+        // The chunk arrives: the named scene starts with the URL's params; cleanup stops it.
+        drawn.length = 0;
+        const started: Array<[string, string]> = [];
+        let stopped = 0;
+        const scenes = {
+            startDemo: (_renderer: unknown, name: string, given: URLSearchParams) => {
+                started.push([name, given.toString()]);
+                return () => void (stopped += 1);
+            },
+        };
+        const cleanup = loadDemoScene(renderer, params, () => Promise.resolve(scenes));
+        await settle();
+        assert.deepEqual(started, [["running", params.toString()]]);
+        cleanup();
+        assert.equal(stopped, 1);
+
+        // Unmounted before the chunk settles: a late module starts nothing, a late failure draws nothing.
+        started.length = 0;
+        let resolveLate: (value: typeof scenes) => void = () => undefined;
+        let rejectLate: (error: Error) => void = () => undefined;
+        loadDemoScene(renderer, params, () => new Promise((resolve) => (resolveLate = resolve)))();
+        loadDemoScene(renderer, params, () => new Promise((_, reject) => (rejectLate = reject)))();
+        resolveLate(scenes);
+        rejectLate(new Error("ChunkLoadError"));
+        await settle();
+        assert.deepEqual(started, []);
+        assert.equal(drawn.length, 0);
     });
 
     await test("every named demo scene draws one readable state; play stops when told", async () => {
@@ -480,14 +551,19 @@ async function main(): Promise<void> {
             // The word shows only once a round is over, as with a session.
             assert.equal(drawn[0].reveal !== null, phase === "finished", name);
         }
+        // W3: the play loop on an injected clock (the e2e test runs the whole loop on Playwright's).
         drawn.length = 0;
-        const stop = startDemo(renderer, "play", new URLSearchParams(""));
+        const clock = fakeClock();
+        const stop = startDemo(renderer, "play", new URLSearchParams(""), clock);
         assert.equal(drawn.length, 1);
         assert.equal(drawn[0].phase, "ready");
-        // The loop's first step is due at 1.2 s; the e2e test runs the whole loop on a fake clock.
+        clock.advance(1_199);
+        assert.equal(drawn.length, 1, "the first step is due at 1.2 s");
+        clock.advance(1);
+        assert.equal(drawn.length, 2, "and comes at 1.2 s");
         stop();
-        await new Promise((resolve) => setTimeout(resolve, 1_300));
-        assert.equal(drawn.length, 1, "nothing after stop");
+        clock.advance(600_000);
+        assert.equal(drawn.length, 2, "nothing after stop");
     });
 
     await test("the revision guard takes only newer states; a reset starts it again", () => {
@@ -676,17 +752,26 @@ async function main(): Promise<void> {
         }
     });
 
-    await test("a join that draws a state resets the reload backoff; a refused join does not", () => {
+    await test("W2 a handshake that passes resets the reload backoff, whatever the join then says; a refused one does not", () => {
         const reloads = memoryCounter(3);
         const refused = harness(KEY, reloads);
-        refused.socket.up();
-        refused.socket.emits[0].ack({ ok: false, code: "RATE_LIMITED", error: "x" });
-        assert.equal(reloads.get(), 3);
+        refused.socket.fire("connect_error", protocolRefusal());
+        assert.equal(reloads.get(), 3, "a refused handshake keeps the count");
+        refused.transport.close();
 
-        const joined = harness(KEY, reloads);
-        joined.socket.up();
-        joined.socket.emits[0].ack({ ok: true, state: snapshot({ revision: 1 }) });
+        // The handshake passed: this bundle speaks the server's protocol, even if the join is refused.
+        const connected = harness(KEY, reloads);
+        connected.socket.up();
+        assert.equal(reloads.get(), 0, "reset on connect, before any join answer");
+        connected.socket.emits[0].ack({ ok: false, code: "RATE_LIMITED", error: "x" });
         assert.equal(reloads.get(), 0);
+
+        // A closed screen's late connect changes nothing.
+        const kept = memoryCounter(2);
+        const closed = harness(KEY, kept);
+        closed.transport.close();
+        closed.socket.up();
+        assert.equal(kept.get(), 2);
 
         // The next deploy starts the backoff over.
         const next = harness(KEY, reloads);

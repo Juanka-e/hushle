@@ -15,9 +15,6 @@ import { buildCosmeticPatternStyle, getCosmeticMotionClass, getCosmeticMotionSty
 import type { CosmeticMotionPreset, CosmeticPattern } from "@/types/economy";
 import { cameraRect } from "./camera-rects";
 
-// The streamer panel still imports the camera hole from here; it moves to ./camera-rects next.
-export { cameraRect };
-
 // The public stream screen's renderer, ported from the V4 prototype
 // (scripts/design-prototypes/hushle-streamer-studio/public.js). It draws only what readSnapshot
 // lets through and never imports a word pack. The DOM it drives is stream-screen.tsx; nothing

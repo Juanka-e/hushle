@@ -1,5 +1,6 @@
 import { BROADCAST_THEMES, CAMERA_SIZES, CAMERA_SLOTS, TIMER_STYLES } from "@hushle/domain-streamer";
 import { readSnapshot, type StreamRenderer } from "./stream-renderer";
+import type { StreamTimers } from "./stream-transport";
 
 // The stream screen's demo scenes, kept out of the screen's own chunk: stream-screen.tsx loads
 // this module with a dynamic import() only when the fake platform is on and the URL asks for
@@ -14,9 +15,14 @@ function pick<T extends string>(allowed: readonly T[], value: unknown): T | null
 /**
  * Built-in sample scenes for screenshots and the theme gallery (only while the fake platform
  * is on): the prototype's demo states and its `play` loop. Demo words only; nothing from a
- * session. Returns a stop function.
+ * session. Returns a stop function. `timers` lets a test drive the play loop on its own clock.
  */
-export function startDemo(renderer: StreamRenderer, name: string, params: URLSearchParams): () => void {
+export function startDemo(
+    renderer: StreamRenderer,
+    name: string,
+    params: URLSearchParams,
+    timers: StreamTimers = { setTimeout: (run, ms) => setTimeout(run, ms), clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>) }
+): () => void {
     const theme = pick(BROADCAST_THEMES, params.get("theme")) ?? BROADCAST_THEMES[0];
     const camera = pick(CAMERA_SLOTS, params.get("camera")) ?? "br";
     const cameraSize = pick(CAMERA_SIZES, params.get("size")) ?? "m";
@@ -124,10 +130,10 @@ export function startDemo(renderer: StreamRenderer, name: string, params: URLSea
     at(4200, () => ({ ...state, phase: "ended" }));
     at(5000, () => ({ ...states.ready, round: round() + 1, scores: state.scores }));
     let index = 0;
-    let handle: ReturnType<typeof setTimeout> | undefined;
+    let handle: unknown;
     const next = () => {
         const [delay, change] = steps[index];
-        handle = setTimeout(() => {
+        handle = timers.setTimeout(() => {
             state = change();
             show(state);
             index = (index + 1) % steps.length;
@@ -137,5 +143,5 @@ export function startDemo(renderer: StreamRenderer, name: string, params: URLSea
     };
     show(state);
     next();
-    return () => clearTimeout(handle);
+    return () => timers.clearTimeout(handle);
 }

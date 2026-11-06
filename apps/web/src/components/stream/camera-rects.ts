@@ -14,12 +14,12 @@ export interface CameraRect {
     h: number;
 }
 
-/** Width and height of a corner hole for each camera size. */
-export const CAMERA_HOLE_SIZES: Readonly<Record<CameraSize, readonly [number, number]>> = {
-    s: [480, 270],
-    m: [560, 315],
-    l: [640, 360],
-};
+/** Width and height of a corner hole for each camera size. Frozen all the way down: shared geometry. */
+export const CAMERA_HOLE_SIZES: Readonly<Record<CameraSize, readonly [number, number]>> = Object.freeze({
+    s: Object.freeze([480, 270] as const),
+    m: Object.freeze([560, 315] as const),
+    l: Object.freeze([640, 360] as const),
+});
 
 /** The hole for a slot and size: corners 70 px from the edges, halves exact, `none` has none. */
 export function cameraRect(slot: CameraSlot, size: CameraSize): CameraRect | null {

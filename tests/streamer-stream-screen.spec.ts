@@ -74,13 +74,18 @@ async function expectReducedMotion(page: Page): Promise<void> {
 
 /**
  * Where the view key shows up in the page: any attribute of any element, any text or comment
- * node, open shadow roots included. Next's flight data is left out: those <script>s
- * (self.__next_f.push) carry the route's segments for React, so the key in the URL is
- * inherently in them; they are never drawn.
+ * node, open shadow roots included. Next's flight data (<script>s with self.__next_f.push)
+ * carries the route for React, so two forms of the key are inherently in it, dev and production
+ * alike: the dynamic segment ("n":"viewKey","t":"d","k":"KEY") and the canonical path
+ * ("c":["","stream","KEY, followed by the page's query if it has one). Only those two are taken
+ * out before the check; the key anywhere else in the flight data (a server prop, say) still counts.
  */
 async function keyLeaks(page: Page, key: string): Promise<string[]> {
     return page.evaluate((key) => {
         const leaks: string[] = [];
+        const routeForms = [`"n":"viewKey","t":"d","k":"${key}"`, `"c":["","stream","${key}`];
+        // Inside the script the payload is a JS string literal, so its quotes come escaped.
+        const strip = [...routeForms, ...routeForms.map((form) => form.replaceAll('"', '\\"'))];
         const isFlightData = (node: Node) => node.parentElement?.localName === "script" && (node.textContent ?? "").includes("self.__next_f");
         const walk = (root: Node) => {
             const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
@@ -90,8 +95,11 @@ async function keyLeaks(page: Page, key: string): Promise<string[]> {
                         if (attribute.value.includes(key)) leaks.push(`<${node.localName} ${attribute.name}>`);
                     }
                     if (node.shadowRoot) walk(node.shadowRoot);
-                } else if ((node.textContent ?? "").includes(key) && !isFlightData(node)) {
-                    leaks.push(`${node.nodeName} in <${node.parentElement?.localName ?? "?"}>`);
+                } else {
+                    const flight = isFlightData(node);
+                    let text = node.textContent ?? "";
+                    if (flight) for (const form of strip) text = text.split(form).join("");
+                    if (text.includes(key)) leaks.push(flight ? "flight data in <script>" : `${node.nodeName} in <${node.parentElement?.localName ?? "?"}>`);
                 }
             }
         };
@@ -285,7 +293,7 @@ test.describe("stream screen with an unknown key", () => {
     test.use(STILL);
     test.beforeEach(async ({ page }) => expectReducedMotion(page));
 
-    test("an unknown view key shows the offline scene; the key is in no title, text node or attribute (Next's flight data aside)", async ({
+    test("an unknown view key shows the offline scene; the key is in no title, text node or attribute (Next's own route forms aside)", async ({
         page,
     }) => {
         // A malformed key (refused before connecting) and a well-formed one the server does not know.
@@ -299,12 +307,26 @@ test.describe("stream screen with an unknown key", () => {
             await expectNoKey(page, key);
             await expectSeeThrough(page);
 
-            // The walker sees a leak when there is one.
+            // The walker sees a leak when there is one: an attribute, a comment, a text node, a
+            // script that is not Next's flight data, and flight data that holds the key in any
+            // form other than the route's own (a server prop, say). The probe scripts never run.
             await page.evaluate((key) => {
                 document.body.dataset.probe = key;
-                document.body.append(document.createComment(key), document.createTextNode(key));
+                const json = document.createElement("script");
+                json.type = "application/json";
+                json.textContent = key;
+                const flight = document.createElement("script");
+                flight.type = "text/x-probe";
+                flight.textContent = `self.__next_f.push([1,"5:{\\"viewKey\\":\\"${key}\\"}"])`;
+                document.body.append(document.createComment(key), document.createTextNode(key), json, flight);
             }, key);
-            expect(await keyLeaks(page, key)).toEqual(["<body data-probe>", "#comment in <body>", "#text in <body>"]);
+            expect(await keyLeaks(page, key)).toEqual([
+                "<body data-probe>",
+                "#comment in <body>",
+                "#text in <body>",
+                "#text in <script>",
+                "flight data in <script>",
+            ]);
         }
     });
 });
@@ -519,6 +541,7 @@ test.describe("stream screen live session", () => {
         const secondRoot = second.locator("main.hushle-stream");
         await expect(secondRoot).toHaveAttribute("data-phase", "ready", { timeout: 10_000 });
         await expect(secondRoot).toHaveAttribute("data-theme", "sade");
+        await expectNoKey(second, nextKey);
 
         // Ending draws the finale; the closed room does not turn it into the offline scene.
         const ended = await post(page, "/api/streamer/sessions/current/end");

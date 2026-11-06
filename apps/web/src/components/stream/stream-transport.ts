@@ -1,6 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 import { SOCKET_CLIENT_AUTH, SOCKET_PROTOCOL_ERROR_CODE } from "@/lib/socket/protocol-version";
 import { STREAMER_SOCKET_EVENTS, type StreamerEndedReason } from "@/lib/streamer/socket-contract";
+import { createRevisionGuard, isViewKey } from "./stream-guards";
 import { readSnapshot, type StreamState } from "./stream-renderer";
 
 // The stream screen's link to the server: joins the public room with the view key from the URL,
@@ -8,28 +9,8 @@ import { readSnapshot, type StreamState } from "./stream-renderer";
 // offline scene. Socket.IO reconnects on its own after a lost transport; each new connection
 // joins again. A handshake the server refuses for its socket protocol (a deploy shipped a new
 // bundle) reloads the whole page instead, with backoff. The view key goes only into the join
-// payload: never into a log, a title, storage or the DOM.
-
-/** The public room's capability key: 32 random bytes in base64url. */
-export function isViewKey(value: string): boolean {
-    return /^[A-Za-z0-9_-]{43}$/.test(value);
-}
-
-/** Drops any state that is not newer than the last one taken. */
-export function createRevisionGuard() {
-    let last = -1;
-    return {
-        accept(revision: number): boolean {
-            if (revision <= last) return false;
-            last = revision;
-            return true;
-        },
-        /** The join ack is the new floor (the server's count may have started over). */
-        reset(revision: number): void {
-            last = revision;
-        },
-    };
-}
+// payload: never into a log, a title, storage or the DOM. The key check and the revision guard
+// live in ./stream-guards, which the streamer panel shares.
 
 /** The part of a Socket.IO client socket the transport uses. */
 export interface StreamSocketLike {
@@ -92,7 +73,7 @@ function endedReason(payload: unknown): StreamerEndedReason {
         : "interrupted";
 }
 
-// After a protocol refusal: 30 s, 60 s, 120 s, then every 5 minutes until a join draws a state.
+// After a protocol refusal: 30 s, 60 s, 120 s, then every 5 minutes until a handshake passes.
 const RELOAD_DELAYS_MS = [30_000, 60_000, 120_000];
 const RELOAD_EVERY_MS = 300_000;
 // A fixed name: the count is all that is stored, never the key.
@@ -195,7 +176,6 @@ export function connectStreamTransport(options: StreamTransportOptions): StreamT
             timers.clearTimeout(offlineTimer);
             if (state) {
                 failures = 0;
-                if (reloads.get() !== 0) reloads.set(0);
                 guard.reset(state.revision);
                 options.onState(state);
                 return;
@@ -217,7 +197,13 @@ export function connectStreamTransport(options: StreamTransportOptions): StreamT
         return { close: () => undefined };
     }
 
-    socket.on("connect", join);
+    // A handshake that passes means this bundle speaks the server's protocol: the reload backoff
+    // starts over, whatever the join then answers.
+    socket.on("connect", () => {
+        if (closed) return;
+        if (reloads.get() !== 0) reloads.set(0);
+        join();
+    });
     // socket.io gives up after a middleware refusal, so this page would stay offline until
     // someone refreshed the OBS source. A protocol refusal means the server runs a newer
     // bundle: reload the page to fetch it, waiting longer after each reload in a row. Any
