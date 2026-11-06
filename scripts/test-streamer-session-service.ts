@@ -2331,7 +2331,11 @@ async function main(): Promise<void> {
         await hourly("valid");
         await hourly("unavailable");
         assert.deepEqual(notices, [], "a valid link and a transient platform error tell nothing");
-        assert.deepEqual(calls[0], { id: connection(1, "twitch").id, userId: 1, platform: "twitch" }, "the link the session was opened on");
+        assert.deepEqual(
+            calls[0],
+            { id: connection(1, "twitch").id, userId: 1, platform: "twitch", platformUserId: "pu-twitch-1" },
+            "the link the session was opened on, with the channel it was opened for",
+        );
         await hourly("needs_reconnect");
         assert.deepEqual(notices, [[session.id, { kind: "connection-needs-reconnect", platform: "twitch" }]]);
         assert.equal(h.runtime.get(session.id)?.phase, "running", "the session keeps running");

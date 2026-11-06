@@ -71,7 +71,8 @@ export interface StreamerSessionRuntimeDeps {
 }
 
 export interface StreamerSessionRuntime {
-    open(row: StreamSessionRecord, state: StreamSessionState): LiveStreamSession;
+    /** `link`: the channel the session is opened for; without it (or a row link) nothing is checked hourly. */
+    open(row: StreamSessionRecord, state: StreamSessionState, link?: { platformUserId: string }): LiveStreamSession;
     get(sessionId: string): LiveStreamSession | null;
     forUser(userId: number): LiveStreamSession | null;
     start(sessionId: string): Promise<void>;

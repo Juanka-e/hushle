@@ -282,7 +282,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     // ------------------------------------------------------------ API
 
     return {
-        open(row, state) {
+        open(row, state, link) {
             if (entries.has(row.id) || [...entries.values()].some((entry) => entry.userId === row.userId && !entry.closed)) {
                 throw new StreamerSessionError("session_active");
             }
@@ -305,7 +305,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             };
             entries.set(entry.id, entry);
             align(entry);
-            watches.watchConnection(entry.id, row.connectionId ? { id: row.connectionId, userId: row.userId, platform: row.platform } : null);
+            const channel = row.connectionId && link ? { id: row.connectionId, userId: row.userId, platform: row.platform, platformUserId: link.platformUserId } : null;
+            watches.watchConnection(entry.id, channel);
             emitState(entry);
             return view(entry);
         },

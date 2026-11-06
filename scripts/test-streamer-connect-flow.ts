@@ -520,7 +520,7 @@ async function main(): Promise<void> {
         const h = harness();
         await startAndCallback(h, user1, "twitch");
         const row = (await h.store.findByUserAndPlatform(1, "twitch"))!;
-        const link = { id: row.id, userId: 1, platform: "twitch" as const };
+        const link = { id: row.id, userId: 1, platform: "twitch" as const, platformUserId: row.platformUserId };
         let validations = 0;
         let answer: { ok: boolean; expiresInSeconds: number | null } | Error = { ok: true, expiresInSeconds: 3600 };
         const client: StreamerPlatformClient = {
@@ -566,22 +566,57 @@ async function main(): Promise<void> {
             },
         };
         h.deps.clientFor = () => client;
-        assert.equal(await checkSessionConnection(h.deps, { id: row.id, userId: 1, platform: "twitch" }), "unavailable", "no verdict on a link that changed meanwhile");
+        assert.equal(
+            await checkSessionConnection(h.deps, { id: row.id, userId: 1, platform: "twitch", platformUserId: row.platformUserId }),
+            "unavailable",
+            "no verdict on a link that changed meanwhile",
+        );
         const after = (await h.store.findByUserAndPlatform(1, "twitch"))!;
         assert.equal(after.status, "active", "the relinked tokens are not wiped");
         assert.notEqual(after.refreshTokenEnc, null);
+    });
+
+    await test("hourly check: a row relinked to another channel needs a reconnect for this session, without the platform and without touching the row", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "twitch");
+        const row = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        let validations = 0;
+        const client: StreamerPlatformClient = {
+            ...h.fake.twitch,
+            async validate() {
+                validations += 1;
+                return { ok: true, expiresInSeconds: 3600 };
+            },
+        };
+        h.deps.clientFor = () => client;
+        // The session was opened on channel "fake-deniz"; the same row now holds "fake-other".
+        const link = { id: row.id, userId: 1, platform: "twitch" as const, platformUserId: "fake-other" };
+        assert.equal(await checkSessionConnection(h.deps, link), "needs_reconnect");
+        assert.equal(validations, 0, "no platform call");
+        const after = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        assert.deepEqual(after, row, "the row is untouched: it is a good link, just not this session's channel");
+        assert.equal(await checkSessionConnection(h.deps, { ...link, platformUserId: row.platformUserId }), "valid", "the session's own channel is validated");
+        assert.equal(validations, 1);
     });
 
     await test("hourly check: a link that is gone, replaced or unconfigured here is judged without the platform", async () => {
         const h = harness();
         await startAndCallback(h, user1, "kick");
         const row = (await h.store.findByUserAndPlatform(1, "kick"))!;
-        assert.equal(await checkSessionConnection(h.deps, { id: "00000000-0000-4000-8000-000000009999", userId: 1, platform: "kick" }), "needs_reconnect", "another row than the session's");
-        assert.equal(await checkSessionConnection(h.deps, { id: row.id, userId: 2, platform: "kick" }), "needs_reconnect", "no row");
+        assert.equal(
+            await checkSessionConnection(h.deps, { id: "00000000-0000-4000-8000-000000009999", userId: 1, platform: "kick", platformUserId: row.platformUserId }),
+            "needs_reconnect",
+            "another row than the session's",
+        );
+        assert.equal(await checkSessionConnection(h.deps, { id: row.id, userId: 2, platform: "kick", platformUserId: row.platformUserId }), "needs_reconnect", "no row");
         h.deps.clientFor = () => {
             throw new StreamerConfigError("STREAMER_KICK_CLIENT_ID and STREAMER_KICK_CLIENT_SECRET are required");
         };
-        assert.equal(await checkSessionConnection(h.deps, { id: row.id, userId: 1, platform: "kick" }), "unavailable", "no client here: nothing to check with");
+        assert.equal(
+            await checkSessionConnection(h.deps, { id: row.id, userId: 1, platform: "kick", platformUserId: row.platformUserId }),
+            "unavailable",
+            "no client here: nothing to check with",
+        );
         assert.equal((await h.store.findByUserAndPlatform(1, "kick"))!.status, "active");
     });
 

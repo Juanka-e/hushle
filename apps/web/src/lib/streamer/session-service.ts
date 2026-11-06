@@ -195,7 +195,8 @@ export async function createSession(
         });
         const state = createStreamSession(toScreenSettings(settings, { platform: connection.platform, name: connection.login }, cardBack), now);
         try {
-            deps.runtime.open(session, state);
+            // The hourly check holds the session to the channel it opened on.
+            deps.runtime.open(session, state, { platformUserId: connection.platformUserId });
         } catch (error) {
             // Never leave an `active` row nobody runs.
             await interruptStale(deps, session);

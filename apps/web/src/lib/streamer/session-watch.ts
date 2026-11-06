@@ -13,11 +13,12 @@ export const STREAM_CONNECTION_CHECK_MS = 3_600_000;
 /** What a link check found: still valid, now needing a reconnect, or no answer this time (transient). */
 export type ConnectionCheck = "valid" | "needs_reconnect" | "unavailable";
 
-/** The channel link a live session was opened on. */
+/** The channel link a live session was opened on, and the channel (platform user) it was opened for. */
 export interface SessionConnection {
     id: string;
     userId: number;
     platform: StreamerPlatform;
+    platformUserId: string;
 }
 
 export type ConnectionChecker = (connection: SessionConnection) => Promise<ConnectionCheck>;

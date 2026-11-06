@@ -117,15 +117,16 @@ export async function validateConnection(deps: ConnectionCheckDeps, record: Stre
 
 /**
  * The hourly check of the link a live session was opened on: the row must still be that link
- * (same id) and active, then it is validated as the panel does. Gone, replaced or not active is
- * `needs_reconnect` without any platform call.
+ * (same id), for the same channel (a relink may keep the row and change the channel), and active;
+ * then it is validated as the panel does. Gone, replaced, another channel or not active is
+ * `needs_reconnect` for this session, without any platform call and without touching the row.
  */
 export async function checkSessionConnection(
     deps: ConnectionCheckDeps,
-    link: { id: string; userId: number; platform: StreamerPlatform }
+    link: { id: string; userId: number; platform: StreamerPlatform; platformUserId: string }
 ): Promise<ConnectionValidation> {
     const record = await deps.store.findByUserAndPlatform(link.userId, link.platform);
-    if (!record || record.id !== link.id || record.status !== "active") return "needs_reconnect";
+    if (!record || record.id !== link.id || record.platformUserId !== link.platformUserId || record.status !== "active") return "needs_reconnect";
     return validateConnection(deps, record);
 }
 
