@@ -14,7 +14,15 @@ import {
     type TokenKeyring,
     type TokenSet,
 } from "@hushle/platform-streamer";
-import { ConnectStateError, CONNECT_STATE_TTL_MS, createConnectState, readConnectState } from "./connect-state";
+import {
+    ConnectStateError,
+    CONNECT_STATE_TTL_MS,
+    createConnectState,
+    defaultConnectStateStore,
+    hashConnectState,
+    readConnectState,
+    type ConnectStateStore,
+} from "./connect-state";
 import { settingsRedirect, type StreamerRedirectCode } from "./redirects";
 
 // The connect flow as pure decisions over injected dependencies. Route handlers only
@@ -54,6 +62,8 @@ export interface ConnectFlowDeps {
     consumeRateLimit(options: { bucket: string; key: string; windowMs: number; maxRequests: number }): Promise<ConnectRateLimitResult>;
     writeAudit(entry: ConnectAuditEntry): Promise<void>;
     emitEvent(event: { event: string; level: "info" | "warn" | "error"; context?: Record<string, unknown> }): Promise<void>;
+    /** Where each OAuth state is recorded for single use; the app's Redis-or-in-process record when absent. */
+    stateStore?: ConnectStateStore;
 }
 
 export const CONNECT_RATE_LIMITS = {
@@ -69,6 +79,10 @@ export function callbackUri(origin: string, platform: StreamerPlatform): string 
 
 function now(deps: ConnectFlowDeps): Date {
     return deps.now ? deps.now() : new Date();
+}
+
+function stateStoreOf(deps: ConnectFlowDeps): ConnectStateStore {
+    return deps.stateStore ?? defaultConnectStateStore();
 }
 
 function fail(platform: string, code: StreamerRedirectCode): { redirectTo: string } {
@@ -108,6 +122,8 @@ export async function startConnect(
 
     const client = deps.clientFor(platform);
     const created = createConnectState({ userId: input.user.id, platform, requiresPkce: client.requiresPkce, secret: deps.secret, now: now(deps) });
+    // Recorded on the server (its sha256 only) so the callback can take it exactly once.
+    if (!(await stateStoreOf(deps).record(hashConnectState(created.state), CONNECT_STATE_TTL_MS))) return fail(platform, "internal_error");
     const redirectTo = client.authorizationUrl({ state: created.state, redirectUri: callbackUri(input.origin, platform), codeChallenge: created.codeChallenge });
     return { redirectTo, setCookie: { value: created.cookieValue, maxAgeSeconds: CONNECT_STATE_TTL_MS / 1000 } };
 }
@@ -133,12 +149,13 @@ async function decideCallback(
     if (!limit.allowed) return fail(platform, "rate_limited");
     if (!(await deps.isStreamerModeEnabled())) return fail(platform, "disabled");
 
+    const state = input.query.get("state");
     let codeVerifier: string | undefined;
     try {
         ({ codeVerifier } = readConnectState(input.cookieValue, {
             userId: user.id,
             platform,
-            state: input.query.get("state"),
+            state,
             secret: deps.secret,
             now: now(deps),
         }));
@@ -146,6 +163,9 @@ async function decideCallback(
         if (error instanceof ConnectStateError) return fail(platform, error.code);
         throw error;
     }
+    // Single use: the server-side record is taken before anything else happens (a denial uses
+    // it up too); a replayed cookie and state, or a state the server no longer holds, find nothing.
+    if (state === null || !(await stateStoreOf(deps).consume(hashConnectState(state)))) return fail(platform, "state_invalid");
     if (input.query.get("error")) return fail(platform, "denied");
     const code = input.query.get("code");
     if (!code) return fail(platform, "state_invalid");

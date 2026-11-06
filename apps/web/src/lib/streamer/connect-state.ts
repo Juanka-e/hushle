@@ -1,9 +1,12 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { getRedisClient, getRedisKey, type RedisLikeClient } from "@hushle/platform-cache";
 import { isStreamerPlatform, StreamerConfigError, type StreamerPlatform } from "@hushle/platform-streamer";
 
 // The OAuth `state` lives in a signed, short-lived, httpOnly cookie scoped to the connect
 // routes. The callback accepts it only for the same user, the same platform, the same
-// state value and within ten minutes; the route then deletes it, so it is single use.
+// state value and within ten minutes; the route then deletes it. The cookie alone could still
+// be replayed with its state for those ten minutes, so each state is also recorded on the
+// server (its sha256, never the value) and the callback consumes that record exactly once.
 
 export const CONNECT_STATE_COOKIE = "hushle_streamer_connect";
 export const CONNECT_STATE_COOKIE_PATH = "/api/streamer/connect";
@@ -121,4 +124,112 @@ export function readConnectState(
     if (typeof expect.state !== "string" || expect.state.length !== payload.s.length) throw new ConnectStateError("state_mismatch");
     if (!timingSafeEqual(Buffer.from(expect.state, "utf8"), Buffer.from(payload.s, "utf8"))) throw new ConnectStateError("state_mismatch");
     return { codeVerifier: payload.c };
+}
+
+// ---------------------------------------------------------------- single use, server side
+
+/** What the server records for a state: its sha256 (hex), never the value itself. */
+export function hashConnectState(state: string): string {
+    return createHash("sha256").update(state, "utf8").digest("hex");
+}
+
+export interface ConnectStateStore {
+    /** Records a state hash for `ttlMs`; false when that hash is already recorded. */
+    record(stateHash: string, ttlMs: number): Promise<boolean>;
+    /** Takes a recorded, unexpired state hash: true the first time, false afterwards or when unknown. */
+    consume(stateHash: string): Promise<boolean>;
+}
+
+const MAX_IN_PROCESS_STATES = 10_000;
+
+/**
+ * The in-process record (one web replica, ADR-003): hash → expiry, oldest first. Expired
+ * entries are pruned as new ones arrive; past the cap the oldest goes first.
+ */
+export function createMemoryConnectStateStore(options: { now?: () => number; maxEntries?: number } = {}): ConnectStateStore {
+    const now = options.now ?? Date.now;
+    const maxEntries = options.maxEntries ?? MAX_IN_PROCESS_STATES;
+    const entries = new Map<string, number>();
+    return {
+        async record(stateHash, ttlMs) {
+            const at = now();
+            for (const [hash, expiresAt] of entries) {
+                if (expiresAt <= at) entries.delete(hash);
+            }
+            if (entries.has(stateHash)) return false;
+            while (entries.size >= maxEntries) entries.delete(entries.keys().next().value as string);
+            entries.set(stateHash, at + ttlMs);
+            return true;
+        },
+        async consume(stateHash) {
+            const expiresAt = entries.get(stateHash);
+            if (expiresAt === undefined) return false;
+            entries.delete(stateHash);
+            return expiresAt > now();
+        },
+    };
+}
+
+function redisStateKey(stateHash: string): string {
+    return getRedisKey("streamer", "connect-state", stateHash);
+}
+
+/**
+ * Redis when it is configured and answering (`SET … NX PX` to record, the `DEL` count to
+ * consume: both atomic), else the in-process `fallback`. A consume that finds nothing in Redis
+ * also asks the fallback, for a state recorded while Redis was away; each record is taken once
+ * either way.
+ */
+export function createConnectStateStore(
+    options: { redis?: () => Promise<RedisLikeClient | null>; fallback?: ConnectStateStore } = {},
+): ConnectStateStore {
+    const connect = options.redis ?? getRedisClient;
+    const fallback = options.fallback ?? inProcessConnectStates();
+    const client = async () => {
+        try {
+            return await connect();
+        } catch {
+            return null;
+        }
+    };
+    return {
+        async record(stateHash, ttlMs) {
+            const redis = await client();
+            if (redis) {
+                try {
+                    return (await redis.set(redisStateKey(stateHash), "1", { NX: true, PX: ttlMs })) === "OK";
+                } catch {
+                    // Redis failed mid-call: the in-process record stands in.
+                }
+            }
+            return fallback.record(stateHash, ttlMs);
+        },
+        async consume(stateHash) {
+            const redis = await client();
+            if (redis) {
+                try {
+                    if ((await redis.del(redisStateKey(stateHash))) === 1) return true;
+                } catch {
+                    // Redis failed mid-call: only the in-process record can still answer.
+                }
+            }
+            return fallback.consume(stateHash);
+        },
+    };
+}
+
+// On globalThis: the start and callback routes are separate bundles (and the custom server loads
+// this module too); one in-process record must serve them all.
+const globalForConnectStates = globalThis as typeof globalThis & {
+    __hushleStreamerConnectStates?: ConnectStateStore;
+    __hushleStreamerConnectStatesInProcess?: ConnectStateStore;
+};
+
+function inProcessConnectStates(): ConnectStateStore {
+    return (globalForConnectStates.__hushleStreamerConnectStatesInProcess ??= createMemoryConnectStateStore());
+}
+
+/** The app's record of OAuth states: Redis when configured, the in-process map otherwise. */
+export function defaultConnectStateStore(): ConnectStateStore {
+    return (globalForConnectStates.__hushleStreamerConnectStates ??= createConnectStateStore());
 }

@@ -12,7 +12,8 @@ import {
     type StreamerPlatform,
     type StreamerPlatformClient,
 } from "@hushle/platform-streamer";
-import { readConnectState } from "../apps/web/src/lib/streamer/connect-state";
+import { createHash } from "node:crypto";
+import { createMemoryConnectStateStore, readConnectState, type ConnectStateStore } from "../apps/web/src/lib/streamer/connect-state";
 import { completeConnect, startConnect, type ConnectFlowDeps, type ConnectFlowUser } from "../apps/web/src/lib/streamer/connect-flow";
 import { disconnectPlatform, listConnectionsView, revokeAllForUser, verifyActiveConnections } from "../apps/web/src/lib/streamer/connections-view";
 import { StreamerConfigError } from "@hushle/platform-streamer";
@@ -59,6 +60,7 @@ function harness(overrides: Partial<{ enabled: boolean; configured: StreamerPlat
             keyring,
             secret,
             now: () => NOW,
+            stateStore: createMemoryConnectStateStore({ now: () => (h.deps.now ? h.deps.now() : new Date()).getTime() }),
             isStreamerModeEnabled: async () => h.enabled,
             isPlatformConfigured: (platform) => (overrides.configured ?? ["twitch", "kick"]).includes(platform),
             clientFor: (platform) => fake[platform] as StreamerPlatformClient,
@@ -198,6 +200,83 @@ async function main(): Promise<void> {
         assert.equal(codeOf(finished.redirectTo).code, "denied");
         assert.equal(h.store.rows.length, 0);
         assert.equal(h.fake.twitch.revoked.length, 0);
+    });
+
+    await test("single use: the first callback links, the same cookie and state replayed are refused (state_invalid)", async () => {
+        const h = harness();
+        const { started, finished, state } = await startAndCallback(h, user1, "twitch");
+        assert.equal(codeOf(finished.redirectTo).streamer, "linked");
+        const replay = await completeConnect(h.deps, {
+            user: user1, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state }), cookieValue: started.setCookie!.value, requestIp: "ip", origin,
+        });
+        assert.deepEqual(codeOf(replay.redirectTo), { streamer: "error", platform: "twitch", code: "state_invalid" });
+        assert.equal(replay.clearCookie, true);
+        assert.equal(h.store.rows.length, 1);
+        assert.deepEqual(h.audits.map((a) => a.action), ["streamer.connection.linked"], "the replay relinked nothing");
+        // A denial uses the state up too: it cannot be replayed with a code afterwards.
+        const second = await startConnect(h.deps, { user: user1, platform: "twitch", requestIp: "ip", origin });
+        const secondState = new URL(second.redirectTo, origin).searchParams.get("state")!;
+        const denied = await completeConnect(h.deps, { user: user1, platform: "twitch", query: new URLSearchParams({ error: "access_denied", state: secondState }), cookieValue: second.setCookie!.value, requestIp: "ip", origin });
+        assert.equal(codeOf(denied.redirectTo).code, "denied");
+        const afterDenial = await completeConnect(h.deps, { user: user1, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state: secondState }), cookieValue: second.setCookie!.value, requestIp: "ip", origin });
+        assert.equal(codeOf(afterDenial.redirectTo).code, "state_invalid");
+    });
+
+    await test("single use: a state the server no longer holds (expired there, or never recorded) is refused even with a cookie that still reads", async () => {
+        const h = harness();
+        const clock = { now: NOW.getTime() };
+        h.deps.stateStore = createMemoryConnectStateStore({ now: () => clock.now });
+        const started = await startConnect(h.deps, { user: user1, platform: "twitch", requestIp: "ip", origin });
+        const state = new URL(started.redirectTo, origin).searchParams.get("state")!;
+        clock.now += 10 * 60_000 + 1;
+        const expired = await completeConnect(h.deps, { user: user1, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state }), cookieValue: started.setCookie!.value, requestIp: "ip", origin });
+        assert.equal(codeOf(expired.redirectTo).code, "state_invalid");
+        // Started on one store, called back on another (a restart): nothing to consume.
+        const other = await startConnect(h.deps, { user: user1, platform: "twitch", requestIp: "ip", origin });
+        const otherState = new URL(other.redirectTo, origin).searchParams.get("state")!;
+        h.deps.stateStore = createMemoryConnectStateStore();
+        const unknown = await completeConnect(h.deps, { user: user1, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state: otherState }), cookieValue: other.setCookie!.value, requestIp: "ip", origin });
+        assert.equal(codeOf(unknown.redirectTo).code, "state_invalid");
+        assert.equal(h.store.rows.length, 0);
+        assert.equal(h.fake.twitch.revoked.length, 0, "no code was exchanged");
+    });
+
+    await test("single use: the server keeps only the state's sha256, for ten minutes; a cookie refused first burns nothing", async () => {
+        const h = harness();
+        const inner = createMemoryConnectStateStore();
+        const seen: Array<[string, string, number?]> = [];
+        const spy: ConnectStateStore = {
+            async record(hash, ttlMs) {
+                seen.push(["record", hash, ttlMs]);
+                return inner.record(hash, ttlMs);
+            },
+            async consume(hash) {
+                seen.push(["consume", hash]);
+                return inner.consume(hash);
+            },
+        };
+        h.deps.stateStore = spy;
+        const started = await startConnect(h.deps, { user: user1, platform: "twitch", requestIp: "ip", origin });
+        const state = new URL(started.redirectTo, origin).searchParams.get("state")!;
+        const hash = createHash("sha256").update(state, "utf8").digest("hex");
+        assert.deepEqual(seen, [["record", hash, 600_000]]);
+        // Another user's callback fails the cookie check before the record is touched...
+        const mismatch = await completeConnect(h.deps, { user: user2, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state }), cookieValue: started.setCookie!.value, requestIp: "ip", origin });
+        assert.equal(codeOf(mismatch.redirectTo).code, "state_mismatch");
+        assert.equal(seen.length, 1);
+        // ...so the right user still completes, consuming the hash once.
+        const finished = await completeConnect(h.deps, { user: user1, platform: "twitch", query: new URLSearchParams({ code: "fake-code-deniz", state }), cookieValue: started.setCookie!.value, requestIp: "ip", origin });
+        assert.equal(codeOf(finished.redirectTo).streamer, "linked");
+        assert.deepEqual(seen[1], ["consume", hash]);
+        assert.ok(seen.every(([, key]) => key !== state), "the raw state never reaches the store");
+    });
+
+    await test("single use: a start whose state cannot be recorded fails without a cookie", async () => {
+        const h = harness();
+        h.deps.stateStore = { record: async () => false, consume: async () => false };
+        const started = await startConnect(h.deps, { user: user1, platform: "twitch", requestIp: "ip", origin });
+        assert.equal(codeOf(started.redirectTo).code, "internal_error");
+        assert.equal(started.setCookie, undefined);
     });
 
     await test("a replayed callback without the cookie → state_missing", async () => {
