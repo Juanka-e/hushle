@@ -29,10 +29,13 @@ import type { StreamerEndedReason } from "@/lib/streamer/socket-contract";
 // static checks on how the screen's modules import each other. The DOM side is covered by
 // tests/streamer-stream-screen.spec.ts.
 
-const STREAM_DIR = path.join(process.cwd(), "apps", "web", "src", "components", "stream");
-
+// Line ends normalized: a Windows checkout has CRLF in the working tree.
 function source(...segments: string[]): string {
-    return readFileSync(path.join(process.cwd(), ...segments), "utf8");
+    return readFileSync(path.join(process.cwd(), ...segments), "utf8").replace(/\r\n/g, "\n");
+}
+
+function streamSource(file: string): string {
+    return source("apps", "web", "src", "components", "stream", file);
 }
 
 let count = 0;
@@ -406,13 +409,22 @@ async function main(): Promise<void> {
     });
 
     await test("camera-rects is pure: type imports only, no DOM, no demo, no socket", () => {
-        const rects = source("apps", "web", "src", "components", "stream", "camera-rects.ts");
+        const rects = streamSource("camera-rects.ts");
         const imports = rects.match(/^import .*$/gm) ?? [];
         for (const line of imports) assert.match(line, /^import type /, line);
         assert.doesNotMatch(rects, /\b(document|window|navigator)\.|socket\.io|stream-(transport|demo|renderer)/);
-        const renderer = readFileSync(path.join(STREAM_DIR, "stream-renderer.ts"), "utf8");
+        const renderer = streamSource("stream-renderer.ts");
         assert.match(renderer, /from "\.\/camera-rects"/);
         assert.doesNotMatch(renderer, /\[480, 270\]|function cameraRect/, "the renderer keeps no copy of the table");
+    });
+
+    await test("the page shell reads the fake-platform switch from the package, not the server wiring", () => {
+        const page = source("apps", "web", "src", "app", "(stream)", "stream", "[viewKey]", "page.tsx");
+        // @/lib/streamer/deps would also pull the audit log and the rate limiter into the shell.
+        assert.doesNotMatch(page, /^(import|export) [^;]*["']@\/lib\/streamer\/deps["']/m);
+        assert.doesNotMatch(page, /import\(\s*["']@\/lib\/streamer\/deps["']/);
+        assert.match(page, /^import \{ isFakePlatformEnabled \} from "@hushle\/platform-streamer";$/m);
+        assert.match(page, /demoAllowed=\{isFakePlatformEnabled\(process\.env\)\}/);
     });
 
     await test("the revision guard takes only newer states; a reset starts it again", () => {
