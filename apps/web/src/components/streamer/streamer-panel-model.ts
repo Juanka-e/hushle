@@ -1,4 +1,5 @@
 import type { CameraSize, CameraSlot, HostStreamSnapshot, StreamPhase } from "@hushle/domain-streamer";
+import type { StreamerPlatform } from "@hushle/platform-streamer";
 import { cameraRect } from "@/components/stream/camera-rects";
 import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import type { TranslationKey } from "@/lib/i18n/dictionaries";
@@ -149,19 +150,22 @@ export function isLiveSession(session: StreamSessionView | null): boolean {
 }
 
 /**
- * Which state /streamer shows. An active channel link opens the panel (`ready`). Without one, a
- * session that is still live opens it too (`live-reconnect`, with the reconnect warning), so End
- * stays reachable; otherwise the link that needs a reconnect, or none, points to the settings.
+ * Which state /streamer shows. A session that is still live always opens the panel, so End
+ * stays reachable: `ready` when its own platform's link is active, `live-reconnect` (with the
+ * reconnect warning) when it is not, even if another platform's link is. Without a live session
+ * any active link opens the panel; otherwise the link that needs a reconnect, or none, points to
+ * the settings.
  */
 export function streamerGateState(input: {
     enabled: boolean;
-    activeChannel: boolean;
+    activePlatforms: readonly StreamerPlatform[];
     brokenChannel: boolean;
-    liveSession: boolean;
+    liveSession: StreamSessionView | null;
 }): StreamerGateState {
     if (!input.enabled) return "coming-soon";
-    if (input.activeChannel) return "ready";
-    if (input.liveSession) return "live-reconnect";
+    const live = input.liveSession;
+    if (live && isLiveSession(live)) return input.activePlatforms.includes(live.platform) ? "ready" : "live-reconnect";
+    if (input.activePlatforms.length > 0) return "ready";
     return input.brokenChannel ? "reconnect" : "not-linked";
 }
 
@@ -195,9 +199,12 @@ export function hostNoticeOf(payload: unknown): StreamerHostNoticePayload | null
     return { kind, platform };
 }
 
-export type ConnectionState = "connecting" | "joined" | "reconnecting" | "closed" | "gone";
+export type ConnectionState = "connecting" | "joined" | "reconnecting" | "closed" | "gone" | "off";
 
-/** The live view's connection badge. A gone session has none: the panel's re-read (or its retry banner) speaks. */
+/**
+ * The live view's connection badge. A gone session has none: the panel's re-read (or its retry
+ * banner) speaks. Streamer mode off has none either: its own notice says what to do.
+ */
 export function connectionLabel(state: ConnectionState): TranslationKey | null {
     switch (state) {
         case "joined":
@@ -209,8 +216,25 @@ export function connectionLabel(state: ConnectionState): TranslationKey | null {
         case "closed":
             return "streamer.panel.connectionClosed";
         case "gone":
+        case "off":
             return null;
     }
+}
+
+/** Rejoins of one session in a row (no join got through in between) before the panel asks for a reload. */
+export const MAX_REJOINS_IN_A_ROW = 2;
+
+/**
+ * What the panel does with a re-read that followed a refused host join (`goneSessionId`). The
+ * same session still live: join it again with a fresh connection (the live view stopped its
+ * socket), unless that already failed a few times in a row; then the host is told to reload.
+ * Anything else (another session, an interrupted or no session) is simply what the view shows.
+ */
+export function goneRereadAction(goneSessionId: string | null, rejoinsInARow: number, data: StreamSessionResponse): "rejoin" | "reload" | "none" {
+    if (goneSessionId === null) return "none";
+    const session = data.session;
+    if (!session || session.id !== goneSessionId || !isLiveSession(session)) return "none";
+    return rejoinsInARow < MAX_REJOINS_IN_A_ROW ? "rejoin" : "reload";
 }
 
 // ---------------------------------------------------------------- error paths

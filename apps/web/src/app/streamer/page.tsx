@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { StreamerConfigError } from "@hushle/platform-streamer";
 import { StreamerPanel } from "@/components/streamer/streamer-panel";
-import { isLiveSession, streamerGateState } from "@/components/streamer/streamer-panel-model";
+import { streamerGateState } from "@/components/streamer/streamer-panel-model";
 import type { AppLocale } from "@/lib/i18n/config";
 import { translate } from "@/lib/i18n/dictionaries";
 import { getRequestLocale } from "@/lib/i18n/server";
@@ -65,8 +65,8 @@ async function loadPanel(
 
 // The streamer panel's door: decides which of four states the streamer is in. A linked channel
 // (`ready`) opens the host panel; the others point to the right place. A session that is still
-// live opens the panel without an active link too (`live-reconnect`, with a reconnect warning),
-// so the streamer can always end it.
+// live always opens the panel, so the streamer can end it; when its own platform's link is not
+// active (`live-reconnect`) the panel warns that a new session needs a reconnect.
 export default async function StreamerPage() {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
@@ -81,16 +81,17 @@ export default async function StreamerPage() {
     } catch (error) {
         if (!(error instanceof StreamerConfigError)) throw error;
     }
-    const active = view.platforms.find((entry) => entry.connection?.status === "active");
+    const activePlatforms = view.platforms.filter((entry) => entry.connection?.status === "active").map((entry) => entry.platform);
     const broken = view.platforms.find((entry) => entry.connection?.status === "needs_reconnect");
-    // Only read when no link is active: then a live session decides between the panel and the gate.
-    const known = view.enabled && !active ? await currentSession(createSessionServiceDeps(), sessionUser.id) : undefined;
+    // Read whenever streamer mode is on: a live session opens the panel, and whether its own
+    // platform's link is active decides the warning. loadPanel reuses it.
+    const known = view.enabled ? await currentSession(createSessionServiceDeps(), sessionUser.id) : undefined;
 
     const state = streamerGateState({
         enabled: view.enabled,
-        activeChannel: Boolean(active),
+        activePlatforms,
         brokenChannel: Boolean(broken),
-        liveSession: isLiveSession(known ?? null),
+        liveSession: known ?? null,
     });
     if (state === "ready" || state === "live-reconnect") {
         const channels: StreamerPanelChannel[] = view.platforms.flatMap((entry) =>

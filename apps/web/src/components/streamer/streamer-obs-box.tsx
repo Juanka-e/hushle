@@ -11,10 +11,11 @@ import { cameraMeasurements, maskStreamUrl, streamUrlsFor } from "./streamer-pan
 
 // The addresses the host gives OBS, the camera hole's measurements and the key rotation. The
 // view key exists only in the panel's memory, from the create or rotate answer: it is never
-// stored, logged or put anywhere but these fields. Stream URLs open as plain new-tab links (a
-// client-side navigation would draw the screen inside the app chrome; framing is refused).
-// The fields show the addresses masked (a captured display must not show the key); each row's
-// "Göster" reveals its own, and a new key masks them all again. Copy always takes the real one.
+// stored, logged or put anywhere but these fields. The preview opens the stream screen in a full
+// new tab with window.open (a client-side navigation would draw it inside the app chrome;
+// framing is refused), so no href ever holds the address. The fields show the addresses masked
+// (a captured display must not show the key); each row's "Göster" reveals its own, and a new
+// key masks them all again. Copy always takes the real one; a masked field is never selected.
 
 const URL_ROWS: Array<{ key: keyof StreamUrls; testId: string; label: TranslationKey; size: [number, number] }> = [
     { key: "full", testId: "streamer-url-full", label: "streamer.panel.urlFull", size: [1920, 1080] },
@@ -105,12 +106,16 @@ export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating
                                             readOnly
                                             value={revealed ? urls[row.key] : maskStreamUrl(urls[row.key])}
                                             aria-label={label}
-                                            onFocus={(event) => event.currentTarget.select()}
+                                            // Copying a masked field by hand would copy the dots.
+                                            onFocus={(event) => {
+                                                if (revealed) event.currentTarget.select();
+                                            }}
                                             className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => toggleShown(row.key)}
+                                            aria-label={t(revealed ? "streamer.panel.urlHideLabel" : "streamer.panel.urlShowLabel", { label })}
                                             className="min-h-11 shrink-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                                         >
                                             {revealed ? t("streamer.panel.urlHide") : t("streamer.panel.urlShow")}
@@ -130,14 +135,13 @@ export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating
                                 </div>
                             );
                         })}
-                        <a
-                            href={urls.full}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <button
+                            type="button"
+                            onClick={() => window.open(urls.full, "_blank", "noopener,noreferrer")}
                             className="inline-block text-sm font-bold text-violet-700 underline dark:text-violet-300"
                         >
                             {t("streamer.panel.preview")}
-                        </a>
+                        </button>
                     </>
                 ) : (
                     <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">

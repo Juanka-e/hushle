@@ -73,6 +73,18 @@ test.describe("streamer host panel", () => {
         return page.evaluate(() => navigator.clipboard.readText());
     }
 
+    /** No address field's value and no href anywhere on the page holds the key. */
+    async function expectKeyHidden(target: Page, key: string): Promise<void> {
+        const values = await target
+            .getByTestId("streamer-obs")
+            .getByRole("textbox")
+            .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
+        expect(values.length).toBeGreaterThan(0);
+        expect(values.filter((value) => value.includes(key))).toEqual([]);
+        const hrefs = await target.locator("[href]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href") ?? ""));
+        expect(hrefs.filter((href) => href.includes(key))).toEqual([]);
+    }
+
     /** None of the card's words (target and every taboo), in any case, is in the page's HTML. */
     async function expectWordless(target: Page, card: { target: string; taboos: string[] }, label: string): Promise<void> {
         const content = fold(await target.content());
@@ -214,6 +226,10 @@ test.describe("streamer host panel", () => {
             // Masked by default: a captured display never shows the key.
             const masked = `${origin}/stream/••••••`;
             for (const [testId, query] of rows) await expect(obs.getByTestId(testId).getByRole("textbox")).toHaveValue(`${masked}${query}`);
+            // A masked field is never selected on focus: a copy by hand would copy the dots.
+            const fullBox = fullRow.getByRole("textbox");
+            await fullBox.focus();
+            expect(await fullBox.evaluate((input) => (input as HTMLInputElement).selectionEnd! - (input as HTMLInputElement).selectionStart!)).toBe(0);
             await fullRow.getByRole("button", { name: "Kopyala" }).click();
             await expect(fullRow.getByRole("button", { name: "Kopyalandı" })).toBeVisible();
             // Copy takes the real address without revealing it.
@@ -221,14 +237,35 @@ test.describe("streamer host panel", () => {
             expect(firstUrl).toMatch(new RegExp(`^${origin}/stream/[A-Za-z0-9_-]{43}$`));
             const firstKey = firstUrl.slice(firstUrl.lastIndexOf("/") + 1);
             for (const [testId, query] of rows) await expect(obs.getByTestId(testId).getByRole("textbox")).toHaveValue(`${masked}${query}`);
-            expect(await obs.innerText()).not.toContain(firstKey);
-            // Each row's "Göster" reveals that row only; "Gizle" masks it again.
-            await halfRow.getByRole("button", { name: "Göster" }).click();
-            await expect(halfRow.getByRole("textbox")).toHaveValue(`${firstUrl}?layout=half`);
-            await expect(fullRow.getByRole("textbox")).toHaveValue(masked);
-            await halfRow.getByRole("button", { name: "Gizle" }).click();
-            await expect(halfRow.getByRole("textbox")).toHaveValue(`${masked}?layout=half`);
-            await expect(obs.getByRole("link", { name: "Yeni sekmede önizle" })).toHaveAttribute("href", firstUrl);
+            await expectKeyHidden(page, firstKey);
+            // Each row's toggle, named with its row, reveals that row only; shown, focus selects the
+            // whole real address; hiding masks it again.
+            await halfRow.getByRole("button", { name: "Adresi göster: Yarım ekran", exact: true }).click();
+            const halfBox = halfRow.getByRole("textbox");
+            await expect(halfBox).toHaveValue(`${firstUrl}?layout=half`);
+            await halfBox.focus();
+            expect(await halfBox.evaluate((input) => [(input as HTMLInputElement).selectionStart, (input as HTMLInputElement).selectionEnd])).toEqual([
+                0,
+                `${firstUrl}?layout=half`.length,
+            ]);
+            await expect(fullBox).toHaveValue(masked);
+            await halfRow.getByRole("button", { name: "Adresi gizle: Yarım ekran", exact: true }).click();
+            await expect(halfBox).toHaveValue(`${masked}?layout=half`);
+            await expectKeyHidden(page, firstKey);
+            // The preview is a button that opens the real address in a full new tab (stubbed here).
+            await expect(obs.getByRole("link")).toHaveCount(0);
+            await page.evaluate(() => {
+                const opened: unknown[][] = [];
+                (window as unknown as { __opened: unknown[][] }).__opened = opened;
+                window.open = ((...args: unknown[]) => {
+                    opened.push(args);
+                    return null;
+                }) as typeof window.open;
+            });
+            await obs.getByRole("button", { name: "Yeni sekmede önizle" }).click();
+            expect(await page.evaluate(() => (window as unknown as { __opened: unknown[][] }).__opened)).toEqual([
+                [firstUrl, "_blank", "noopener,noreferrer"],
+            ]);
 
             // A reload never shows the key again: the server keeps only its hash, the page keeps nothing.
             await page.reload();
@@ -245,9 +282,10 @@ test.describe("streamer host panel", () => {
             expect(url).toMatch(new RegExp(`^${origin}/stream/[A-Za-z0-9_-]{43}$`));
             expect(url).not.toBe(firstUrl);
             await expect(fullRow.getByRole("textbox")).toHaveValue(masked);
-            await fullRow.getByRole("button", { name: "Göster" }).click();
+            await expectKeyHidden(page, url.slice(url.lastIndexOf("/") + 1));
+            await fullRow.getByRole("button", { name: "Adresi göster: Tam ekran", exact: true }).click();
             await expect(fullRow.getByRole("textbox")).toHaveValue(url);
-            await fullRow.getByRole("button", { name: "Gizle" }).click();
+            await fullRow.getByRole("button", { name: "Adresi gizle: Tam ekran", exact: true }).click();
 
             // ---------------------------------------------------------------- the stream screen
             const screen = await page.context().newPage();

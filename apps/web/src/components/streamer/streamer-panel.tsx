@@ -6,7 +6,7 @@ import { io, type Socket } from "socket.io-client";
 import type { HostStreamSnapshot } from "@hushle/domain-streamer";
 import { DashboardSection } from "@/components/game/dashboard-page-shell";
 import { useI18n } from "@/components/providers/i18n-provider";
-import { createRevisionGuard, isViewKey } from "@/components/stream/stream-transport";
+import { createRevisionGuard, isViewKey } from "@/components/stream/stream-guards";
 import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import { resolveApiErrorMessage } from "@/lib/errors/resolve-player-error";
 import type { AppLocale } from "@/lib/i18n/config";
@@ -38,6 +38,7 @@ import {
     connectionLabel,
     createSessionRereader,
     describeTransition,
+    goneRereadAction,
     hostNoticeOf,
     isHostSnapshot,
     isLivePhase,
@@ -52,6 +53,7 @@ import {
     type PanelSummary,
     type RereadStatus,
     type ScoreEntry,
+    type SessionRereader,
 } from "./streamer-panel-model";
 import { ScreenSettingsFields, StreamerSetupForm } from "./streamer-setup-form";
 
@@ -182,12 +184,14 @@ interface LiveSessionProps {
     onViewKey: (viewKey: string) => void;
     onClosed: (outcome: ClosedOutcome) => void;
     /** The host room refused the session (gone or not ours): the caller reloads what is current. */
-    onGone: () => void;
+    onGone: (sessionId: string) => void;
+    /** The host room took the join. */
+    onJoined: () => void;
     /** A host-room notice (the channel link needs a reconnect); the session keeps running. */
     onNotice: (notice: StreamerHostNoticePayload) => void;
 }
 
-function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone, onNotice }: LiveSessionProps) {
+function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone, onJoined, onNotice }: LiveSessionProps) {
     const { t, locale } = useI18n();
     const [snapshot, setSnapshot] = useState<HostStreamSnapshot | null>(null);
     const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -234,10 +238,10 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone,
 
     const gone = useEffectEvent(() => {
         setConnection("gone");
-        onGone();
+        onGone(sessionId);
     });
     const showModeOff = () => {
-        setConnection("closed");
+        setConnection("off");
         setFailure(null);
         setModeOff(true);
     };
@@ -252,6 +256,7 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone,
     const joinedRoom = useEffectEvent(() => {
         setConnection("joined");
         setFailure(null);
+        onJoined();
     });
     const protocolError = useEffectEvent((error: unknown) => getSocketProtocolErrorMessage(error, locale));
 
@@ -698,12 +703,34 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
     // A re-read of the current session (after a refused join, a create that found one open, or
     // an end) that failed is shown with a retry; the live view's socket has stopped by then.
     const [reread, setReread] = useState<RereadStatus>("idle");
-    // Overlapping re-reads: only the newest answer is applied.
-    const [rereader] = useState(() =>
-        createSessionRereader(() => fetch("/api/streamer/sessions", { cache: "no-store" }), { apply: setData, status: setReread })
-    );
     // The channel link needs a reconnect: kept until the page is left, the session keeps running.
     const [needsReconnect, setNeedsReconnect] = useState(initial.needsReconnect);
+    // The live view is mounted per session and generation: a rejoin starts a new generation, so a
+    // fresh socket joins the host room again.
+    const [generation, setGeneration] = useState(0);
+    // Rejoins kept failing: the host is asked to reload the page.
+    const [stale, setStale] = useState(false);
+    // The session whose host join was just refused, and how many rejoins in a row it has had.
+    const goneRef = useRef<string | null>(null);
+    const rejoinsRef = useRef(0);
+    // Overlapping re-reads: only the newest answer is applied. One that followed a refused join
+    // and finds the same session still live joins it again. Made on first use (from a handler).
+    const rereaderRef = useRef<SessionRereader | null>(null);
+    const rereader = (): SessionRereader => {
+        rereaderRef.current ??= createSessionRereader(() => fetch("/api/streamer/sessions", { cache: "no-store" }), {
+            apply: (next) => {
+                const action = goneRereadAction(goneRef.current, rejoinsRef.current, next);
+                goneRef.current = null;
+                setData(next);
+                if (action === "rejoin") {
+                    rejoinsRef.current += 1;
+                    setGeneration((current) => current + 1);
+                } else if (action === "reload") setStale(true);
+            },
+            status: setReread,
+        });
+        return rereaderRef.current;
+    };
 
     const session = data.session;
     const mode = summary
@@ -717,13 +744,16 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
               : "setup";
 
     const refresh = () => {
-        void rereader.run();
+        void rereader().run();
     };
 
     const created = (body: CreateStreamSessionResponse) => {
         // A re-read still on its way read the state before this session: it must not replace it.
-        rereader.cancel();
+        rereader().cancel();
         setReread("idle");
+        goneRef.current = null;
+        rejoinsRef.current = 0;
+        setStale(false);
         setViewKey(body.viewKey);
         setSummary(null);
         setNotice(null);
@@ -750,6 +780,7 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
 
     const startOver = () => {
         setReread("idle");
+        setStale(false);
         setSummary(null);
         setNotice(null);
         setViewKey(null);
@@ -758,6 +789,16 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
 
     const hostNotice = (received: StreamerHostNoticePayload) => {
         if (received.kind === "connection-needs-reconnect") setNeedsReconnect(true);
+    };
+
+    const liveGone = (sessionId: string) => {
+        goneRef.current = sessionId;
+        refresh();
+    };
+
+    const joinedLive = () => {
+        rejoinsRef.current = 0;
+        setStale(false);
     };
 
     return (
@@ -774,6 +815,15 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
                         {t("streamer.goSettings")}
                     </a>
                 </div>
+            ) : null}
+            {stale ? (
+                <p
+                    role="alert"
+                    data-testid="streamer-stale"
+                    className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200"
+                >
+                    {t("streamer.panel.connectionClosed")}
+                </p>
             ) : null}
             {reread === "failed" ? (
                 <div
@@ -797,13 +847,14 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
             ) : null}
             {mode === "live" && session ? (
                 <LiveSession
-                    key={session.id}
+                    key={`${session.id}#${generation}`}
                     session={session}
                     viewKey={viewKey}
                     cardBacks={data.cardBacks}
                     onViewKey={setViewKey}
                     onClosed={closedSession}
-                    onGone={refresh}
+                    onGone={liveGone}
+                    onJoined={joinedLive}
                     onNotice={hostNotice}
                 />
             ) : null}

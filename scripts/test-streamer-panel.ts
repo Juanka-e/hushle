@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { HostStreamSnapshot } from "@hushle/domain-streamer";
 import * as model from "@/components/streamer/streamer-panel-model";
@@ -11,6 +11,7 @@ import {
     connectionLabel,
     createSessionRereader,
     describeTransition,
+    goneRereadAction,
     hostNoticeOf,
     isHostSnapshot,
     isLiveSession,
@@ -293,7 +294,7 @@ test("the panel wires both: re-read failures show a retry banner, a signed-out j
     assert.ok(panel.includes("/login?callbackUrl=/streamer"), "with a link back to the panel after signing in");
 });
 
-test("panel sources keep the key and the card in memory and open stream addresses as plain links", () => {
+test("panel sources keep the key and the card in memory and open stream addresses in a full new tab", () => {
     const files = readdirSync(PANEL_DIR).filter((file) => /\.tsx?$/.test(file));
     assert.ok(files.length >= 5, `expected the panel files, found ${files.length}`);
     for (const file of files) {
@@ -302,9 +303,11 @@ test("panel sources keep the key and the card in memory and open stream addresse
             assert.ok(!text.includes(forbidden), `${file} must not use ${forbidden}`);
         }
     }
-    const obs = readFileSync(path.join(PANEL_DIR, "streamer-obs-box.tsx"), "utf8");
+    const obs = readFileSync(path.join(PANEL_DIR, "streamer-obs-box.tsx"), "utf8").replace(/\r\n/g, "\n");
     assert.ok(!obs.includes("next/link"), "stream addresses are not client-side links");
-    assert.match(obs, /target="_blank"\s+rel="noopener noreferrer"/);
+    // W9: the preview is a button opening a full new tab, so no href ever holds the key.
+    assert.match(obs, /window\.open\(urls\.full, "_blank", "noopener,noreferrer"\)/);
+    assert.ok(!/href=\{urls/.test(obs), "no stream address in an href");
     const panel = readFileSync(path.join(PANEL_DIR, "streamer-panel.tsx"), "utf8");
     assert.match(panel, /io\(\{\s+path: "\/api\/socketio",\s+auth: SOCKET_CLIENT_AUTH,/);
     assert.ok(!panel.includes("instanceof"), "errors are read by code, not by class");
@@ -393,34 +396,43 @@ function sessionView(patch: Partial<StreamSessionView> = {}): StreamSessionView 
     };
 }
 
-test("P3 the gate: a live session opens the panel even when the channel link needs a reconnect", () => {
+test("P3 X4 the gate: a live session opens the panel; the warning depends on its own platform's link", () => {
     assert.equal(isLiveSession(sessionView()), true);
     assert.equal(isLiveSession(sessionView({ status: "interrupted", interrupted: true })), false);
     assert.equal(isLiveSession(sessionView({ interrupted: true })), false, "an interrupted view is never live");
     assert.equal(isLiveSession(sessionView({ status: "ended" })), false);
     assert.equal(isLiveSession(null), false);
-    const gate = (enabled: boolean, activeChannel: boolean, brokenChannel: boolean, liveSession: boolean) =>
-        streamerGateState({ enabled, activeChannel, brokenChannel, liveSession });
-    for (const flags of [
-        [false, false, false],
-        [true, false, false],
-        [false, true, true],
-        [true, true, true],
-    ] as const) {
-        assert.equal(gate(false, flags[0], flags[1], flags[2]), "coming-soon", "streamer mode off is the same with or without a session");
+    type Platform = StreamSessionView["platform"];
+    const twitchLive = sessionView({ platform: "twitch" });
+    const gate = (enabled: boolean, activePlatforms: Platform[], brokenChannel: boolean, liveSession: StreamSessionView | null) =>
+        streamerGateState({ enabled, activePlatforms, brokenChannel, liveSession });
+    for (const [active, broken, live] of [
+        [[], false, null],
+        [["twitch"], false, null],
+        [[], true, twitchLive],
+        [["twitch", "kick"], true, twitchLive],
+    ] as Array<[Platform[], boolean, StreamSessionView | null]>) {
+        assert.equal(gate(false, active, broken, live), "coming-soon", "streamer mode off is the same with or without a session");
     }
-    assert.equal(gate(true, true, false, false), "ready");
-    assert.equal(gate(true, true, true, true), "ready");
-    assert.equal(gate(true, false, true, true), "live-reconnect", "needs_reconnect with a live session keeps End reachable");
-    assert.equal(gate(true, false, false, true), "live-reconnect", "a link that is gone with a live session too");
-    assert.equal(gate(true, false, true, false), "reconnect", "no live session: unchanged");
-    assert.equal(gate(true, false, false, false), "not-linked", "no live session: unchanged");
+    assert.equal(gate(true, ["twitch"], false, null), "ready");
+    assert.equal(gate(true, ["twitch"], false, twitchLive), "ready", "the live session's own link is active");
+    assert.equal(gate(true, ["kick", "twitch"], true, twitchLive), "ready");
+    // X4: Kick active, Twitch needs a reconnect, the live session runs on Twitch.
+    assert.equal(gate(true, ["kick"], true, twitchLive), "live-reconnect", "another platform's active link does not hide the warning");
+    assert.equal(gate(true, ["kick"], false, sessionView({ platform: "kick" })), "ready");
+    assert.equal(gate(true, [], true, twitchLive), "live-reconnect", "needs_reconnect with a live session keeps End reachable");
+    assert.equal(gate(true, [], false, twitchLive), "live-reconnect", "a link that is gone with a live session too");
+    assert.equal(gate(true, ["kick"], false, null), "ready", "no live session: any active link opens the panel");
+    assert.equal(gate(true, [], true, null), "reconnect", "no live session: unchanged");
+    assert.equal(gate(true, [], true, sessionView({ status: "interrupted", interrupted: true })), "reconnect", "an interrupted session is not live");
+    assert.equal(gate(true, [], false, null), "not-linked", "no live session: unchanged");
 });
 
-test("P3 the page reads the session before choosing the gate and hands the panel the warning", () => {
+test("P3 X4 the page reads the session before choosing the gate and hands the panel the warning", () => {
     const page = source("apps/web/src/app/streamer/page.tsx");
     assert.ok(page.includes("streamerGateState("), "the page decides through streamerGateState");
-    assert.ok(page.includes("isLiveSession("), "with the live-session rule");
+    assert.match(page, /^\s+activePlatforms[,:]/m, "with the platforms whose link is active");
+    assert.match(page, /liveSession: known/, "and the session it read");
     assert.ok(/needsReconnect:/.test(page), "the panel is told the channel needs a reconnect");
 });
 
@@ -558,7 +570,7 @@ test("P13 the retry banner is cleared on a new session and on starting over; a c
         return panel.slice(start, panel.indexOf("\n    };", start));
     };
     assert.ok(body("created").includes(`setReread("idle")`), "created clears the banner");
-    assert.ok(body("created").includes("rereader.cancel()"), "created drops an older re-read");
+    assert.ok(body("created").includes("rereader().cancel()"), "created drops an older re-read");
     assert.ok(body("startOver").includes(`setReread("idle")`), "startOver clears the banner");
     assert.ok(panel.includes("createSessionRereader("), "re-reads go through the guarded rereader");
 });
@@ -592,6 +604,108 @@ test("P17 the panel takes the camera hole from camera-rects and never imports th
     const modelSource = source("apps/web/src/components/streamer/streamer-panel-model.ts");
     assert.ok(importsOf(modelSource).includes("@/components/stream/camera-rects"), "the model imports camera-rects");
     assert.deepEqual(cameraMeasurements("br", "l")?.p1080, cameraRect("br", "l"), "the same numbers as the shared module");
+});
+
+// ---------------------------------------------------------------- batch 4 fix round 1
+
+test("X1 a masked address is never selected on focus, and the copy-failure text points at Göster", () => {
+    assert.match(dictionaries.tr.streamer.panel.copyFailed, /«Göster»/);
+    assert.match(dictionaries.en.streamer.panel.copyFailed, /“Show”/);
+    const obs = source("apps/web/src/components/streamer/streamer-obs-box.tsx");
+    assert.ok(obs.includes("if (revealed) event.currentTarget.select();"), "focus selects the address only while it is shown");
+    assert.ok(!obs.includes("onFocus={(event) => event.currentTarget.select()}"), "no unconditional select is left");
+});
+
+test("X2 a re-read after a refused join rejoins the same live session, a few times in a row at most", () => {
+    const live = (id: string) => ({ enabled: true, session: sessionView({ id }), lastSettings: null, cardBacks: [] }) as StreamSessionResponse;
+    assert.equal(goneRereadAction(null, 0, live("s-1")), "none", "no refused join: nothing to do");
+    assert.equal(goneRereadAction("s-1", 0, live("s-1")), "rejoin");
+    assert.equal(goneRereadAction("s-1", 1, live("s-1")), "rejoin");
+    assert.equal(goneRereadAction("s-1", 2, live("s-1")), "reload", "it keeps refusing: tell the host to reload");
+    assert.equal(goneRereadAction("s-1", 0, live("s-2")), "none", "another session: the view follows it by its id");
+    const interrupted = { enabled: true, session: sessionView({ status: "interrupted", interrupted: true }), lastSettings: null, cardBacks: [] };
+    assert.equal(goneRereadAction("s-1", 0, interrupted as StreamSessionResponse), "none");
+    assert.equal(goneRereadAction("s-1", 0, { enabled: true, session: null, lastSettings: null, cardBacks: [] }), "none");
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.ok(panel.includes("goneRereadAction("), "the panel decides through goneRereadAction");
+    assert.ok(panel.includes("key={`${session.id}#${generation}`}"), "a rejoin remounts the live view (a fresh socket)");
+    assert.ok(panel.includes("onJoined={joinedLive}"), "a successful join resets the count");
+    assert.ok(panel.includes(`data-testid="streamer-stale"`), "the reload notice exists");
+});
+
+test("X3 streamer mode off shows no connection badge next to its own notice", () => {
+    assert.equal(connectionLabel("off"), null);
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.ok(panel.includes(`setConnection("off")`), "mode off sets the off state");
+});
+
+test("X5 X7 each row's show/hide button is named with its row; the English warning reads as two sentences", () => {
+    const rows = ["streamer.panel.urlFull", "streamer.panel.urlHalf", "streamer.panel.urlStripTop", "streamer.panel.urlStripBottom"] as const;
+    for (const locale of ["tr", "en"] as const) {
+        for (const [key, visible] of [
+            ["streamer.panel.urlShowLabel", translate(locale, "streamer.panel.urlShow")],
+            ["streamer.panel.urlHideLabel", translate(locale, "streamer.panel.urlHide")],
+        ] as const) {
+            const names = rows.map((row) => translate(locale, key, { label: translate(locale, row) }));
+            assert.equal(new Set(names).size, 4, `${locale} ${key}: ${names.join(" | ")}`);
+            for (const name of names) assert.ok(name.toLocaleLowerCase(locale).includes(visible.toLocaleLowerCase(locale)), `"${name}" contains "${visible}"`);
+        }
+    }
+    const obs = source("apps/web/src/components/streamer/streamer-obs-box.tsx");
+    assert.ok(obs.includes(`aria-label={t(revealed ? "streamer.panel.urlHideLabel" : "streamer.panel.urlShowLabel", { label })}`));
+    assert.equal(
+        dictionaries.en.streamer.panel.reconnectWarning,
+        "Your channel link needs renewing; this stream keeps going. Reconnect in Settings before you open a new session."
+    );
+});
+
+// ---------------------------------------------------------------- batch 3b (W7)
+
+/** Every source file the given files reach through value imports (relative and @/ ones), with the chain that got there. */
+function importGraph(entries: string[]): Map<string, string[]> {
+    const srcRoot = path.join(ROOT, "apps/web/src");
+    const resolve = (from: string, specifier: string): string | null => {
+        let base: string;
+        if (specifier.startsWith("@/")) base = path.join(srcRoot, specifier.slice(2));
+        else if (specifier.startsWith("./") || specifier.startsWith("../")) base = path.resolve(path.dirname(from), specifier);
+        else return null;
+        for (const candidate of [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")]) {
+            if (/\.tsx?$/.test(candidate) && existsSync(candidate)) return candidate;
+        }
+        return null;
+    };
+    const seen = new Map<string, string[]>();
+    const queue: Array<[string, string[]]> = entries.map((file) => [file, [path.basename(file)]]);
+    while (queue.length > 0) {
+        const [file, chain] = queue.shift()!;
+        if (seen.has(file)) continue;
+        seen.set(file, chain);
+        const text = readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+        // Whole-statement type imports and exports bring no code along; everything else does.
+        const statements = [...text.matchAll(/^(?:import|export)\s+(type\s+)?(?:[^;'"]*?\sfrom\s+)?["']([^"']+)["']/gm)]
+            .filter((match) => !match[1])
+            .map((match) => match[2]);
+        const dynamic = [...text.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)].map((match) => match[1]);
+        for (const specifier of [...statements, ...dynamic]) {
+            const target = resolve(file, specifier);
+            if (target && !seen.has(target)) queue.push([target, [...chain, path.relative(srcRoot, target).replace(/\\/g, "/")]]);
+        }
+    }
+    return seen;
+}
+
+test("W7 no panel file reaches the stream renderer or the demo scenes through any import chain", () => {
+    const entries = readdirSync(PANEL_DIR)
+        .filter((file) => /\.tsx?$/.test(file))
+        .map((file) => path.join(PANEL_DIR, file));
+    const graph = importGraph(entries);
+    assert.ok(graph.size > entries.length, `the walk follows imports (${graph.size} files)`);
+    const streamDir = path.join(ROOT, "apps/web/src/components/stream");
+    assert.ok(graph.has(path.join(streamDir, "camera-rects.ts")), "the walk does reach the shared stream modules");
+    for (const forbidden of ["stream-renderer.ts", "stream-demo.ts"]) {
+        const chain = graph.get(path.join(streamDir, forbidden));
+        assert.equal(chain, undefined, `${forbidden} is reached: ${chain?.join(" -> ")}`);
+    }
 });
 
 async function main(): Promise<void> {
