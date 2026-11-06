@@ -178,8 +178,9 @@ export async function createSession(
         const connection = await deps.connections.findByUserAndPlatform(userId, settings.platform);
         if (!connection || connection.status !== "active") throw new StreamerSessionError("connection_required");
 
+        // The availability window is judged by the service clock, the one every other check here uses.
         const cardBack = settings.cardBack
-            ? await resolveCardBackSelection(userId, settings.cardBack.itemId, await featureFlagsOf(deps), deps.cardBackLoaders)
+            ? await resolveCardBackSelection(userId, settings.cardBack.itemId, await featureFlagsOf(deps), deps.cardBackLoaders, () => clock(deps))
             : null;
 
         const now = clock(deps);

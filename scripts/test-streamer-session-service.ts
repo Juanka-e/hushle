@@ -482,10 +482,12 @@ async function main(): Promise<void> {
         const { session } = await opened(h, 1, { ...INPUT, cardBack: { itemId: 10 } });
         assert.deepEqual(session.settings?.cardBack, { itemId: 10 });
         const back = h.lastPublic().cardBack;
-        assert.equal(back?.itemId, 10);
-        assert.equal(back?.name, "Kor");
-        assert.equal(typeof back?.theme.surfaceColor, "string");
-        assert.equal(h.sessions.rows[0].settings && (h.sessions.rows[0].settings as { cardBack: unknown }).cardBack !== null, true);
+        assert.deepEqual(back, await resolveCardBackSelection(1, 10, h.features, CARD_BACK_LOADERS));
+        assert.deepEqual([back?.itemId, back?.name, back?.imageUrl], [10, "Kor", "/cosmetics/10.svg"]);
+        // The colours come from the item's template config; the pattern is the epic rarity's (a top-level `pattern` is no template path).
+        assert.deepEqual([back?.theme.surfaceColor, back?.theme.borderColor, back?.theme.pattern], ["#102030", "#405060", "dots"]);
+        // The row keeps the choice, never the resolved theme.
+        assert.deepEqual((h.sessions.rows[0].settings as { cardBack: unknown }).cardBack, { itemId: 10 });
     });
 
     await test("card back: a non-owned item is refused while the showcase switch is off, accepted when on", async () => {
@@ -496,10 +498,42 @@ async function main(): Promise<void> {
         assert.ok(!h.runtime.forUser(1));
         h.features.streamerShowcaseAllCosmetics = true;
         const { session } = await createSession(h.deps, { userId: 1, settings: { ...INPUT, cardBack: { itemId: 11 } } });
-        assert.equal(session.settings?.cardBack?.itemId, 11);
+        assert.deepEqual(session.settings?.cardBack, { itemId: 11 });
         const back = h.lastPublic().cardBack;
-        assert.equal(back?.itemId, 11);
-        assert.equal(typeof back?.theme.surfaceColor, "string");
+        assert.deepEqual(back, await resolveCardBackSelection(1, 11, h.features, CARD_BACK_LOADERS));
+        assert.deepEqual([back?.itemId, back?.name, back?.imageUrl], [11, "Buz", "/cosmetics/11.svg"]);
+        assert.deepEqual([back?.theme.surfaceColor, back?.theme.borderColor, back?.theme.pattern], ["#102030", "#405060", "dots"]);
+    });
+
+    await test("card back: the availability window is judged by the service clock, on both sides of each edge", async () => {
+        // Real time is already past both edges: only the injected clock can make these selectable.
+        const closes = START + HOUR;
+        const opens = START + 2 * HOUR;
+        const h = harness();
+        h.features.streamerShowcaseAllCosmetics = true;
+        h.deps.cardBackLoaders = {
+            ...CARD_BACK_LOADERS,
+            catalog: async () => [
+                { ...cardBackItem(13, "Son"), endsAt: new Date(closes).toISOString() },
+                { ...cardBackItem(14, "Ilk"), startsAt: new Date(opens).toISOString() },
+            ],
+        };
+        const tryOpen = async (itemId: number) => {
+            const { session } = await opened(h, 1, { ...INPUT, cardBack: { itemId } });
+            const back = h.lastPublic().cardBack;
+            await h.runtime.end(session.id, "ended");
+            return back;
+        };
+        assert.equal((await tryOpen(13))?.name, "Son", "before the end of its window");
+        h.clock.now = closes;
+        assert.equal((await tryOpen(13))?.name, "Son", "at the last instant of its window");
+        h.clock.now = closes + 1;
+        await rejectsWith(() => tryOpen(13), "card_not_allowed");
+        h.clock.now = opens - 1;
+        await rejectsWith(() => tryOpen(14), "card_not_allowed");
+        h.clock.now = opens;
+        assert.equal((await tryOpen(14))?.name, "Ilk", "from the first instant of its window");
+        assert.ok(!h.runtime.forUser(1));
     });
 
     await test("card back: a failing loader or flag read opens no session (card_catalogue_unavailable)", async () => {

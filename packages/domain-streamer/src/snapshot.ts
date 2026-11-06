@@ -8,6 +8,7 @@ import {
     type ClockStyle,
     type HostStreamSnapshot,
     type PublicStreamSnapshot,
+    type ResolvedCardThemeLike,
     type StreamCardBack,
     type StreamSessionState,
 } from "./types";
@@ -21,14 +22,81 @@ function pick<T extends string>(allowed: readonly T[], value: unknown, fallback:
     return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
-// The card back is already public-safe (server-resolved theme); only a malformed one is dropped.
+// ------------------------------------------------------------ card back
+
+// The card back reaches the stream screen as an explicit copy of the known theme fields, each
+// bounded, whatever the session state holds: an unknown key never passes. The bounds, defaults
+// and vocabularies are the stream screen's own (apps/web/src/components/stream/stream-renderer.ts
+// `readCardBack`, itself the cosmetics resolver's ranges), so what is sent is what is drawn.
+const CARD_BACK_HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+const CARD_BACK_PATTERNS = ["none", "grid", "dots", "diagonal", "chevrons", "rings", "noise"] as const;
+const CARD_BACK_MOTIONS = ["none", "pulse", "drift", "shimmer"] as const;
+const CARD_BACK_NAME_MAX = 60;
+const CARD_BACK_URL_MAX = 2048;
+
+type Bag = Record<string, unknown>;
+
+function cardBackColor(value: unknown, fallback: string): string {
+    return typeof value === "string" && CARD_BACK_HEX_COLOR.test(value) ? value : fallback;
+}
+
+/** A finite number clamped to [min, max]; the fallback for anything else. */
+function cardBackFraction(value: unknown, max: number, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : fallback;
+}
+
+/** A finite number floored and clamped to [min, max]; the fallback for anything else. */
+function cardBackInteger(value: unknown, min: number, max: number, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.floor(value))) : fallback;
+}
+
+// An image the screen may load: a same-site path (`/…`, never `//`) or an https address without
+// credentials, at most 2048 characters, with nothing that could break out of an attribute.
+function cardBackImageUrl(value: unknown): string | null {
+    if (typeof value !== "string" || value.length > CARD_BACK_URL_MAX || /["'<>\\\s]/.test(value)) return null;
+    if (/^\/(?!\/)[A-Za-z0-9._~%/-]+(\?[A-Za-z0-9._~%&=-]*)?$/.test(value)) return value;
+    try {
+        const url = new URL(value);
+        return url.protocol === "https:" && !url.username && !url.password ? value : null;
+    } catch {
+        return null;
+    }
+}
+
+function publicCardTheme(theme: Bag): ResolvedCardThemeLike {
+    return {
+        renderSpecVersion: cardBackInteger(theme.renderSpecVersion, 0, Number.MAX_SAFE_INTEGER, 1),
+        requestedRenderSpecVersion: cardBackInteger(theme.requestedRenderSpecVersion, 0, Number.MAX_SAFE_INTEGER, 1),
+        usedRenderSpecFallback: theme.usedRenderSpecFallback === true,
+        surfaceColor: cardBackColor(theme.surfaceColor, "#0f172a"),
+        borderColor: cardBackColor(theme.borderColor, "#475569"),
+        accentColor: cardBackColor(theme.accentColor, "#94a3b8"),
+        secondaryColor: cardBackColor(theme.secondaryColor, "#cbd5e1"),
+        titleColor: cardBackColor(theme.titleColor, "#f8fafc"),
+        detailColor: cardBackColor(theme.detailColor, "#cbd5e1"),
+        pattern: pick(CARD_BACK_PATTERNS, theme.pattern, "none"),
+        patternOpacity: cardBackFraction(theme.patternOpacity, 0.42, 0),
+        patternScale: cardBackInteger(theme.patternScale, 8, 42, 18),
+        motionPreset: pick(CARD_BACK_MOTIONS, theme.motionPreset, "none"),
+        motionSpeedMs: cardBackInteger(theme.motionSpeedMs, 1800, 12000, 5000),
+        glowColor: cardBackColor(theme.glowColor, "#94a3b8"),
+        glowBlur: cardBackInteger(theme.glowBlur, 8, 56, 22),
+        glowOpacity: cardBackFraction(theme.glowOpacity, 0.36, 0.18),
+        overlayImageUrl: cardBackImageUrl(theme.overlayImageUrl),
+        overlayOpacity: cardBackFraction(theme.overlayOpacity, 0.45, 0),
+    };
+}
+
 function publicCardBack(cardBack: StreamCardBack | null | undefined): StreamCardBack | null {
-    if (!cardBack || !Number.isInteger(cardBack.itemId) || !cardBack.theme || typeof cardBack.theme !== "object") return null;
+    if (!cardBack || !Number.isInteger(cardBack.itemId)) return null;
+    const theme: unknown = cardBack.theme;
+    if (!theme || typeof theme !== "object" || Array.isArray(theme)) return null;
+    const name: unknown = cardBack.name;
     return {
         itemId: cardBack.itemId,
-        name: String(cardBack.name ?? "").slice(0, 80),
-        theme: { ...cardBack.theme },
-        imageUrl: typeof cardBack.imageUrl === "string" ? cardBack.imageUrl : null,
+        name: typeof name === "string" ? name.replace(/\p{Cc}/gu, "").trim().slice(0, CARD_BACK_NAME_MAX) : "",
+        theme: publicCardTheme(theme as Bag),
+        imageUrl: cardBackImageUrl(cardBack.imageUrl),
     };
 }
 

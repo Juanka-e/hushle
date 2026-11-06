@@ -44,7 +44,14 @@ export interface CardBackInventory {
 export interface CardBackLoaders {
     inventory: (userId: number) => Promise<CardBackInventory>;
     catalog: (userId: number) => Promise<CardBackCatalogItem[]>;
+    /** The loaders' own clock; a clock passed to the call wins over it. */
     now?: () => number;
+}
+
+/** The time the availability window is judged at: the caller's clock first, then the loaders', then the wall clock. */
+function timeOf(deps: CardBackLoaders, now?: () => number): number {
+    if (now) return now();
+    return deps.now ? deps.now() : Date.now();
 }
 
 export interface CardBackOption {
@@ -82,43 +89,53 @@ interface Candidate {
 
 // The platform catalogue only filters `isActive` in the database; the availability window is
 // the caller's to check, so a scheduled or ended item is not offered even with the switch on.
+// It fails closed: a bound that is set but does not parse makes the item unavailable.
 function inWindow(entry: CardBackCatalogItem, now: number): boolean {
-    const starts = entry.startsAt ? Date.parse(entry.startsAt) : null;
-    const ends = entry.endsAt ? Date.parse(entry.endsAt) : null;
-    return (starts === null || Number.isNaN(starts) || starts <= now) && (ends === null || Number.isNaN(ends) || ends >= now);
+    const starts = entry.startsAt === null || entry.startsAt === undefined ? null : Date.parse(entry.startsAt);
+    const ends = entry.endsAt === null || entry.endsAt === undefined ? null : Date.parse(entry.endsAt);
+    if (Number.isNaN(starts) || Number.isNaN(ends)) return false;
+    return (starts === null || starts <= now) && (ends === null || ends >= now);
 }
 
-async function candidates(userId: number, features: CardBackFeatures, deps: CardBackLoaders) {
-    let inventory: CardBackInventory;
-    let catalog: CardBackCatalogItem[] = [];
+function selectableFromCatalogue(entry: CardBackCatalogItem, now: number): boolean {
+    return entry.type === "card_back" && entry.isActive && inWindow(entry, now);
+}
+
+async function load<T>(task: () => Promise<T>): Promise<T> {
     try {
-        inventory = await deps.inventory(userId);
-        if (features.streamerShowcaseAllCosmetics) catalog = await deps.catalog(userId);
+        return await task();
     } catch {
         throw new StreamerSessionError("card_catalogue_unavailable");
     }
-    const now = deps.now ? deps.now() : Date.now();
+}
+
+async function candidates(userId: number, features: CardBackFeatures, deps: CardBackLoaders, clock?: () => number) {
+    const inventory = await load(() => deps.inventory(userId));
+    const catalog = features.streamerShowcaseAllCosmetics ? await load(() => deps.catalog(userId)) : [];
+    const now = timeOf(deps, clock);
     const byId = new Map<number, Candidate>();
     for (const owned of inventory.items) {
         if (owned.type !== "card_back") continue;
         byId.set(owned.shopItemId, { itemId: owned.shopItemId, fields: owned, owned: true });
     }
-    if (features.streamerShowcaseAllCosmetics) {
-        for (const entry of catalog) {
-            if (entry.type !== "card_back" || !entry.isActive || !inWindow(entry, now) || byId.has(entry.id)) continue;
-            byId.set(entry.id, { itemId: entry.id, fields: entry, owned: false });
-        }
+    for (const entry of catalog) {
+        if (!selectableFromCatalogue(entry, now) || byId.has(entry.id)) continue;
+        byId.set(entry.id, { itemId: entry.id, fields: entry, owned: false });
     }
     return { equippedId: inventory.profile.cardBackItemId, list: [...byId.values()] };
 }
 
-/** Selectable card backs for a streamer: owned ones always, the active catalogue when the switch is on. */
+/**
+ * Selectable card backs for a streamer: owned ones always, the active catalogue when the switch
+ * is on. `now` is the caller's clock for the availability window.
+ */
 export async function listCardBacksForUser(
     userId: number,
     features: CardBackFeatures,
     deps: CardBackLoaders = defaultLoaders,
+    now?: () => number,
 ): Promise<CardBackOption[]> {
-    const { equippedId, list } = await candidates(userId, features, deps);
+    const { equippedId, list } = await candidates(userId, features, deps, now);
     return list
         .map((entry) => ({
             itemId: entry.itemId,
@@ -136,19 +153,9 @@ export async function listCardBacksForUser(
         .sort((a, b) => a.itemId - b.itemId);
 }
 
-/** The chosen card back as the stream screen shows it; `card_not_allowed` when it may not be chosen. */
-export async function resolveCardBackSelection(
-    userId: number,
-    itemId: number,
-    features: CardBackFeatures,
-    deps: CardBackLoaders = defaultLoaders,
-): Promise<StreamCardBack> {
-    const { list } = await candidates(userId, features, deps);
-    const entry = list.find((candidate) => candidate.itemId === itemId);
-    if (!entry) throw new StreamerSessionError("card_not_allowed");
-    const fields = entry.fields;
+function toStreamCardBack(itemId: number, fields: CardBackRenderFields): StreamCardBack {
     return {
-        itemId: entry.itemId,
+        itemId,
         name: fields.name,
         theme: resolveCardBackTheme({
             renderMode: fields.renderMode,
@@ -160,4 +167,30 @@ export async function resolveCardBackSelection(
         }),
         imageUrl: fields.imageUrl || null,
     };
+}
+
+/**
+ * The chosen card back as the stream screen shows it; `card_not_allowed` when it may not be
+ * chosen. `now` is the caller's clock for the availability window (the session service passes
+ * its own, so both judge time alike).
+ */
+export async function resolveCardBackSelection(
+    userId: number,
+    itemId: number,
+    features: CardBackFeatures,
+    deps: CardBackLoaders = defaultLoaders,
+    now?: () => number,
+): Promise<StreamCardBack> {
+    const inventory = await load(() => deps.inventory(userId));
+    // An owned card back is drawn from the inventory entry alone: it carries every render field
+    // the stream screen needs (name, image, render mode, template, rarity, render spec), as the
+    // render snapshot the player bought. The catalogue is read only for an item not owned.
+    const owned = inventory.items.find((entry) => entry.type === "card_back" && entry.shopItemId === itemId);
+    if (owned) return toStreamCardBack(itemId, owned);
+    if (!features.streamerShowcaseAllCosmetics) throw new StreamerSessionError("card_not_allowed");
+    const catalog = await load(() => deps.catalog(userId));
+    const at = timeOf(deps, now);
+    const entry = catalog.find((candidate) => candidate.id === itemId && selectableFromCatalogue(candidate, at));
+    if (!entry) throw new StreamerSessionError("card_not_allowed");
+    return toStreamCardBack(itemId, entry);
 }

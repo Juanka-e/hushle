@@ -347,17 +347,156 @@ test("theme, camera and channel fall back to safe values", () => {
     loose.channel = { platform: "twitch", name: "x".repeat(40) };
     assert.equal(publicSnapshot(s, 4).channel?.name.length, 25);
     loose.theme = "sakura";
+    // A theme as the server resolves it: every value in range, so it passes unchanged.
     const theme = {
         renderSpecVersion: 1, requestedRenderSpecVersion: 1, usedRenderSpecFallback: false, surfaceColor: "#112233", borderColor: "#445566",
-        accentColor: "#778899", secondaryColor: "#aabbcc", titleColor: "#ffffff", detailColor: "#dddddd", pattern: "grid", patternOpacity: 0.2,
-        patternScale: 1, motionPreset: "none", motionSpeedMs: 0, glowColor: "#ffffff", glowBlur: 4, glowOpacity: 0.3, overlayImageUrl: null, overlayOpacity: 0,
+        accentColor: "#778899", secondaryColor: "#aabbcc", titleColor: "#ffffff", detailColor: "#ddd", pattern: "grid", patternOpacity: 0.2,
+        patternScale: 18, motionPreset: "drift", motionSpeedMs: 7000, glowColor: "#ffffff", glowBlur: 24, glowOpacity: 0.3, overlayImageUrl: null, overlayOpacity: 0,
     };
     loose.cardBack = { itemId: 7, name: "Ember", theme, imageUrl: "/cosmetics/ember.svg" };
     assert.deepEqual(publicSnapshot(s, 3).cardBack, { itemId: 7, name: "Ember", theme, imageUrl: "/cosmetics/ember.svg" });
+    const withOverlay = { ...theme, overlayImageUrl: "https://cdn.hushle.example/backs/ember.png?v=2", overlayOpacity: 0.24 };
+    loose.cardBack = { itemId: 7, name: "Ember", theme: withOverlay, imageUrl: "https://cdn.hushle.example/backs/ember.png?v=2" };
+    assert.deepEqual(publicSnapshot(s, 3).cardBack?.theme, withOverlay);
+    assert.equal(publicSnapshot(s, 3).cardBack?.imageUrl, "https://cdn.hushle.example/backs/ember.png?v=2");
     assert.equal(publicSnapshot(s, 3).theme, "sakura");
     loose.theme = "sade";
     assert.equal(publicSnapshot(s, 4).theme, "sade");
     assert.ok(BROADCAST_THEMES.includes("sade"));
+});
+
+test("the public card back copies only the known theme fields, each bounded; nothing else reaches the snapshot", () => {
+    const s = fresh();
+    const loose = s.settings as unknown as Record<string, unknown>;
+    const hostile = {
+        renderSpecVersion: -3,
+        requestedRenderSpecVersion: 2.7,
+        usedRenderSpecFallback: "yes",
+        surfaceColor: "red",
+        borderColor: "#12345",
+        accentColor: "#ABC",
+        secondaryColor: "#11223344",
+        titleColor: "url(javascript:alert(1))",
+        detailColor: 7,
+        pattern: "<img src=x onerror=alert(1)>",
+        patternOpacity: 5,
+        patternScale: 1000,
+        motionPreset: "spin",
+        motionSpeedMs: 1e12,
+        glowColor: "#0f0",
+        glowBlur: -5,
+        glowOpacity: Number.NaN,
+        overlayImageUrl: "//evil.example/x.png",
+        overlayOpacity: Number.POSITIVE_INFINITY,
+        // Not part of the theme: must never reach the stream screen.
+        script: "<script>alert(1)</script>",
+        css: "body{display:none}",
+        nested: { deep: true },
+    };
+    loose.cardBack = { itemId: 9, name: `\u0007${"Ç".repeat(70)}`, theme: hostile, imageUrl: "javascript:alert(1)", extra: "drop me" };
+    const back = publicSnapshot(s, 1).cardBack;
+    assert.ok(back);
+    assert.deepEqual(Object.keys(back).sort(), ["imageUrl", "itemId", "name", "theme"]);
+    assert.deepEqual(Object.keys(back.theme).sort(), [
+        "accentColor", "borderColor", "detailColor", "glowBlur", "glowColor", "glowOpacity", "motionPreset", "motionSpeedMs",
+        "overlayImageUrl", "overlayOpacity", "pattern", "patternOpacity", "patternScale", "renderSpecVersion",
+        "requestedRenderSpecVersion", "secondaryColor", "surfaceColor", "titleColor", "usedRenderSpecFallback",
+    ]);
+    assert.deepEqual(back.theme, {
+        renderSpecVersion: 0,
+        requestedRenderSpecVersion: 2,
+        usedRenderSpecFallback: false,
+        surfaceColor: "#0f172a",
+        borderColor: "#475569",
+        accentColor: "#ABC",
+        secondaryColor: "#cbd5e1",
+        titleColor: "#f8fafc",
+        detailColor: "#cbd5e1",
+        pattern: "none",
+        patternOpacity: 0.42,
+        patternScale: 42,
+        motionPreset: "none",
+        motionSpeedMs: 12000,
+        glowColor: "#0f0",
+        glowBlur: 8,
+        glowOpacity: 0.18,
+        overlayImageUrl: null,
+        overlayOpacity: 0,
+    });
+    assert.equal(back.name, "Ç".repeat(60), "control characters dropped, at most 60 characters");
+    assert.equal(back.imageUrl, null);
+    const text = JSON.stringify(publicSnapshot(s, 1));
+    for (const needle of ["script", "javascript", "display:none", "deep", "drop me", "evil.example", "onerror"]) {
+        assert.ok(!text.includes(needle), `${needle} never reaches the public snapshot`);
+    }
+    // The host projection shows the same card back.
+    assert.deepEqual(hostSnapshot(s, 1).cardBack, back);
+});
+
+test("card-back numbers clamp into the ranges the screen draws; an unusable one takes its default", () => {
+    const s = fresh();
+    const loose = s.settings as unknown as Record<string, unknown>;
+    const themeOf = (overrides: Record<string, unknown>) => {
+        loose.cardBack = { itemId: 3, name: "Kor", theme: overrides, imageUrl: null };
+        return publicSnapshot(s, 1).cardBack!.theme;
+    };
+    // A theme with nothing usable: every default.
+    assert.deepEqual(themeOf({}), {
+        renderSpecVersion: 1, requestedRenderSpecVersion: 1, usedRenderSpecFallback: false, surfaceColor: "#0f172a", borderColor: "#475569",
+        accentColor: "#94a3b8", secondaryColor: "#cbd5e1", titleColor: "#f8fafc", detailColor: "#cbd5e1", pattern: "none", patternOpacity: 0,
+        patternScale: 18, motionPreset: "none", motionSpeedMs: 5000, glowColor: "#94a3b8", glowBlur: 22, glowOpacity: 0.18, overlayImageUrl: null, overlayOpacity: 0,
+    });
+    const low = themeOf({ patternOpacity: -1, patternScale: 1, motionSpeedMs: -10, glowBlur: 0, glowOpacity: -0.5, overlayOpacity: -2, renderSpecVersion: -1 });
+    assert.deepEqual(
+        [low.patternOpacity, low.patternScale, low.motionSpeedMs, low.glowBlur, low.glowOpacity, low.overlayOpacity, low.renderSpecVersion],
+        [0, 8, 1800, 8, 0, 0, 0],
+    );
+    const high = themeOf({ patternOpacity: 1, patternScale: 99.9, motionSpeedMs: 60001, glowBlur: 65, glowOpacity: 1, overlayOpacity: 1, renderSpecVersion: 3.9 });
+    assert.deepEqual(
+        [high.patternOpacity, high.patternScale, high.motionSpeedMs, high.glowBlur, high.glowOpacity, high.overlayOpacity, high.renderSpecVersion],
+        [0.42, 42, 12000, 56, 0.36, 0.45, 3],
+    );
+    const wrongType = themeOf({ patternOpacity: "0.3", patternScale: null, motionSpeedMs: "fast", glowBlur: [], glowOpacity: {}, overlayOpacity: true, renderSpecVersion: "2" });
+    assert.deepEqual(
+        [wrongType.patternOpacity, wrongType.patternScale, wrongType.motionSpeedMs, wrongType.glowBlur, wrongType.glowOpacity, wrongType.overlayOpacity, wrongType.renderSpecVersion],
+        [0, 18, 5000, 22, 0.18, 0, 1],
+    );
+    // Every pattern and motion of the vocabulary passes; nothing else, whatever its case.
+    for (const pattern of ["none", "grid", "dots", "diagonal", "chevrons", "rings", "noise"]) assert.equal(themeOf({ pattern }).pattern, pattern);
+    for (const pattern of ["Grid", "stripes", "", 3]) assert.equal(themeOf({ pattern }).pattern, "none");
+    for (const motionPreset of ["none", "pulse", "drift", "shimmer"]) assert.equal(themeOf({ motionPreset }).motionPreset, motionPreset);
+    for (const motionPreset of ["Pulse", "spin", null]) assert.equal(themeOf({ motionPreset }).motionPreset, "none");
+});
+
+test("card-back images: a same-site path or a credential-free https address, at most 2048 characters, else null", () => {
+    const s = fresh();
+    const loose = s.settings as unknown as Record<string, unknown>;
+    const urls = (url: unknown) => {
+        loose.cardBack = { itemId: 3, name: "Kor", theme: { overlayImageUrl: url }, imageUrl: url };
+        const back = publicSnapshot(s, 1).cardBack!;
+        return [back.imageUrl, back.theme.overlayImageUrl];
+    };
+    for (const kept of ["/cosmetics/kor.svg", "/uploads/shop/a_b-c.png?v=3", "https://cdn.hushle.example/x.png", `https://cdn.hushle.example/${"a".repeat(2048 - 27)}`]) {
+        assert.equal(kept.length <= 2048, true);
+        assert.deepEqual(urls(kept), [kept, kept], kept.slice(0, 60));
+    }
+    for (const dropped of [
+        "//evil.example/x.png",
+        "http://cdn.hushle.example/x.png",
+        "javascript:alert(1)",
+        "data:image/svg+xml;base64,PHN2Zz4=",
+        "https://user:pass@cdn.hushle.example/x.png",
+        "/a\"onerror=alert(1)",
+        "/a b.png",
+        "\\\\server\\share.png",
+        "relative/path.png",
+        `https://cdn.hushle.example/${"a".repeat(2048 - 26)}`,
+        "",
+        42,
+        null,
+    ]) {
+        assert.deepEqual(urls(dropped), [null, null], String(dropped).slice(0, 60));
+    }
 });
 
 test("a pass names the passed round and turns the passed card face up", () => {
