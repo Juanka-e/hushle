@@ -1,5 +1,5 @@
 import { io, type Socket } from "socket.io-client";
-import { SOCKET_CLIENT_AUTH, SOCKET_PROTOCOL_ERROR_CODE } from "@/lib/socket/protocol-version";
+import { isSocketProtocolRefusal, SOCKET_CLIENT_AUTH } from "@/lib/socket/protocol-version";
 import { STREAMER_SOCKET_EVENTS, type StreamerEndedReason } from "@/lib/streamer/socket-contract";
 import { createRevisionGuard, isViewKey } from "./stream-guards";
 import { readSnapshot, type StreamState } from "./stream-renderer";
@@ -88,10 +88,6 @@ function isBag(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
 }
 
-/** The handshake middleware refused this bundle's socket protocol (SocketProtocolErrorData). */
-export function isProtocolRefusal(error: unknown): boolean {
-    return isBag(error) && isBag(error.data) && error.data.code === SOCKET_PROTOCOL_ERROR_CODE;
-}
 
 /** The wait before the next reload, given how many reloads in a row came before it. */
 export function protocolReloadDelayMs(reloadsSoFar: number): number {
@@ -209,7 +205,7 @@ export function connectStreamTransport(options: StreamTransportOptions): StreamT
     // bundle: reload the page to fetch it, waiting longer after each reload in a row. Any
     // other connect error is a lost transport, which socket.io retries on its own.
     socket.on("connect_error", (error: unknown) => {
-        if (closed || !isProtocolRefusal(error)) return;
+        if (closed || !isSocketProtocolRefusal(error)) return;
         stop();
         options.onOffline();
         const reloadsSoFar = reloads.get();

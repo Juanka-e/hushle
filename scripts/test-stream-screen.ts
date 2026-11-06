@@ -6,10 +6,10 @@ import { CAMERA_SIZES, CAMERA_SLOTS } from "@hushle/domain-streamer";
 import { CAMERA_HOLE_SIZES, cameraRect, type CameraRect, type CameraSize, type CameraSlot } from "@/components/stream/camera-rects";
 import { createRevisionGuard, isViewKey } from "@/components/stream/stream-guards";
 import { offlineState, readSnapshot, urlLookSnapshot, type StreamState } from "@/components/stream/stream-renderer";
+import { isSocketProtocolRefusal } from "@/lib/socket/protocol-version";
 import {
     connectStreamTransport,
     createReloadCounter,
-    isProtocolRefusal,
     protocolReloadDelayMs,
     type ReloadCounter,
     type StreamSocketLike,
@@ -22,20 +22,30 @@ import type { StreamerEndedReason } from "@/lib/streamer/socket-contract";
 // static checks on how the screen's modules import each other. The DOM side is covered by
 // tests/streamer-stream-screen.spec.ts.
 
-// Line ends normalized: a Windows checkout has CRLF in the working tree.
+// Read from the repo root this script sits under, whatever the cwd. Line ends normalized: a
+// Windows checkout has CRLF in the working tree.
+const ROOT = path.resolve(__dirname, "..");
 function source(...segments: string[]): string {
-    return readFileSync(path.join(process.cwd(), ...segments), "utf8").replace(/\r\n/g, "\n");
+    return readFileSync(path.join(ROOT, ...segments), "utf8").replace(/\r\n/g, "\n");
 }
 
 function streamSource(file: string): string {
     return source("apps", "web", "src", "components", "stream", file);
 }
 
-let count = 0;
+// Every check runs in order; a failing one is reported and the rest still run (exit 1 at the end).
+let passed = 0;
+let failed = 0;
 async function test(name: string, run: () => void | Promise<void>): Promise<void> {
-    await run();
-    count += 1;
-    console.log(`ok - ${name}`);
+    try {
+        await run();
+        passed += 1;
+        console.log(`ok - ${name}`);
+    } catch (error) {
+        failed += 1;
+        console.log(`not ok - ${name}
+    ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
 function snapshot(patch: Record<string, unknown> = {}): Record<string, unknown> {
@@ -436,12 +446,14 @@ async function main(): Promise<void> {
         assert.doesNotMatch(transport, /function (isViewKey|createRevisionGuard)\(/, "and keeps no copy");
     });
 
-    await test("the page shell reads the fake-platform switch from the package, not the server wiring", () => {
+    await test("the page shell reads the fake-platform switch from the package's light gate, not the server wiring", () => {
         const page = source("apps", "web", "src", "app", "(stream)", "stream", "[viewKey]", "page.tsx");
-        // @/lib/streamer/deps would also pull the audit log and the rate limiter into the shell.
+        // @/lib/streamer/deps would also pull the audit log and the rate limiter into the shell; the
+        // package root would pull the platform clients, the token crypto and the connection store.
         assert.doesNotMatch(page, /^(import|export) [^;]*["']@\/lib\/streamer\/deps["']/m);
         assert.doesNotMatch(page, /import\(\s*["']@\/lib\/streamer\/deps["']/);
-        assert.match(page, /^import \{ isFakePlatformEnabled \} from "@hushle\/platform-streamer";$/m);
+        assert.doesNotMatch(page, /["']@hushle\/platform-streamer["']/, "never the package root");
+        assert.match(page, /^import \{ isFakePlatformEnabled \} from "@hushle\/platform-streamer\/fake-gate";$/m);
         assert.match(page, /demoAllowed=\{isFakePlatformEnabled\(process\.env\)\}/);
     });
 
@@ -713,9 +725,14 @@ async function main(): Promise<void> {
         }
     });
 
-    await test("only the handshake middleware's protocol code is a protocol refusal", () => {
-        assert.equal(isProtocolRefusal(protocolRefusal()), true);
-        assert.equal(isProtocolRefusal({ data: { code: "SOCKET_PROTOCOL_UNSUPPORTED" } }), true);
+    await test("only the handshake middleware's protocol code is a protocol refusal, judged by the shared guard", () => {
+        // One guard for the whole app (protocol-version.ts): the transport keeps no check of its own.
+        const transport = streamSource("stream-transport.ts");
+        assert.match(transport, /^import \{[^}]*\bisSocketProtocolRefusal\b[^}]*\} from "@\/lib\/socket\/protocol-version";$/m);
+        assert.match(transport, /!isSocketProtocolRefusal\(error\)/, "the connect_error handler asks it");
+        assert.doesNotMatch(transport, /SOCKET_PROTOCOL_ERROR_CODE|function isProtocolRefusal/, "no copy of the check");
+        assert.equal(isSocketProtocolRefusal(protocolRefusal()), true);
+        assert.equal(isSocketProtocolRefusal({ data: { code: "SOCKET_PROTOCOL_UNSUPPORTED" } }), true);
         for (const other of [
             new Error("xhr poll error"),
             Object.assign(new Error("x"), { data: { code: "RATE_LIMITED" } }),
@@ -726,7 +743,7 @@ async function main(): Promise<void> {
             null,
             undefined,
         ]) {
-            assert.equal(isProtocolRefusal(other), false, String(other));
+            assert.equal(isSocketProtocolRefusal(other), false, String(other));
         }
     });
 
@@ -863,7 +880,11 @@ async function main(): Promise<void> {
         assert.equal(socket.emits.length, 0);
     });
 
-    console.log(`${count} checks passed.`);
+    if (failed > 0) {
+        console.log(`FAIL stream screen: ${failed} failed, ${passed} passed`);
+        process.exit(1);
+    }
+    console.log(`${passed} checks passed.`);
 }
 
 main().catch((error) => {
