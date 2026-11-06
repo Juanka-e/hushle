@@ -23,10 +23,12 @@ export const STREAMER_SOCKET_EVENTS = {
 } as const;
 
 /**
- * Why a room was closed: the host ended it, it sat idle for 6 h, the view key was rotated (public
- * room only) or the server lost it (`interrupted`: reserved, the server does not send it yet).
+ * Why a room was closed: the host ended it (`ended`), it sat idle for 6 h (`idle`), the view key
+ * was rotated (`view-key-rotated`, public room only), the server is shutting down or lost it
+ * (`interrupted`), or the service stopped it (`stopped`: streamer mode switched off by an admin,
+ * or an account action such as a suspension). Every reason means the view key is dead.
  */
-export type StreamerEndedReason = "ended" | "idle" | "view-key-rotated" | "interrupted";
+export type StreamerEndedReason = "ended" | "idle" | "view-key-rotated" | "interrupted" | "stopped";
 
 export interface StreamerEndedPayload {
     reason: StreamerEndedReason;
