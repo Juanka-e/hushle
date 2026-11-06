@@ -188,6 +188,9 @@ interface LiveSessionProps {
     onViewKey: (viewKey: string) => void;
     /** A rotation got no readable answer: the key on the page may be dead. */
     onKeyUnknown: () => void;
+    /** The streamer hid the secret card (kept above this view, so a rejoin keeps it). */
+    cardHidden: boolean;
+    onToggleCard: () => void;
     onClosed: (outcome: ClosedOutcome) => void;
     /** The host room refused the session (gone or not ours): the caller reloads what is current. */
     onGone: (sessionId: string) => void;
@@ -197,7 +200,7 @@ interface LiveSessionProps {
     onNotice: (notice: StreamerHostNoticePayload) => void;
 }
 
-function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKeyUnknown, onClosed, onGone, onJoined, onNotice }: LiveSessionProps) {
+function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKeyUnknown, cardHidden, onToggleCard, onClosed, onGone, onJoined, onNotice }: LiveSessionProps) {
     const { t, locale } = useI18n();
     const [snapshot, setSnapshot] = useState<HostStreamSnapshot | null>(null);
     const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -507,7 +510,7 @@ function LiveSession({ session, viewKey, keyUnknown, cardBacks, onViewKey, onKey
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
                     <div className="space-y-4">
                         {snapshot ? (
-                            <StreamerCardView state={snapshot} />
+                            <StreamerCardView state={snapshot} hidden={cardHidden} onToggleHidden={onToggleCard} />
                         ) : (
                             <p className="rounded-3xl border border-slate-200 p-5 text-base font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
                                 {t("streamer.panel.connecting")}
@@ -711,6 +714,10 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
     const [viewKey, setViewKey] = useState<string | null>(null);
     // A rotation got no readable answer: the key was dropped and a new one is asked for.
     const [keyIsUnknown, setKeyUnknown] = useState(false);
+    // "Kartı gizle": above the live view's remount, so a rejoin keeps it. In memory only: a reload
+    // shows the card again.
+    const [cardHidden, setCardHidden] = useState(false);
+    const toggleCard = () => setCardHidden((current) => !current);
     const [summary, setSummary] = useState<PanelSummary | null>(null);
     // The session was closed by the idle timer or stopped by the service.
     const [notice, setNotice] = useState<"idle" | "stopped" | null>(null);
@@ -884,6 +891,8 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
                     cardBacks={data.cardBacks}
                     onViewKey={newKey}
                     onKeyUnknown={keyUnknown}
+                    cardHidden={cardHidden}
+                    onToggleCard={toggleCard}
                     onClosed={closedSession}
                     onGone={liveGone}
                     onJoined={joinedLive}

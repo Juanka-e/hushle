@@ -743,6 +743,20 @@ test("Z6 pins the panel's source: acks take ackTimeoutFor, a rotation that is un
     assert.match(dictionaries.en.streamer.panel.rotateUnknown, /not known whether the key was renewed/);
 });
 
+test("Z10 pins the source: the hide-card choice lives in the panel above the rejoin remount, in memory only", () => {
+    const card = source("apps/web/src/components/streamer/streamer-card-view.tsx");
+    assert.ok(!card.includes("useState"), "the card view keeps no state of its own (a rejoin remount would reset it)");
+    assert.match(card, /export function StreamerCardView\(\{ state, hidden, onToggleHidden \}: \{ state: HostStreamSnapshot; hidden: boolean; onToggleHidden: \(\) => void \}\)/);
+    assert.match(card, /onClick=\{onToggleHidden\}/);
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    const parent = panel.slice(panel.indexOf("export function StreamerPanel("));
+    assert.match(parent, /const \[cardHidden, setCardHidden\] = useState\(false\);/, "the panel holds it");
+    const live = parent.slice(parent.indexOf("<LiveSession"), parent.indexOf("/>", parent.indexOf("<LiveSession")));
+    assert.ok(live.includes("key={`${session.id}#${generation}`}"), "the live view is the remounted one");
+    assert.ok(live.includes("cardHidden={cardHidden}") && live.includes("onToggleCard={toggleCard}"), "and gets the choice from above");
+    assert.match(panel, /<StreamerCardView state=\{snapshot\} hidden=\{cardHidden\} onToggleHidden=\{onToggleCard\} \/>/);
+});
+
 // ---------------------------------------------------------------- batch 3b (W7)
 
 /** Every source file the given files reach through value imports (relative and @/ ones), with the chain that got there. */

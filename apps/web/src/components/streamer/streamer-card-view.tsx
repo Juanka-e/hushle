@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { EyeOff } from "lucide-react";
 import type { HostStreamSnapshot } from "@hushle/domain-streamer";
 import { useI18n } from "@/components/providers/i18n-provider";
@@ -8,11 +7,11 @@ import { useI18n } from "@/components/providers/i18n-provider";
 // The host's secret card: the word and its taboo list from the host room's snapshot. It lives
 // only on the panel; nothing here is sent anywhere or shared with the stream screen. A streamer
 // who captures the whole display can hide it: the words then leave the page (not just the view).
+// The choice is the panel's (StreamerPanel), above the live view's rejoin remount, so a rejoin
+// keeps it; it is in memory only and a reload shows the card again.
 
-export function StreamerCardView({ state }: { state: HostStreamSnapshot }) {
+export function StreamerCardView({ state, hidden, onToggleHidden }: { state: HostStreamSnapshot; hidden: boolean; onToggleHidden: () => void }) {
     const { t } = useI18n();
-    // In memory only. Shown by default: the streamer needs the card to describe the word.
-    const [hidden, setHidden] = useState(false);
     const card = state.card;
     return (
         <section
@@ -32,7 +31,7 @@ export function StreamerCardView({ state }: { state: HostStreamSnapshot }) {
                     ) : null}
                     <button
                         type="button"
-                        onClick={() => setHidden((current) => !current)}
+                        onClick={onToggleHidden}
                         className="min-h-9 rounded-xl border border-rose-200 bg-white px-3 text-xs font-black text-rose-700 transition hover:bg-rose-50 dark:border-rose-900/60 dark:bg-slate-950 dark:text-rose-300"
                     >
                         {hidden ? t("streamer.panel.cardShow") : t("streamer.panel.cardHide")}
