@@ -33,7 +33,8 @@ import {
     type MemoryStreamSessionStore,
     type StreamSessionSummary,
 } from "../apps/web/src/lib/streamer/session-store";
-import { streamerSessionErrorResponse } from "../apps/web/src/lib/streamer/session-http";
+import { streamerRouteFailure, streamerSessionErrorResponse } from "../apps/web/src/lib/streamer/session-http";
+import { storeFailure } from "../apps/web/src/lib/streamer/session-persistence";
 import {
     createStreamerSessionRuntime,
     isStreamerSessionError,
@@ -2845,6 +2846,45 @@ async function main(): Promise<void> {
         }
         assert.equal(logged.length, 1);
         assert.ok(!logged.flat().map((value) => (value instanceof Error ? `${value.message} ${value.stack}` : String(value))).join(" ").includes(planted), "the route never logs the call's arguments");
+    });
+
+    await test("Z9 a route failure that is no session error is logged sanitized: the error name, the Prisma code and a fixed message", async () => {
+        const planted = "PLANTED-route-0123456789abcdef";
+        const raw = Object.assign(new Error(`Invalid \`prisma.streamSession.findFirst()\` invocation: { where: { viewKeyHash: "${planted}" } }`), {
+            name: "PrismaClientKnownRequestError",
+            code: "P2024",
+            meta: { target: planted },
+        });
+        const logged: unknown[][] = [];
+        const realConsoleError = console.error;
+        console.error = (...args: unknown[]) => logged.push(args);
+        let answer: Response;
+        try {
+            answer = streamerRouteFailure(raw, "streamer session view failed");
+        } finally {
+            console.error = realConsoleError;
+        }
+        assert.equal(answer.status, 500);
+        assert.equal(((await answer.json()) as { code?: string }).code, "UNKNOWN_ERROR");
+        assert.equal(logged.length, 1);
+        assert.equal(logged[0][0], "streamer session view failed", "the label is kept");
+        const safe = logged[0][1] as Error & { code?: string; meta?: unknown };
+        assert.ok(safe instanceof Error && safe !== raw, "a sanitized copy is logged, never the error itself");
+        assert.deepEqual([safe.name, safe.message, safe.code, safe.meta], ["PrismaClientKnownRequestError", "streamer session route failed", "P2024", undefined]);
+        const text = logged.flat().map((value) => (value instanceof Error ? `${value.message} ${value.stack} ${JSON.stringify(value)}` : String(value))).join(" ");
+        assert.ok(!text.includes(planted), "the route never logs the call's arguments");
+        // Idempotent: a copy that is sanitized again (a store failure reaching a route) keeps its message.
+        const once = storeFailure(raw);
+        assert.equal(storeFailure(once, "streamer session route failed"), once);
+        assert.equal(once.message, "stream session write failed");
+        // A known session error keeps its own answer and logs nothing.
+        console.error = (...args: unknown[]) => logged.push(args);
+        try {
+            assert.equal(streamerRouteFailure(new StreamerSessionError("busy"), "x").status, 503);
+        } finally {
+            console.error = realConsoleError;
+        }
+        assert.equal(logged.length, 1);
     });
 
     await test("routes: origin, then account, then streamer mode, then rate limit, then the work", async () => {

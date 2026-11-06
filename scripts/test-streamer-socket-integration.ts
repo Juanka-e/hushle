@@ -395,6 +395,8 @@ async function main(): Promise<void> {
     const socketErrors: Array<{ event: string; error: unknown }> = [];
     // Failure switches: a reporter that throws after recording, a limiter and a row lookup that throw.
     const failing = { reporter: false, limiter: false, lookup: false };
+    // Errors the row lookup and the features read throw when set (a Prisma error naming its call).
+    const planted: { lookup: Error | null; features: Error | null } = { lookup: null, features: null };
     const options: StreamerSocketOptions = {
         resolveUser: async (socket) => {
             const who = (socket.handshake.auth as { testUser?: unknown } | undefined)?.testUser;
@@ -404,7 +406,10 @@ async function main(): Promise<void> {
             if (failing.limiter) throw new Error("limiter down");
             return limiter.consume(limit);
         },
-        features: async () => ({ ...features }),
+        features: async () => {
+            if (planted.features) throw planted.features;
+            return { ...features };
+        },
         streamerMode: async () => mode.state,
         resolveCardBack: (userId, itemId, flags) => resolveCardBackSelection(userId, itemId, flags, CARD_BACK_LOADERS),
         now: () => socketClock.now,
@@ -416,6 +421,7 @@ async function main(): Promise<void> {
     const lookup: Parameters<typeof setupStreamerSocket>[2] = {
         async findByViewKeyHash(hash) {
             if (failing.lookup) throw new Error("db down");
+            if (planted.lookup) throw planted.lookup;
             return sessions.findByViewKeyHash(hash);
         },
     };
@@ -1249,6 +1255,33 @@ async function main(): Promise<void> {
             const error = reported[0].error as Error & { code?: string };
             assert.deepEqual([error.name, error.message, error.code], ["PrismaClientKnownRequestError", "stream session write failed", "P2002"]);
             assert.ok(!String(error.stack).includes(planted), "the report carries none of the call");
+        });
+
+        await test("Z9 any other handler failure is reported sanitized too: a lookup or a features read whose Prisma error names its call", async () => {
+            const secret = "PLANTED-lookup-0123456789abcdef";
+            const prismaError = (call: string) =>
+                Object.assign(new Error(`Invalid \`prisma.${call}()\` invocation: { where: { viewKeyHash: "${secret}" } }`), {
+                    name: "PrismaClientKnownRequestError",
+                    code: "P1001",
+                    meta: { target: secret },
+                });
+            const errorsBefore = socketErrors.length;
+            planted.lookup = prismaError("streamSession.findUnique");
+            planted.features = prismaError("systemSetting.findUnique");
+            try {
+                assertError(await ask(viewer, "streamer:public:join", { viewKey }), "UNKNOWN_ERROR", "a lookup that throws");
+                assertError(await ask(owner, "streamer:host:settings", { cardBack: { itemId: 10 } }), "STREAMER_CARD_CATALOGUE_UNAVAILABLE", "a features read that throws");
+            } finally {
+                planted.lookup = null;
+                planted.features = null;
+            }
+            const reported = socketErrors.slice(errorsBefore);
+            assert.deepEqual(reported.map((entry) => entry.event), ["streamer_socket.public_join_failed", "streamer_socket.features_failed"]);
+            for (const { error } of reported) {
+                const safe = error as Error & { code?: string; meta?: unknown };
+                assert.deepEqual([safe.name, safe.message, safe.code, safe.meta], ["PrismaClientKnownRequestError", "streamer socket event failed", "P1001", undefined]);
+                assert.ok(!String(safe.stack).includes(secret) && !JSON.stringify(safe).includes(secret), "the report carries none of the call");
+            }
         });
 
         await test("every event is answered exactly once even when the error reporter throws; nothing is left unhandled", async () => {

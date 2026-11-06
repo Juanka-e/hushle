@@ -6,6 +6,7 @@ import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
 import { getSocketClientIp } from "@/lib/security/client-ip";
 import { consumeDistributedRequestRateLimit } from "@/lib/security/request-rate-limit";
 import { resolveCardBackSelection, type CardBackFeatures } from "@/lib/streamer/card-backs";
+import { storeFailure } from "@/lib/streamer/session-persistence";
 import {
     isStreamerSessionError,
     StreamerSessionError,
@@ -151,6 +152,9 @@ async function showcaseFeatures(): Promise<CardBackFeatures> {
     return { streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics === true };
 }
 
+/** What an unexpected handler failure is reported as, beside its error name and Prisma code. */
+const SOCKET_FAILURE_MESSAGE = "streamer socket event failed";
+
 function reportStreamerSocketError(event: string, error: unknown): void {
     void reportError({ service: "hushle-web", event, error }).catch(() => undefined);
 }
@@ -260,7 +264,8 @@ export function setupStreamerSocket(
         if (error instanceof Refusal) return error.code;
         if (isStreamerSessionError(error)) return SESSION_ERROR_CODES[error.code] ?? PlayerErrorCode.UNKNOWN_ERROR;
         if (error instanceof StreamerSecretLeakError) return PlayerErrorCode.UNKNOWN_ERROR;
-        report(`streamer_socket.${event.slice("streamer:".length).replaceAll(":", "_")}_failed`, error);
+        // Sanitized: a database or limiter error can echo its call (a view-key hash, an address).
+        report(`streamer_socket.${event.slice("streamer:".length).replaceAll(":", "_")}_failed`, storeFailure(error, SOCKET_FAILURE_MESSAGE));
         return PlayerErrorCode.UNKNOWN_ERROR;
     }
 
@@ -317,7 +322,7 @@ export function setupStreamerSocket(
         try {
             flags = await features();
         } catch (error) {
-            report("streamer_socket.features_failed", error);
+            report("streamer_socket.features_failed", storeFailure(error, SOCKET_FAILURE_MESSAGE));
             throw new StreamerSessionError("card_catalogue_unavailable");
         }
         return resolveCardBack(userId, itemId, flags);

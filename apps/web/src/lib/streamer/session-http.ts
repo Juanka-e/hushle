@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 import { buildRateLimitHeaders, type RequestRateLimitResult } from "@/lib/security/request-rate-limit";
 import type { StreamUrls } from "@/types/streamer-session";
+import { storeFailure } from "./session-persistence";
 import { isStreamerSessionError, type StreamerSessionErrorCode } from "./session-service";
 
 export type { CardBackOption, CreateStreamSessionResponse, RotateViewKeyResponse, StreamSessionResponse, StreamUrls } from "@/types/streamer-session";
@@ -31,11 +32,15 @@ export function rateLimitedResponse(limit: RequestRateLimitResult): NextResponse
     return NextResponse.json(playerError(PlayerErrorCode.RATE_LIMITED), { status: 429, headers: buildRateLimitHeaders(limit) });
 }
 
-/** A failure inside a streamer session route: a known session error's own answer, anything else logged and a 500. */
+/**
+ * A failure inside a streamer session route: a known session error's own answer, anything else
+ * logged sanitized (its name, its Prisma code, a fixed message: a Prisma message can echo the
+ * call) and a 500.
+ */
 export function streamerRouteFailure(error: unknown, label: string): NextResponse {
     const mapped = streamerSessionErrorResponse(error);
     if (mapped) return mapped;
-    console.error(label, error);
+    console.error(label, storeFailure(error, "streamer session route failed"));
     return NextResponse.json(playerError(PlayerErrorCode.UNKNOWN_ERROR), { status: 500 });
 }
 

@@ -81,14 +81,19 @@ export function roundResultOf(
 
 const SAFE_ERROR_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const PRISMA_ERROR_CODE = /^P\d{4}$/;
+// The copies storeFailure made: sanitizing one again keeps it (and its message) as it is.
+const sanitized = new WeakSet<Error>();
 
 /**
  * What a failed store call is reported (or answered) as: its class name, its Prisma code and a
  * fixed message. A Prisma error's message (and its meta) can echo the call's arguments: settings,
- * summary names, a view-key hash, a token ciphertext in a conditional where.
+ * summary names, a view-key hash, a token ciphertext in a conditional where. Idempotent: a copy
+ * it made comes back unchanged.
  */
 export function storeFailure(error: unknown, message = "stream session write failed"): Error {
+    if (error instanceof Error && sanitized.has(error)) return error;
     const safe = new Error(message);
+    sanitized.add(safe);
     const name: unknown = error instanceof Error ? error.name : undefined;
     if (typeof name === "string" && SAFE_ERROR_NAME.test(name)) safe.name = name;
     const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
