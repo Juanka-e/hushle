@@ -54,6 +54,9 @@ jobs:
           npm run test:ses-feedback-webhook
           npm run test:ses-feedback-route
 
+      - name: Test nginx proxy headers
+        run: npm run test:nginx-proxy-headers
+
       - name: Test deploy, rollback and release gate
         run: |
           npm run test:deploy-rollback
