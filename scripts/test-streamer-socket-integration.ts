@@ -1189,11 +1189,12 @@ async function main(): Promise<void> {
                 emit(sessionId, "public", withWord());
             }
             assert.deepEqual(blocked().map((entry) => (entry.error as { rule?: unknown }).rule), ["host-field", "target"], "one report per rule in this round");
-            // Another session's blocked state is its own report.
+            // A state with nothing to check against is reported each time and remembered nowhere:
+            // no live session would ever clean that entry up.
             const other = randomUUID();
             emit(other, "public", live.publicSnapshot());
             emit(other, "public", live.publicSnapshot());
-            assert.equal(blocked().length, 3);
+            assert.equal(blocked().length, 4);
             // The next round reports again.
             const next = liveRound() + 1;
             const afterPass = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state", (s) => s.round === next);
@@ -1201,7 +1202,28 @@ async function main(): Promise<void> {
             await afterPass;
             emit(sessionId, "public", withCard());
             emit(sessionId, "public", withCard());
-            assert.deepEqual(blocked().map((entry) => (entry.error as { rule?: unknown }).rule), ["host-field", "target", "no-reference", "host-field"]);
+            assert.deepEqual(blocked().map((entry) => (entry.error as { rule?: unknown }).rule), ["host-field", "target", "no-reference", "no-reference", "host-field"]);
+        });
+
+        await test("blocked-state dedupe remembers at most 1000 sessions, the oldest dropped first", async () => {
+            const live = runtime.get(sessionId);
+            assert.ok(live && wiredEmit);
+            const emit = wiredEmit;
+            const errorsBefore = socketErrors.length;
+            const blocked = () => socketErrors.slice(errorsBefore).filter((entry) => entry.event === "streamer_socket.public_state_blocked").length;
+            const tampered = { ...live.publicSnapshot(), card: live.hostSnapshot().card } as unknown as PublicStreamSnapshot;
+            const blockFor = (id: string) => {
+                emit(id, "host", live.hostSnapshot());
+                emit(id, "public", tampered);
+            };
+            const first = randomUUID();
+            blockFor(first);
+            blockFor(first);
+            assert.equal(blocked(), 1, "the first session's trip is remembered");
+            for (let other = 0; other < 1_000; other++) blockFor(randomUUID());
+            assert.equal(blocked(), 1_001);
+            blockFor(first);
+            assert.equal(blocked(), 1_002, "past 1000 sessions the oldest entry was dropped, so it reports again");
         });
 
         await test("every event is answered exactly once even when the error reporter throws; nothing is left unhandled", async () => {

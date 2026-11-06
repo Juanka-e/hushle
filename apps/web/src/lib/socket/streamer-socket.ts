@@ -48,6 +48,8 @@ export const STREAMER_PUBLIC_JOIN_LIMIT = { bucket: "streamer-public-join", wind
 
 /** Distinct (round, rule) pairs a session's blocked-state reports remember before starting over. */
 const MAX_BLOCKED_REPORTS_PER_SESSION = 256;
+/** Sessions whose blocked-state reports are remembered at once; past it the oldest is forgotten. */
+const MAX_BLOCKED_REPORT_SESSIONS = 1_000;
 
 // base64url of 32 random bytes, without padding.
 const VIEW_KEY_LENGTH = Math.ceil((VIEW_KEY_BYTES * 4) / 3);
@@ -435,8 +437,16 @@ export function setupStreamerSocket(
     // tripping the guard (each tick, each join) would otherwise flood observability.
     const blockedReports = new Map<string, Set<string>>();
     function reportBlocked(sessionId: string, round: unknown, error: StreamerSecretLeakError): void {
+        // Nothing to check against means no live session: no end would ever clean that entry up.
+        if (error.rule === "no-reference") {
+            report("streamer_socket.public_state_blocked", error);
+            return;
+        }
         let seen = blockedReports.get(sessionId);
-        if (!seen) blockedReports.set(sessionId, (seen = new Set()));
+        if (!seen) {
+            if (blockedReports.size >= MAX_BLOCKED_REPORT_SESSIONS) blockedReports.delete(blockedReports.keys().next().value as string);
+            blockedReports.set(sessionId, (seen = new Set()));
+        }
         const key = `${typeof round === "number" ? round : "?"}:${error.rule}`;
         if (seen.has(key)) return;
         if (seen.size >= MAX_BLOCKED_REPORTS_PER_SESSION) seen.clear();
