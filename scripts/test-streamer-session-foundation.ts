@@ -310,14 +310,17 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         "turun kabul ettiği tahminlerdir (yanlış ya da doğru)",
         "sunucu anahtarı 15 saniyede bir okur ve okunan değeri 5 saniye saklar; bu yüzden admin kapattıktan sonra en geç yaklaşık 20 saniye içinde bütün canlı oturumlar `stopped` ile biter",
         "Host odasına katılım da, oturumu bitirme dışındaki bütün host olayları da aynı kodu alır",
-        'soket istekleri (paneldeki "Yeni anahtar üret" dahil) reddedilmez',
+        "mod denetimi soket isteklerini reddetmez",
+        "anahtar yenileme yeni anahtarı veritabanına yazmadan vermez",
+        "yazma 10 saniyede bitmezse `SERVER_BUSY` (sunucu meşgul), yazma hemen hata verirse `UNKNOWN_ERROR` alır; ikisinde de eski anahtar geçerli kalır",
+        "Sunucu yeniden başladıysa oturum zaten `interrupted` olduğundan sayfa çevrimdışı kalır",
         "HTTP üzerinden yeni oturum açma, anahtar yenileme ve test-guess kapalı kabul edilir",
         "kanal bağlantıları platformda iptal edilir ve aynı anda canlı oturumu `stopped` ile biter",
         "Bitiş en çok yaklaşık 20 saniye beklenir (sıra beklemesi en çok 10 saniye, son yazma en çok 10 saniye; son çare sınırı 21 saniye)",
         "panel yenilemenin cevabını 25 saniye bekler",
         "Anahtar yenilendi mi bilinmiyor. Yeni anahtar üret ve OBS'deki adresi güncelle.",
         "`stop_grace_period: 30s`",
-        "nginx erişim kaydı `/stream/` adreslerini hiç yazmaz",
+        "nginx `/stream/` adreslerini erişim kaydına yazmaz; uygulamaya ulaşamadığında (ör. deploy sırasında 502) hata kaydına da yazmaz",
         "Host olay pencereleri süreç başına en çok 10 000 kayıt tutar",
         "Seçim host odasına yeniden bağlanınca korunur; sayfa yenilenince kart yeniden görünür",
         "| `interrupted` | Sunucu düzgün kapanır (deploy, `SIGTERM` / `SIGINT`). | `interrupted` |",
@@ -356,6 +359,7 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         "yeni oturum açma ise kapalı kabul edilir",
         "önce kanal bağlantıları platformda iptal edilir, sonra",
         "Bitiş en çok 10 saniye beklenir",
+        'soket istekleri (paneldeki "Yeni anahtar üret" dahil) reddedilmez',
     ]) {
         assert.ok(!guide.replace(/\s+/g, " ").includes(outdated), `the guide no longer says: ${outdated}`);
     }

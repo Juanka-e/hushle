@@ -276,9 +276,12 @@ yeniden bağlanmaz, çevrimdışı sahnesinde kalır.
   dışındaki bütün host olayları da aynı kodu alır; yayın ekranı katılımı yanlış anahtarla aynı
   yanıtı (`STREAMER_VIEW_KEY_INVALID`) alır. `/streamer` "Yayıncı modu yakında" der.
 - **Veritabanı cevap vermezse:** soket yolu anahtarı "bilinmiyor" sayar: hiçbir oturum
-  durdurulmaz ve soket istekleri (paneldeki "Yeni anahtar üret" dahil) reddedilmez. HTTP uçları
-  ise önbellekli ayarları okur ve ayarlar yedek değere (mod kapalı) düşer; bu yüzden HTTP
-  üzerinden yeni oturum açma, anahtar yenileme ve test-guess kapalı kabul edilir (§8.10).
+  durdurulmaz ve mod denetimi soket isteklerini reddetmez. Ancak anahtar yenileme yeni anahtarı
+  veritabanına yazmadan vermez: kesintide paneldeki "Yeni anahtar üret", yazma 10 saniyede
+  bitmezse `SERVER_BUSY` (sunucu meşgul), yazma hemen hata verirse `UNKNOWN_ERROR` alır; ikisinde
+  de eski anahtar geçerli kalır. HTTP uçları ise önbellekli ayarları okur ve ayarlar yedek değere
+  (mod kapalı) düşer; bu yüzden HTTP üzerinden yeni oturum açma, anahtar yenileme ve test-guess
+  kapalı kabul edilir (§8.10).
 - **Askıya alma:** admin bir kullanıcıyı askıya alınca kanal bağlantıları platformda iptal
   edilir ve aynı anda canlı oturumu `stopped` ile biter; biri gecikse ya da başarısız olsa da
   öteki ve audit kaydı yapılır. Bitiş en çok yaklaşık 20 saniye beklenir (sıra beklemesi en çok
@@ -302,9 +305,8 @@ yeniden bağlanmaz, çevrimdışı sahnesinde kalır.
 - **Sürüm yenilemesi:** deploy sunucunun soket protokolünü değiştirdiyse açık OBS sayfası el
   değmeden kendini yeniler: 30 saniye, 60 saniye, 120 saniye, sonra her 300 saniyede bir, bir
   bağlantı kabul edilene kadar. Sayaç tarayıcı oturumunda tutulur (yalnız sayı, anahtar değil).
-  Sunucu yeniden
-  başladıysa oturum zaten `interrupted` olduğundan sayfa çevrimdışı kalır; anahtar hâlâ geçerliyse
-  yayın kaldığı yerden sürer.
+  Sunucu yeniden başladıysa oturum zaten `interrupted` olduğundan sayfa çevrimdışı kalır; anahtar
+  hâlâ geçerliyse yayın kaldığı yerden sürer.
 - Veritabanında yalnız oturum ve tur sonuçları (kazanan, süre) tutulur; ham sohbet ve
   yanlış tahminler yazılmaz.
 
@@ -348,10 +350,11 @@ yalnız test içindir.
   giden her durumu göndermeden önce denetler ve ihlalde düşürür. Public oda
   yayıncı kartını tur bitene kadar hiçbir zaman almaz.
 - Görüntüleme anahtarı 32 bayt rastgeledir; veritabanında yalnız sha256 özeti saklanır.
-  Anahtar log'a ve audit'e yazılmaz; nginx erişim kaydı `/stream/` adreslerini hiç yazmaz.
-  Anahtar adresin yolunda durur, çünkü OBS kaynağı sabit bir
-  adres ister. Yayın ekranı gizli bir şey göstermez: sızan bir anahtar yalnız herkese açık yayın
-  görüntüsünü, yayın gecikmesinden birkaç saniye önce gösterir. Sızdıysa anahtarı yenile (§8.4).
+  Anahtar log'a ve audit'e yazılmaz. nginx `/stream/` adreslerini erişim kaydına yazmaz;
+  uygulamaya ulaşamadığında (ör. deploy sırasında 502) hata kaydına da yazmaz. Anahtar adresin
+  yolunda durur, çünkü OBS kaynağı sabit bir adres ister. Yayın ekranı gizli bir şey göstermez:
+  sızan bir anahtar yalnız herkese açık yayın görüntüsünü, yayın gecikmesinden birkaç saniye önce
+  gösterir. Sızdıysa anahtarı yenile (§8.4).
 - Host olayları yalnız oturum sahibindendir. Host odasına katılırken oturum çerezi
   (`sessionVersion` dahil) ve askıya alma denetlenir; her olayda soketin bu oturumun host
   odasında olduğu ve sahibin aynı kullanıcı olduğu denetlenir.
