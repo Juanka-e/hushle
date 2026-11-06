@@ -6,6 +6,7 @@ import {
     createTwitchPlatformClient,
     isFakePlatformEnabled,
     PLATFORM_LABELS,
+    PLATFORM_REQUEST_TIMEOUT_MS,
     STREAMER_PLATFORMS,
     StreamerConfigError,
     StreamerPlatformError,
@@ -199,6 +200,86 @@ await test("errors map to kinds and never carry the response body", async () => 
         assert.ok(!/SECRET/.test(error.message), error.message);
         assert.match(error.message, /^twitch \w+ failed \(/);
     }
+});
+
+await test("Z8 every platform call is bounded: a fetch that never resolves ends as a transient network error at the timeout", async () => {
+    assert.equal(PLATFORM_REQUEST_TIMEOUT_MS, 10_000);
+    // A fetch that never answers and ignores its signal: only the client's own bound can end the call.
+    const seen: Array<AbortSignal | null | undefined> = [];
+    const hung: typeof fetch = (_input, init) => {
+        seen.push(init?.signal);
+        return new Promise<Response>(() => undefined);
+    };
+    const requested: number[] = [];
+    const controllers: AbortController[] = [];
+    const timeoutSignal = (ms: number) => {
+        requested.push(ms);
+        const controller = new AbortController();
+        controllers.push(controller);
+        return controller.signal;
+    };
+    const twitch = createTwitchPlatformClient(twitchEnv, hung, { timeoutSignal });
+    const kick = createKickPlatformClient(kickEnv, hung, { timeoutSignal });
+    const factoryClient = createStreamerPlatformClient("twitch", { ...twitchEnv, NODE_ENV: "production" }, hung, { timeoutSignal });
+    const calls: Array<[string, () => Promise<unknown>]> = [
+        ["twitch exchange", () => twitch.exchangeCode({ code: "c", redirectUri })],
+        ["twitch refresh", () => twitch.refresh("r")],
+        ["twitch revoke", () => twitch.revoke("t", "access_token")],
+        ["twitch identity", () => twitch.fetchIdentity("a")],
+        ["twitch validate", () => twitch.validate!("a")],
+        ["kick exchange", () => kick.exchangeCode({ code: "c", redirectUri, codeVerifier: "v" })],
+        ["kick refresh", () => kick.refresh("r")],
+        ["kick revoke", () => kick.revoke("t", "refresh_token")],
+        ["kick identity", () => kick.fetchIdentity("a")],
+        ["factory-made twitch refresh", () => factoryClient.refresh("r")],
+    ];
+    for (const [label, call] of calls) {
+        const before = controllers.length;
+        let settled = false;
+        const outcome = call().then(
+            () => assert.fail(`${label}: a hung call must not resolve`),
+            (error: unknown) => {
+                settled = true;
+                return error;
+            }
+        );
+        for (let turn = 0; turn < 20; turn++) await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(settled, false, `${label}: pending until the bound`);
+        assert.equal(controllers.length, before + 1, `${label}: one bounded request`);
+        assert.equal(seen.at(-1), controllers.at(-1)!.signal, `${label}: the fetch gets the bound's signal`);
+        controllers.at(-1)!.abort();
+        const error = await outcome;
+        assert.ok(error instanceof StreamerPlatformError, `${label}: ${String(error)}`);
+        assert.deepEqual([error.kind, error.status], ["network", null], `${label}: transient, never invalid_grant`);
+    }
+    assert.deepEqual(requested, calls.map(() => PLATFORM_REQUEST_TIMEOUT_MS), "each call asks for the 10 s bound");
+
+    // The default signal (AbortSignal.timeout) with a short bound, on the real clock. Its timer is
+    // unref'd, so a ref'd one keeps this script alive meanwhile (a server always has other handles).
+    const quick = createTwitchPlatformClient(twitchEnv, hung, { timeoutMs: 25 });
+    const keepAlive = setTimeout(() => undefined, 5_000);
+    try {
+        const started = Date.now();
+        await expectPlatformError(() => quick.refresh("r"), "network");
+        assert.ok(Date.now() - started < 2_000, "ended by its own bound");
+    } finally {
+        clearTimeout(keepAlive);
+    }
+
+    // A body that stalls after the headers is bounded too.
+    const stalled: typeof fetch = async (_input, init) => {
+        const body = new ReadableStream<Uint8Array>({
+            start(stream) {
+                init?.signal?.addEventListener("abort", () => stream.error(new DOMException("aborted", "AbortError")));
+            },
+        });
+        return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const reading = createTwitchPlatformClient(twitchEnv, stalled, { timeoutSignal });
+    const pending = expectPlatformError(() => reading.fetchIdentity("a"), "network");
+    for (let turn = 0; turn < 20; turn++) await new Promise((resolve) => setImmediate(resolve));
+    controllers.at(-1)!.abort();
+    assert.equal((await pending)?.status, null);
 });
 
 await test("kick authorization url carries PKCE S256 and the two read scopes", () => {

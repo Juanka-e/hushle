@@ -5,6 +5,7 @@ import {
     connectionAad,
     createFakePlatformClient,
     createMemoryStreamerConnectionStore,
+    createTwitchPlatformClient,
     decryptToken,
     encryptToken,
     getAccessToken,
@@ -157,6 +158,30 @@ async function main(): Promise<void> {
         const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
         assert.equal(stored.status, "active");
         assert.equal(stored.accessTokenEnc, seeded.accessTokenEnc);
+    });
+
+    await test("Z8 a refresh that times out at the platform is transient: the row stays active with its tokens", async () => {
+        const controllers: AbortController[] = [];
+        const hung: typeof fetch = () => new Promise<Response>(() => undefined);
+        const client = createTwitchPlatformClient({ STREAMER_TWITCH_CLIENT_ID: "tw-client", STREAMER_TWITCH_CLIENT_SECRET: "tw-secret" }, hung, {
+            timeoutSignal: () => {
+                const controller = new AbortController();
+                controllers.push(controller);
+                return controller.signal;
+            },
+        });
+        const d = deps(client);
+        const seeded = d.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        const asking = getAccessToken(d, seeded);
+        for (let turn = 0; turn < 20 && controllers.length === 0; turn++) await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(controllers.length, 1, "the refresh went out, bounded");
+        controllers[0].abort();
+        await assert.rejects(asking, (error: unknown) => isStreamerPlatformError(error) && error.kind === "network" && !isStreamerReconnectRequired(error));
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.equal(stored.status, "active", "a timeout never marks needs_reconnect");
+        assert.equal(stored.statusReason, seeded.statusReason);
+        assert.equal(stored.accessTokenEnc, seeded.accessTokenEnc);
+        assert.equal(stored.refreshTokenEnc, seeded.refreshTokenEnc);
     });
 
     await test("callWithToken retries once after a 401 and records lastUsedAt", async () => {

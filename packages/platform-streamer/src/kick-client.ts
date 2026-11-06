@@ -4,6 +4,8 @@ import {
     StreamerPlatformError,
     tokenSetFromResponse,
     type FetchLike,
+    type JsonRequest,
+    type PlatformHttpOptions,
     type PlatformIdentity,
     type StreamerPlatformClient,
     type TokenSet,
@@ -25,15 +27,18 @@ export interface KickEnvironment {
     STREAMER_KICK_CLIENT_SECRET?: string;
 }
 
-export function createKickPlatformClient(env: KickEnvironment, fetchImpl: FetchLike = fetch): StreamerPlatformClient {
+export function createKickPlatformClient(env: KickEnvironment, fetchImpl: FetchLike = fetch, http: PlatformHttpOptions = {}): StreamerPlatformClient {
     const clientId = env.STREAMER_KICK_CLIENT_ID?.trim();
     const clientSecret = env.STREAMER_KICK_CLIENT_SECRET?.trim();
     if (!clientId || !clientSecret) {
         throw new StreamerConfigError("STREAMER_KICK_CLIENT_ID and STREAMER_KICK_CLIENT_SECRET are required");
     }
 
+    // Every call is bounded (PLATFORM_REQUEST_TIMEOUT_MS unless the caller says otherwise).
+    const call = (input: JsonRequest) => platformRequest(fetchImpl, input, http);
+
     const tokenRequest = async (operation: string, classify: "exchange" | "refresh", form: Record<string, string>): Promise<TokenSet> => {
-        const payload = await platformRequest(fetchImpl, {
+        const payload = await call({
             platform: "kick",
             operation,
             classify,
@@ -44,7 +49,7 @@ export function createKickPlatformClient(env: KickEnvironment, fetchImpl: FetchL
     };
 
     const firstRow = async (operation: string, url: string, accessToken: string): Promise<Record<string, unknown>> => {
-        const payload = (await platformRequest(fetchImpl, {
+        const payload = (await call({
             platform: "kick",
             operation,
             url,
@@ -87,7 +92,7 @@ export function createKickPlatformClient(env: KickEnvironment, fetchImpl: FetchL
             const url = new URL(REVOKE_URL);
             url.searchParams.set("token", token);
             url.searchParams.set("token_hint_type", hint);
-            await platformRequest(fetchImpl, {
+            await call({
                 platform: "kick",
                 operation: "revoke",
                 url: url.toString(),

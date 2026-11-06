@@ -96,6 +96,16 @@ async function readJson(response: Response): Promise<unknown> {
     }
 }
 
+/** Every platform call is bounded: past it the call fails as a transient `network` error. */
+export const PLATFORM_REQUEST_TIMEOUT_MS = 10_000;
+
+export interface PlatformHttpOptions {
+    /** Default PLATFORM_REQUEST_TIMEOUT_MS. */
+    timeoutMs?: number;
+    /** Makes the signal that ends a call (default `AbortSignal.timeout`); tests abort it by hand. */
+    timeoutSignal?: (ms: number) => AbortSignal;
+}
+
 export interface JsonRequest {
     platform: StreamerPlatform;
     operation: string;
@@ -107,20 +117,35 @@ export interface JsonRequest {
     expectJson?: boolean;
 }
 
-export async function platformRequest(fetchImpl: FetchLike, request: JsonRequest): Promise<unknown> {
+/**
+ * One platform call, bounded by `http.timeoutMs`: the fetch gets the bound's signal, and the call
+ * also stops waiting on its own when the signal fires (a fetch or a body that ignores it). A
+ * timeout, like any failure to get or read an answer, is a `network` error: transient, never
+ * `invalid_grant`, so it never costs the streamer their connection.
+ */
+export async function platformRequest(fetchImpl: FetchLike, request: JsonRequest, http: PlatformHttpOptions = {}): Promise<unknown> {
     const headers: Record<string, string> = { accept: "application/json", ...request.headers };
     let body: string | undefined;
     if (request.form) {
         headers["content-type"] = "application/x-www-form-urlencoded";
         body = new URLSearchParams(request.form).toString();
     }
+    const timeoutMs = http.timeoutMs ?? PLATFORM_REQUEST_TIMEOUT_MS;
+    const signal = http.timeoutSignal ? http.timeoutSignal(timeoutMs) : AbortSignal.timeout(timeoutMs);
+    const networkError = () => new StreamerPlatformError(request.platform, request.operation, "network", null);
+    const timedOut = new Promise<never>((_, reject) => {
+        if (signal.aborted) reject(networkError());
+        else signal.addEventListener("abort", () => reject(networkError()), { once: true });
+    });
+    timedOut.catch(() => undefined);
     let response: Response;
+    let json: unknown;
     try {
-        response = await fetchImpl(request.url, { method: request.method ?? (request.form ? "POST" : "GET"), headers, body });
+        response = await Promise.race([fetchImpl(request.url, { method: request.method ?? (request.form ? "POST" : "GET"), headers, body, signal }), timedOut]);
+        json = await Promise.race([readJson(response), timedOut]);
     } catch {
-        throw new StreamerPlatformError(request.platform, request.operation, "network", null);
+        throw networkError();
     }
-    const json = await readJson(response);
     if (!response.ok) {
         throw new StreamerPlatformError(
             request.platform,

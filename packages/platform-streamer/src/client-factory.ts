@@ -1,7 +1,7 @@
 import { createFakePlatformClient } from "./fake-client";
 import { isFakePlatformEnabled } from "./fake-gate";
 import { createKickPlatformClient, type KickEnvironment } from "./kick-client";
-import { type FetchLike, type StreamerPlatform, type StreamerPlatformClient } from "./platform-client";
+import { type FetchLike, type PlatformHttpOptions, type StreamerPlatform, type StreamerPlatformClient } from "./platform-client";
 import { StreamerConfigError } from "./token-crypto";
 import { createTwitchPlatformClient, type TwitchEnvironment } from "./twitch-client";
 
@@ -21,11 +21,12 @@ export function isPlatformConfigured(platform: StreamerPlatform, env: StreamerPl
 export function createStreamerPlatformClient(
     platform: StreamerPlatform,
     env: StreamerPlatformEnvironment,
-    fetchImpl: FetchLike = fetch
+    fetchImpl: FetchLike = fetch,
+    http: PlatformHttpOptions = {}
 ): StreamerPlatformClient {
     if (env.STREAMER_FAKE_PLATFORM === "1" && !isFakePlatformEnabled(env)) {
         throw new StreamerConfigError("STREAMER_FAKE_PLATFORM must not be set in production");
     }
     if (isFakePlatformEnabled(env)) return createFakePlatformClient(platform);
-    return platform === "twitch" ? createTwitchPlatformClient(env, fetchImpl) : createKickPlatformClient(env, fetchImpl);
+    return platform === "twitch" ? createTwitchPlatformClient(env, fetchImpl, http) : createKickPlatformClient(env, fetchImpl, http);
 }

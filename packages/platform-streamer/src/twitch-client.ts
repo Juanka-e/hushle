@@ -4,6 +4,8 @@ import {
     StreamerPlatformError,
     tokenSetFromResponse,
     type FetchLike,
+    type JsonRequest,
+    type PlatformHttpOptions,
     type PlatformIdentity,
     type StreamerPlatformClient,
     type TokenSet,
@@ -24,15 +26,18 @@ export interface TwitchEnvironment {
     STREAMER_TWITCH_CLIENT_SECRET?: string;
 }
 
-export function createTwitchPlatformClient(env: TwitchEnvironment, fetchImpl: FetchLike = fetch): StreamerPlatformClient {
+export function createTwitchPlatformClient(env: TwitchEnvironment, fetchImpl: FetchLike = fetch, http: PlatformHttpOptions = {}): StreamerPlatformClient {
     const clientId = env.STREAMER_TWITCH_CLIENT_ID?.trim();
     const clientSecret = env.STREAMER_TWITCH_CLIENT_SECRET?.trim();
     if (!clientId || !clientSecret) {
         throw new StreamerConfigError("STREAMER_TWITCH_CLIENT_ID and STREAMER_TWITCH_CLIENT_SECRET are required");
     }
 
+    // Every call is bounded (PLATFORM_REQUEST_TIMEOUT_MS unless the caller says otherwise).
+    const call = (input: JsonRequest) => platformRequest(fetchImpl, input, http);
+
     const tokenRequest = async (operation: string, classify: "exchange" | "refresh", form: Record<string, string>): Promise<TokenSet> => {
-        const payload = await platformRequest(fetchImpl, {
+        const payload = await call({
             platform: "twitch",
             operation,
             classify,
@@ -64,7 +69,7 @@ export function createTwitchPlatformClient(env: TwitchEnvironment, fetchImpl: Fe
             return tokenRequest("refresh", "refresh", { grant_type: "refresh_token", refresh_token: refreshToken });
         },
         async revoke(token: string) {
-            await platformRequest(fetchImpl, {
+            await call({
                 platform: "twitch",
                 operation: "revoke",
                 url: REVOKE_URL,
@@ -73,7 +78,7 @@ export function createTwitchPlatformClient(env: TwitchEnvironment, fetchImpl: Fe
             });
         },
         async fetchIdentity(accessToken): Promise<PlatformIdentity> {
-            const payload = (await platformRequest(fetchImpl, {
+            const payload = (await call({
                 platform: "twitch",
                 operation: "identity",
                 url: USERS_URL,
@@ -93,7 +98,7 @@ export function createTwitchPlatformClient(env: TwitchEnvironment, fetchImpl: Fe
         },
         async validate(accessToken) {
             try {
-                const payload = (await platformRequest(fetchImpl, {
+                const payload = (await call({
                     platform: "twitch",
                     operation: "validate",
                     url: VALIDATE_URL,
