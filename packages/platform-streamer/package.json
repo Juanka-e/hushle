@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./fake-gate": {
+      "types": "./src/fake-gate.ts",
+      "default": "./src/fake-gate.ts"
     }
   },
   "dependencies": {

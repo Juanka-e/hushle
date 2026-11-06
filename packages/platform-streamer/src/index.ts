@@ -28,10 +28,10 @@ export { createKickPlatformClient, type KickEnvironment } from "./kick-client";
 export { createFakePlatformClient, FAKE_AUTHORIZE_PATH, type FakePlatformClient } from "./fake-client";
 export {
     createStreamerPlatformClient,
-    isFakePlatformEnabled,
     isPlatformConfigured,
     type StreamerPlatformEnvironment,
 } from "./client-factory";
+export { isFakePlatformEnabled } from "./fake-gate";
 export {
     createMemoryStreamerConnectionStore,
     prismaStreamerConnectionStore,

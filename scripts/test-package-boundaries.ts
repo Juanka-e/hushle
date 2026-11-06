@@ -1,8 +1,40 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+// The light gate is imported first and alone: what it loads is checked below.
+import { isFakePlatformEnabled as fakeGate } from "@hushle/platform-streamer/fake-gate";
 
 const root = process.cwd();
+
+// @hushle/platform-streamer/fake-gate: only the fake-platform switch, without the platform
+// clients or the connection store (and so without Prisma), for callers such as the /stream page.
+{
+    const streamerSource = join(root, "packages/platform-streamer/src");
+    const loaded = Object.keys(require.cache).filter((file) => file.startsWith(streamerSource));
+    assert.deepEqual(
+        loaded.map((file) => relative(streamerSource, file)),
+        ["fake-gate.ts"],
+        "importing the fake gate loads no other platform-streamer module",
+    );
+    const gateSource = readFileSync(join(streamerSource, "fake-gate.ts"), "utf8");
+    assert.doesNotMatch(gateSource, /^\s*import\b|\bimport\s*\(|\brequire\s*\(|^\s*export\s[^\n]*\bfrom\b/m, "the fake gate imports nothing");
+    assert.deepEqual(
+        [...gateSource.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|class)\s+(\w+)/gm)].map((match) => match[1]),
+        ["isFakePlatformEnabled"],
+        "the fake gate exports only isFakePlatformEnabled",
+    );
+    const exportsMap = (JSON.parse(readFileSync(join(root, "packages/platform-streamer/package.json"), "utf8")) as { exports: Record<string, unknown> }).exports;
+    assert.deepEqual(exportsMap["."], { types: "./src/index.ts", default: "./src/index.ts" }, "the root export stays");
+    assert.deepEqual(exportsMap["./fake-gate"], { types: "./src/fake-gate.ts", default: "./src/fake-gate.ts" });
+    // The root entry re-exports the same gate, so existing imports keep working.
+    assert.match(readFileSync(join(streamerSource, "index.ts"), "utf8"), /export \{ isFakePlatformEnabled \} from "\.\/fake-gate";/);
+    assert.match(readFileSync(join(streamerSource, "client-factory.ts"), "utf8"), /import \{ isFakePlatformEnabled \} from "\.\/fake-gate";/);
+    assert.doesNotMatch(readFileSync(join(streamerSource, "client-factory.ts"), "utf8"), /function isFakePlatformEnabled/, "one definition only");
+    assert.equal(fakeGate({ STREAMER_FAKE_PLATFORM: "1", NODE_ENV: "test" }), true);
+    assert.equal(fakeGate({ STREAMER_FAKE_PLATFORM: "1", NODE_ENV: "production" }), false);
+    assert.equal(fakeGate({ STREAMER_FAKE_PLATFORM: "1", NODE_ENV: "production", HUSHLE_E2E_SMOKE: "1" }), true);
+    assert.equal(fakeGate({ NODE_ENV: "production", HUSHLE_E2E_SMOKE: "1" }), false);
+}
 
 function listTypeScriptFiles(directory: string): string[] {
     return readdirSync(directory).flatMap((entry) => {
