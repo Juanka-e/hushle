@@ -1,12 +1,14 @@
 import { io, type Socket } from "socket.io-client";
-import { SOCKET_CLIENT_AUTH } from "@/lib/socket/protocol-version";
+import { SOCKET_CLIENT_AUTH, SOCKET_PROTOCOL_ERROR_CODE } from "@/lib/socket/protocol-version";
 import { STREAMER_SOCKET_EVENTS, type StreamerEndedReason } from "@/lib/streamer/socket-contract";
 import { readSnapshot, type StreamState } from "./stream-renderer";
 
 // The stream screen's link to the server: joins the public room with the view key from the URL,
 // passes on the states that are newer than the last one, and says when the screen should show its
 // offline scene. Socket.IO reconnects on its own after a lost transport; each new connection
-// joins again. The view key goes only into the join payload: never into a log, a title or the DOM.
+// joins again. A handshake the server refuses for its socket protocol (a deploy shipped a new
+// bundle) reloads the whole page instead, with backoff. The view key goes only into the join
+// payload: never into a log, a title, storage or the DOM.
 
 /** The public room's capability key: 32 random bytes in base64url. */
 export function isViewKey(value: string): boolean {
@@ -43,6 +45,12 @@ export interface StreamTimers {
     clearTimeout(handle: unknown): void;
 }
 
+/** How many full reloads in a row protocol refusals have caused; it has to survive the reload. */
+export interface ReloadCounter {
+    get(): number;
+    set(count: number): void;
+}
+
 export interface StreamTransportOptions {
     viewKey: string;
     socket: StreamSocketLike;
@@ -53,6 +61,10 @@ export interface StreamTransportOptions {
     /** The session closed its public room; nothing more will come. */
     onEnded(reason: StreamerEndedReason): void;
     timers?: StreamTimers;
+    /** A full page reload; the default reloads the window. */
+    reload?: () => void;
+    /** The default keeps the count in sessionStorage, which a reload of the same source keeps. */
+    reloads?: ReloadCounter;
 }
 
 export interface StreamTransport {
@@ -80,6 +92,12 @@ function endedReason(payload: unknown): StreamerEndedReason {
         : "interrupted";
 }
 
+// After a protocol refusal: 30 s, 60 s, 120 s, then every 5 minutes until a join draws a state.
+const RELOAD_DELAYS_MS = [30_000, 60_000, 120_000];
+const RELOAD_EVERY_MS = 300_000;
+// A fixed name: the count is all that is stored, never the key.
+const RELOADS_STORAGE_KEY = "hushle-stream:protocol-reloads";
+
 const systemTimers: StreamTimers = {
     setTimeout: (run, ms) => setTimeout(run, ms),
     clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -89,9 +107,60 @@ function isBag(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
 }
 
+/** The handshake middleware refused this bundle's socket protocol (SocketProtocolErrorData). */
+export function isProtocolRefusal(error: unknown): boolean {
+    return isBag(error) && isBag(error.data) && error.data.code === SOCKET_PROTOCOL_ERROR_CODE;
+}
+
+/** The wait before the next reload, given how many reloads in a row came before it. */
+export function protocolReloadDelayMs(reloadsSoFar: number): number {
+    return RELOAD_DELAYS_MS[reloadsSoFar] ?? RELOAD_EVERY_MS;
+}
+
+/** The count in the given storage, or in memory alone where that storage throws (or is missing). */
+export function createReloadCounter(storage: Pick<Storage, "getItem" | "setItem"> | null | undefined): ReloadCounter {
+    let memory = 0;
+    return {
+        get() {
+            try {
+                const stored = storage?.getItem(RELOADS_STORAGE_KEY);
+                if (stored !== null && stored !== undefined) {
+                    const count = Number(stored);
+                    return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+                }
+            } catch {
+                // Storage refused: the count in memory stands.
+            }
+            return memory;
+        },
+        set(count) {
+            memory = count;
+            try {
+                storage?.setItem(RELOADS_STORAGE_KEY, String(count));
+            } catch {
+                // Storage refused: the backoff then restarts with each page.
+            }
+        },
+    };
+}
+
+function browserSessionStorage(): Storage | null {
+    try {
+        return typeof window === "undefined" ? null : window.sessionStorage;
+    } catch {
+        return null;
+    }
+}
+
+function reloadWindow(): void {
+    window.location.reload();
+}
+
 export function connectStreamTransport(options: StreamTransportOptions): StreamTransport {
     const { socket, viewKey } = options;
     const timers = options.timers ?? systemTimers;
+    const reload = options.reload ?? reloadWindow;
+    const reloads = options.reloads ?? createReloadCounter(browserSessionStorage());
     const guard = createRevisionGuard();
     let closed = false;
     let failures = 0;
@@ -99,6 +168,7 @@ export function connectStreamTransport(options: StreamTransportOptions): StreamT
     let joinSequence = 0;
     let offlineTimer: unknown;
     let retryTimer: unknown;
+    let reloadTimer: unknown;
 
     function armOffline(): void {
         timers.clearTimeout(offlineTimer);
@@ -111,6 +181,7 @@ export function connectStreamTransport(options: StreamTransportOptions): StreamT
         closed = true;
         timers.clearTimeout(offlineTimer);
         timers.clearTimeout(retryTimer);
+        timers.clearTimeout(reloadTimer);
         socket.disconnect();
     }
 
@@ -124,6 +195,7 @@ export function connectStreamTransport(options: StreamTransportOptions): StreamT
             timers.clearTimeout(offlineTimer);
             if (state) {
                 failures = 0;
+                if (reloads.get() !== 0) reloads.set(0);
                 guard.reset(state.revision);
                 options.onState(state);
                 return;
@@ -146,6 +218,20 @@ export function connectStreamTransport(options: StreamTransportOptions): StreamT
     }
 
     socket.on("connect", join);
+    // socket.io gives up after a middleware refusal, so this page would stay offline until
+    // someone refreshed the OBS source. A protocol refusal means the server runs a newer
+    // bundle: reload the page to fetch it, waiting longer after each reload in a row. Any
+    // other connect error is a lost transport, which socket.io retries on its own.
+    socket.on("connect_error", (error: unknown) => {
+        if (closed || !isProtocolRefusal(error)) return;
+        stop();
+        options.onOffline();
+        const reloadsSoFar = reloads.get();
+        reloadTimer = timers.setTimeout(() => {
+            reloads.set(reloadsSoFar + 1);
+            reload();
+        }, protocolReloadDelayMs(reloadsSoFar));
+    });
     socket.on("disconnect", () => {
         if (closed) return;
         joinSequence += 1;

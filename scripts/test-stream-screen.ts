@@ -3,8 +3,12 @@ import type { PublicStreamSnapshot } from "@hushle/domain-streamer";
 import { cameraRect, offlineState, readSnapshot, urlLookSnapshot, type StreamState } from "@/components/stream/stream-renderer";
 import {
     connectStreamTransport,
+    createReloadCounter,
     createRevisionGuard,
+    isProtocolRefusal,
     isViewKey,
+    protocolReloadDelayMs,
+    type ReloadCounter,
     type StreamSocketLike,
     type StreamTimers,
 } from "@/components/stream/stream-transport";
@@ -151,15 +155,38 @@ function fakeClock(): StreamTimers & { advance(ms: number): void } {
     };
 }
 
-function harness(viewKey = KEY) {
+function memoryCounter(start = 0): ReloadCounter {
+    let count = start;
+    return {
+        get: () => count,
+        set(next) {
+            count = next;
+        },
+    };
+}
+
+// What the handshake middleware sends when it refuses this bundle's socket protocol.
+function protocolRefusal(): Error {
+    return Object.assign(new Error("socket protocol unsupported"), {
+        data: { code: "SOCKET_PROTOCOL_UNSUPPORTED", clientVersion: 1, serverVersion: 2, minimumVersion: 2, reason: "too_old" },
+    });
+}
+
+// One page load: a fresh socket and clock; `reloads` is what survives a reload (sessionStorage).
+function harness(viewKey = KEY, reloads: ReloadCounter = memoryCounter()) {
     const socket = new FakeSocket();
     const clock = fakeClock();
     const events: string[] = [];
     const states: StreamState[] = [];
+    let reloadCalls = 0;
     const transport = connectStreamTransport({
         viewKey,
         socket,
         timers: clock,
+        reloads,
+        reload() {
+            reloadCalls += 1;
+        },
         onState(state) {
             states.push(state);
             events.push(`state:${state.revision}`);
@@ -171,7 +198,7 @@ function harness(viewKey = KEY) {
             events.push(`ended:${reason}`);
         },
     });
-    return { socket, clock, events, states, transport };
+    return { socket, clock, events, states, transport, reloaded: () => reloadCalls };
 }
 
 async function main(): Promise<void> {
@@ -494,6 +521,136 @@ async function main(): Promise<void> {
             assert.equal(socket.emits.length, 1);
             assert.equal(events.length, 2);
         }
+    });
+
+    await test("only the handshake middleware's protocol code is a protocol refusal", () => {
+        assert.equal(isProtocolRefusal(protocolRefusal()), true);
+        assert.equal(isProtocolRefusal({ data: { code: "SOCKET_PROTOCOL_UNSUPPORTED" } }), true);
+        for (const other of [
+            new Error("xhr poll error"),
+            Object.assign(new Error("x"), { data: { code: "RATE_LIMITED" } }),
+            Object.assign(new Error("x"), { data: null }),
+            { data: "SOCKET_PROTOCOL_UNSUPPORTED" },
+            { code: "SOCKET_PROTOCOL_UNSUPPORTED" },
+            "SOCKET_PROTOCOL_UNSUPPORTED",
+            null,
+            undefined,
+        ]) {
+            assert.equal(isProtocolRefusal(other), false, String(other));
+        }
+    });
+
+    await test("reloads after a protocol refusal wait 30 s, 60 s, 120 s, then 300 s each", () => {
+        assert.deepEqual([0, 1, 2, 3, 4, 50].map(protocolReloadDelayMs), [30_000, 60_000, 120_000, 300_000, 300_000, 300_000]);
+        // Five page loads in a row, each refused at its handshake: the count survives each reload.
+        const reloads = memoryCounter();
+        for (const [index, delay] of [30_000, 60_000, 120_000, 300_000, 300_000].entries()) {
+            const page = harness(KEY, reloads);
+            page.socket.fire("connect_error", protocolRefusal());
+            assert.deepEqual(page.events, ["offline"], `load ${index}: the offline scene at once`);
+            page.clock.advance(delay - 1);
+            assert.equal(page.reloaded(), 0, `load ${index}: not before ${delay} ms`);
+            page.clock.advance(1);
+            assert.equal(page.reloaded(), 1, `load ${index}: reloads at ${delay} ms`);
+            assert.equal(reloads.get(), index + 1);
+            // Nothing else follows on the dead page: no second offline, no join, no second reload.
+            page.socket.up();
+            page.clock.advance(600_000);
+            assert.deepEqual(page.events, ["offline"]);
+            assert.equal(page.socket.emits.length, 0);
+            assert.equal(page.reloaded(), 1);
+        }
+    });
+
+    await test("a join that draws a state resets the reload backoff; a refused join does not", () => {
+        const reloads = memoryCounter(3);
+        const refused = harness(KEY, reloads);
+        refused.socket.up();
+        refused.socket.emits[0].ack({ ok: false, code: "RATE_LIMITED", error: "x" });
+        assert.equal(reloads.get(), 3);
+
+        const joined = harness(KEY, reloads);
+        joined.socket.up();
+        joined.socket.emits[0].ack({ ok: true, state: snapshot({ revision: 1 }) });
+        assert.equal(reloads.get(), 0);
+
+        // The next deploy starts the backoff over.
+        const next = harness(KEY, reloads);
+        next.socket.fire("connect_error", protocolRefusal());
+        next.clock.advance(29_999);
+        assert.equal(next.reloaded(), 0);
+        next.clock.advance(1);
+        assert.equal(next.reloaded(), 1);
+    });
+
+    await test("other connect errors leave the retry to socket.io and never reload", () => {
+        for (const error of [new Error("xhr poll error"), Object.assign(new Error("x"), { data: { code: "RATE_LIMITED" } }), undefined]) {
+            const reloads = memoryCounter(2);
+            const page = harness(KEY, reloads);
+            page.socket.fire("connect_error", error);
+            page.clock.advance(600_000);
+            assert.equal(page.reloaded(), 0);
+            assert.equal(page.socket.disconnectCalls, 0, "the socket is left to reconnect");
+            assert.deepEqual(page.events, ["offline"], "only the five-second offline timer");
+            assert.equal(reloads.get(), 2);
+            // socket.io's own reconnect still joins and draws.
+            page.socket.up();
+            page.socket.emits[0].ack({ ok: true, state: snapshot({ revision: 4 }) });
+            assert.deepEqual(page.events, ["offline", "state:4"]);
+        }
+    });
+
+    await test("close() cancels a scheduled reload; a malformed or closed screen never reloads", () => {
+        const page = harness();
+        page.socket.fire("connect_error", protocolRefusal());
+        page.transport.close();
+        page.clock.advance(600_000);
+        assert.equal(page.reloaded(), 0);
+
+        const malformed = harness("not-a-real-key");
+        malformed.socket.fire("connect_error", protocolRefusal());
+        malformed.clock.advance(600_000);
+        assert.equal(malformed.reloaded(), 0);
+
+        const ended = harness();
+        ended.socket.up();
+        ended.socket.emits[0].ack({ ok: true, state: snapshot({ revision: 1 }) });
+        ended.socket.fire("streamer:ended", { reason: "stopped" });
+        ended.socket.fire("connect_error", protocolRefusal());
+        ended.clock.advance(600_000);
+        assert.equal(ended.reloaded(), 0);
+        assert.deepEqual(ended.events, ["state:1", "ended:stopped"]);
+    });
+
+    await test("the reload count lives in session storage under a fixed name, in memory if storage fails", () => {
+        const store = new Map<string, string>();
+        const storage = { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => void store.set(key, value) };
+        const counter = createReloadCounter(storage);
+        assert.equal(counter.get(), 0);
+        counter.set(2);
+        assert.equal(counter.get(), 2);
+        assert.deepEqual([...store.keys()], ["hushle-stream:protocol-reloads"], "never the view key");
+        assert.equal(createReloadCounter(storage).get(), 2, "a reloaded page reads it back");
+        for (const junk of ["-1", "1.5", "abc", "1e400"]) {
+            store.set("hushle-stream:protocol-reloads", junk);
+            assert.equal(createReloadCounter(storage).get(), 0, junk);
+        }
+
+        const broken = {
+            getItem(): string | null {
+                throw new Error("SecurityError");
+            },
+            setItem(): void {
+                throw new Error("QuotaExceededError");
+            },
+        };
+        const fallback = createReloadCounter(broken);
+        assert.equal(fallback.get(), 0);
+        fallback.set(3);
+        assert.equal(fallback.get(), 3);
+        const none = createReloadCounter(null);
+        none.set(1);
+        assert.equal(none.get(), 1);
     });
 
     await test("close() stops every timer and callback", () => {
