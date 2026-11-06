@@ -233,6 +233,14 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     ]) {
         assert.ok(lintStep.includes(`npm run ${script}`), `CI streamer unit step must run ${script}`);
     }
+    // The package guards run in CI too, in the lint-typecheck job, each on a line of its own (not
+    // commented out), after the job generated the Prisma client the package typecheck reads.
+    const lintJob = ci.slice(ci.indexOf("\n  lint-typecheck:\n"), ci.indexOf("\n  build:\n"));
+    assert.ok(lintJob.length > 0 && lintJob.includes(lintStep), "the streamer unit step belongs to the lint-typecheck job");
+    for (const script of ["typecheck:packages", "test:package-boundaries", "test:socket-protocol-version"]) {
+        assert.match(lintStep, new RegExp(`^ +npm run ${script}$`, "m"), `CI streamer unit step must run ${script}`);
+        assert.ok(lintJob.indexOf("run: npx prisma generate") < lintJob.indexOf(`npm run ${script}`), `${script} runs after npx prisma generate`);
+    }
     const storeStep = stepOf("Test streamer session store against MySQL");
     assert.match(storeStep, /npm run test:streamer-session-store-integration/);
     assert.match(storeStep, /STREAMER_INTEGRATION_DATABASE_URL: "mysql:\/\/root:root@localhost:3306\/tabu_test"/);

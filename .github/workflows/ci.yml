@@ -80,6 +80,9 @@ jobs:
           npm run test:streamer-socket-integration
           npm run test:stream-screen
           npm run test:streamer-panel
+          npm run typecheck:packages
+          npm run test:package-boundaries
+          npm run test:socket-protocol-version
 
   # ─── 2. Build Check ───────────────────────────────────────────────
   build:
