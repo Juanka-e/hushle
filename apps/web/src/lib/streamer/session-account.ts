@@ -1,5 +1,6 @@
 import { isStreamerSessionError, STREAM_PERSIST_DRAIN_TIMEOUT_MS, type StreamerSessionRuntime } from "./session-runtime";
 import { reportStreamerSessionError } from "./session-service";
+import { realStreamerTimers, type StreamerTimers } from "./session-timers";
 
 // Account actions on a user's live stream (an admin suspension). The runtime is the one on
 // globalThis (session-deps.ts creates it at boot); this module never creates one, so a process
@@ -8,18 +9,27 @@ import { reportStreamerSessionError } from "./session-service";
 const globalForStreamerSessions = globalThis as typeof globalThis & { __hushleStreamerSessionRuntime?: StreamerSessionRuntime };
 
 /**
- * Takes the user's stream off the air: their live session ends with reason `stopped`. Bounded by
- * the drain timeout: behind a stuck action the caller gets its answer (false, reported) and the
- * session's own queue still runs the end in its turn. Never throws; true when a session ended.
+ * The helper's own bound: past the runtime's (its wait for the session's turn, then its final
+ * write), so a stuck end is answered and reported by the runtime first, once. It only fires if the
+ * runtime's bounds did not.
  */
-export async function endStreamerSessionsForUser(userId: number, options: { timeoutMs?: number } = {}): Promise<boolean> {
+export const ACCOUNT_STOP_TIMEOUT_MS = 2 * STREAM_PERSIST_DRAIN_TIMEOUT_MS + 1_000;
+
+/**
+ * Takes the user's stream off the air: their live session ends with reason `stopped`. Bounded:
+ * behind a stuck action the runtime answers `busy` (and reports it) and the session's own queue
+ * still runs the end in its turn; the helper's own bound is a last resort past that. Never
+ * throws; true when a session ended.
+ */
+export async function endStreamerSessionsForUser(userId: number, options: { timers?: StreamerTimers; timeoutMs?: number } = {}): Promise<boolean> {
     const runtime = globalForStreamerSessions.__hushleStreamerSessionRuntime;
     const live = runtime?.forUser(userId);
     if (!runtime || !live) return false;
-    const timeoutMs = options.timeoutMs ?? STREAM_PERSIST_DRAIN_TIMEOUT_MS;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timers = options.timers ?? realStreamerTimers;
+    const timeoutMs = options.timeoutMs ?? ACCOUNT_STOP_TIMEOUT_MS;
+    let handle: unknown;
     const bound = new Promise<"timeout">((resolve) => {
-        timer = setTimeout(() => resolve("timeout"), timeoutMs);
+        handle = timers.setTimeout(() => resolve("timeout"), timeoutMs);
     });
     try {
         const ending = runtime.end(live.id, "stopped");
@@ -31,11 +41,12 @@ export async function endStreamerSessionsForUser(userId: number, options: { time
         }
         return true;
     } catch (error) {
-        if (!(isStreamerSessionError(error) && error.code === "not_found")) {
+        // busy: the runtime already reported the stuck turn. not_found: nothing was left to end.
+        if (!(isStreamerSessionError(error) && (error.code === "busy" || error.code === "not_found"))) {
             reportStreamerSessionError("streamer_session.account_stop_failed", error, { sessionId: live.id });
         }
         return false;
     } finally {
-        clearTimeout(timer);
+        timers.clearTimeout(handle);
     }
 }

@@ -2762,10 +2762,9 @@ async function main(): Promise<void> {
             assert.equal(response.status, 200);
             assert.deepEqual(log, ["suspend", "revoke:1", "audit:admin.user.suspend"], "the audit is written once the bounded end gave up");
             const events = lines.map((line) => (JSON.parse(line) as { event: string; context?: Record<string, unknown> }));
-            assert.deepEqual(
-                events.filter((event) => event.event.startsWith("streamer_session.")).map((event) => [event.event, event.context]),
-                [["streamer_session.account_stop_failed", { streamId: session.id }]],
-            );
+            // Reported once: the runtime names the stuck turn; the helper adds nothing.
+            assert.deepEqual(h.errors.map((error) => [error.event, error.context]), [["streamer_session.queue_wait_timeout", { sessionId: session.id }]]);
+            assert.deepEqual(events.filter((event) => event.event.startsWith("streamer_session.")), []);
             assert.ok(h.runtime.get(session.id), "still live: its own queue ends it");
         } finally {
             resetObservabilityForTests();
@@ -2777,6 +2776,35 @@ async function main(): Promise<void> {
         await turn();
         await h.runtime.flush();
         assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "stopped" }], "the queued end ran once the draw came back");
+    });
+
+    await test("a stuck suspension end is reported once, by the runtime; the helper answers on the injected clock", async () => {
+        const { clock, h, session, starting, release } = await stuckDraw();
+        const slot = globalThis as typeof globalThis & { __hushleStreamerSessionRuntime?: StreamerSessionRuntime };
+        const previous = slot.__hushleStreamerSessionRuntime;
+        slot.__hushleStreamerSessionRuntime = h.runtime;
+        const lines: string[] = [];
+        resetObservabilityForTests({ sink: (_level, line) => lines.push(line) });
+        try {
+            const ending = endStreamerSessionsForUser(1, { timers: clock.timers });
+            await turn();
+            assert.equal(await settlesNow(ending), false);
+            assert.deepEqual([...clock.timeouts.values()].map((timeout) => timeout.ms).sort((a, b) => a - b), [10_000, 21_000], "the runtime's turn bound, then the helper's last resort past it");
+            clock.elapse(10_000);
+            assert.equal(await ending, false, "the runtime's bound answered first");
+            assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.queue_wait_timeout"]);
+            assert.deepEqual(lines, [], "no second report from the helper");
+            assert.equal(clock.timeouts.size, 0, "the helper's own bound is cleared");
+        } finally {
+            resetObservabilityForTests();
+            if (previous) slot.__hushleStreamerSessionRuntime = previous;
+            else delete slot.__hushleStreamerSessionRuntime;
+        }
+        release();
+        await starting;
+        await turn();
+        await h.runtime.flush();
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "stopped" }]);
     });
 
     await test("endStreamerSessionsForUser answers within its own bound even when the end it started never settles", async () => {
@@ -2793,10 +2821,16 @@ async function main(): Promise<void> {
         } as unknown as StreamerSessionRuntime;
         const lines: string[] = [];
         resetObservabilityForTests({ sink: (_level, line) => lines.push(line) });
+        const clock = manualTimers();
         try {
-            assert.equal(await endStreamerSessionsForUser(6, { timeoutMs: 5 }), false, "nothing live for that user");
+            assert.equal(await endStreamerSessionsForUser(6, { timers: clock.timers }), false, "nothing live for that user");
             assert.equal(ends, 0);
-            assert.equal(await endStreamerSessionsForUser(5, { timeoutMs: 5 }), false, "the bound answered");
+            const ending = endStreamerSessionsForUser(5, { timers: clock.timers });
+            await turn();
+            clock.elapse(20_999);
+            assert.equal(await settlesNow(ending), false, "the helper waits past the runtime's own bounds");
+            clock.elapse(1);
+            assert.equal(await ending, false, "then its own bound answers");
             assert.equal(ends, 1);
             const events = lines.map((line) => JSON.parse(line) as { event: string; context?: Record<string, unknown> });
             assert.deepEqual(events.map((event) => [event.event, event.context]), [["streamer_session.account_stop_timeout", { streamId: id }]]);
