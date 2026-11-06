@@ -5,11 +5,15 @@ import path from "node:path";
 import { prisma } from "@hushle/platform-db";
 
 // The public stream screen (/stream/[viewKey], the OBS browser source). The demo scenes
-// (?demo=) need the server started with STREAMER_FAKE_PLATFORM=1. Screenshots land in
-// test-results/stream-screen/ (git-ignored) for an eye check against the V4 prototype. The live
-// session test also needs STREAMER_TOKEN_KEY (server and here) and the test database.
+// (?demo=), the play loop and the live session need the server started with
+// STREAMER_FAKE_PLATFORM=1 and skip here without it; the unknown-key tests need no fake platform
+// and always run. The live session test also needs STREAMER_TOKEN_KEY (server and here) and the
+// test database. Screenshots, for an eye check against the V4 prototype, go to
+// STREAM_SCREEN_SHOTS_DIR (default .playwright-artifacts/stream-screen/, git-ignored, never
+// committed): outside test-results/, which Playwright empties at the start of every run.
 
-const enabled = process.env.STREAMER_FAKE_PLATFORM === "1";
+const fakePlatform = process.env.STREAMER_FAKE_PLATFORM === "1";
+const SKIP_WITHOUT_FAKE = "set STREAMER_FAKE_PLATFORM=1 (and start the server with it) to run";
 const THEMES = ["oyun-gecesi", "studyo", "gece-altini", "sakura", "sade"] as const;
 const STATES = [
     "empty",
@@ -38,9 +42,12 @@ const PHASE_OF: Record<DemoState, string> = {
     ended: "ended",
     longnames: "running",
 };
-const SHOTS = path.join("test-results", "stream-screen");
+const SHOTS = process.env.STREAM_SCREEN_SHOTS_DIR || path.join(".playwright-artifacts", "stream-screen");
 // Any path segment works for a demo; the scene never connects.
 const DEMO = "/stream/preview";
+// The scenes are shot without motion; reducedMotion is a context option, not a fixture of its
+// own: at the top level of test.use Playwright ignores it.
+const STILL = { viewport: { width: 1920, height: 1080 }, contextOptions: { reducedMotion: "reduce" as const } };
 
 async function settle(page: Page): Promise<void> {
     const screen = page.locator("main.hushle-stream");
@@ -58,6 +65,61 @@ async function settle(page: Page): Promise<void> {
 async function openDemo(page: Page, query: string): Promise<void> {
     await page.goto(`${DEMO}?${query}`);
     await settle(page);
+}
+
+async function expectReducedMotion(page: Page): Promise<void> {
+    // The context must really emulate it.
+    expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches), "reduced motion").toBe(true);
+}
+
+/**
+ * Where the view key shows up in the page: any attribute of any element, any text or comment
+ * node, open shadow roots included. Next's flight data is left out: those <script>s
+ * (self.__next_f.push) carry the route's segments for React, so the key in the URL is
+ * inherently in them; they are never drawn.
+ */
+async function keyLeaks(page: Page, key: string): Promise<string[]> {
+    return page.evaluate((key) => {
+        const leaks: string[] = [];
+        const isFlightData = (node: Node) => node.parentElement?.localName === "script" && (node.textContent ?? "").includes("self.__next_f");
+        const walk = (root: Node) => {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                if (node instanceof Element) {
+                    for (const attribute of node.attributes) {
+                        if (attribute.value.includes(key)) leaks.push(`<${node.localName} ${attribute.name}>`);
+                    }
+                    if (node.shadowRoot) walk(node.shadowRoot);
+                } else if ((node.textContent ?? "").includes(key) && !isFlightData(node)) {
+                    leaks.push(`${node.nodeName} in <${node.parentElement?.localName ?? "?"}>`);
+                }
+            }
+        };
+        walk(document);
+        return leaks;
+    }, key);
+}
+
+async function expectNoKey(page: Page, key: string): Promise<void> {
+    expect(await page.title()).not.toContain(key);
+    expect(await page.locator("body").innerText()).not.toContain(key);
+    expect(await keyLeaks(page, key)).toEqual([]);
+}
+
+// OBS keys out what is see-through: <html> and <body> must be transparent on their own (the
+// root layout's inline style), not only through the screen stylesheet's html:has() rule.
+async function expectSeeThrough(page: Page): Promise<void> {
+    const backgrounds = await page.evaluate(() =>
+        [document.documentElement, document.body].map((node) => ({
+            node: node.localName,
+            computed: getComputedStyle(node).backgroundColor,
+            inline: node.style.backgroundColor,
+        }))
+    );
+    expect(backgrounds).toEqual([
+        { node: "html", computed: "rgba(0, 0, 0, 0)", inline: "transparent" },
+        { node: "body", computed: "rgba(0, 0, 0, 0)", inline: "transparent" },
+    ]);
 }
 
 async function checkScene(page: Page, state: DemoState): Promise<void> {
@@ -135,15 +197,10 @@ async function checkScene(page: Page, state: DemoState): Promise<void> {
     }
 }
 
-test.describe("stream screen", () => {
-    test.skip(!enabled, "set STREAMER_FAKE_PLATFORM=1 (and start the server with it) to run");
-    // reducedMotion is a context option, not a fixture of its own: at the top level of test.use
-    // Playwright ignores it.
-    test.use({ viewport: { width: 1920, height: 1080 }, contextOptions: { reducedMotion: "reduce" } });
-    test.beforeEach(async ({ page }) => {
-        // The scenes are shot without motion: the context must really emulate it.
-        expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches), "reduced motion").toBe(true);
-    });
+test.describe("stream screen demo scenes", () => {
+    test.skip(!fakePlatform, SKIP_WITHOUT_FAKE);
+    test.use(STILL);
+    test.beforeEach(async ({ page }) => expectReducedMotion(page));
 
     for (const theme of THEMES) {
         test(`demo scenes render for ${theme}`, async ({ page }) => {
@@ -203,17 +260,9 @@ test.describe("stream screen", () => {
         }
     });
 
-    test("an unknown view key shows the offline scene and never prints the key", async ({ page }) => {
-        // A malformed key (refused before connecting) and a well-formed one the server does not know.
-        for (const key of ["not-a-real-key", "A".repeat(43)]) {
-            await page.goto(`/stream/${key}`);
-            const screen = page.locator("main.hushle-stream");
-            await expect(screen).toHaveAttribute("data-ready", "true");
-            await expect(screen).toHaveAttribute("data-phase", "paused", { timeout: 10_000 });
-            await expect(page.locator("#pause-sign")).toHaveText("Bağlantı bekleniyor");
-            expect(await page.title()).not.toContain(key);
-            expect(await page.locator("body").innerText()).not.toContain(key);
-        }
+    test("a demo page's html and body are see-through on their own", async ({ page }) => {
+        await openDemo(page, "demo=running");
+        await expectSeeThrough(page);
     });
 
     test("a ?demo= scene still names no view key and keeps the URL look", async ({ page }) => {
@@ -231,8 +280,37 @@ test.describe("stream screen", () => {
     });
 });
 
+// No fake platform needed: a key that opens nothing is refused the same way either way.
+test.describe("stream screen with an unknown key", () => {
+    test.use(STILL);
+    test.beforeEach(async ({ page }) => expectReducedMotion(page));
+
+    test("an unknown view key shows the offline scene; the key is in no title, text node or attribute (Next's flight data aside)", async ({
+        page,
+    }) => {
+        // A malformed key (refused before connecting) and a well-formed one the server does not know.
+        for (const key of ["not-a-real-key", "A".repeat(43)]) {
+            await page.goto(`/stream/${key}`);
+            const screen = page.locator("main.hushle-stream");
+            await expect(screen).toHaveAttribute("data-ready", "true");
+            await expect(screen).toHaveAttribute("data-phase", "paused", { timeout: 10_000 });
+            await expect(page.locator("#pause-sign")).toHaveText("Bağlantı bekleniyor");
+            await expect(screen).not.toHaveClass(/preview/);
+            await expectNoKey(page, key);
+            await expectSeeThrough(page);
+
+            // The walker sees a leak when there is one.
+            await page.evaluate((key) => {
+                document.body.dataset.probe = key;
+                document.body.append(document.createComment(key), document.createTextNode(key));
+            }, key);
+            expect(await keyLeaks(page, key)).toEqual(["<body data-probe>", "#comment in <body>", "#text in <body>"]);
+        }
+    });
+});
+
 test.describe("stream screen motion", () => {
-    test.skip(!enabled, "set STREAMER_FAKE_PLATFORM=1 (and start the server with it) to run");
+    test.skip(!fakePlatform, SKIP_WITHOUT_FAKE);
     test.use({ viewport: { width: 1920, height: 1080 }, contextOptions: { reducedMotion: "no-preference" } });
     test.beforeEach(async ({ page }) => {
         // The play loop's timings need the motion on.
@@ -240,54 +318,78 @@ test.describe("stream screen motion", () => {
     });
 
     test("the play loop stamps, flips, scores, passes, times out and ends", async ({ page }) => {
-        test.setTimeout(120_000);
+        // The page runs on Playwright's clock, paused from its first script: the loop moves only
+        // when the test moves the clock, so each step is checked at its own millisecond however
+        // loaded the machine is. Times are from the loop's start (the play script in
+        // stream-demo.ts): ready, the first second at 1.2 s, the solve at 9.9 s, a pass at
+        // 20.7 s, the last ten seconds from 32.3 s, time up at 42.3 s and the finale at 46.5 s.
+        const start = new Date("2026-11-06T20:00:00Z");
+        await page.clock.install({ time: start });
+        await page.clock.pauseAt(new Date(start.getTime() + 1_000));
         await openDemo(page, "demo=play&theme=oyun-gecesi");
         const screen = page.locator("main.hushle-stream");
         await expect(screen).toHaveAttribute("data-phase", "ready");
 
+        let now = 0;
+        const at = async (ms: number) => {
+            await page.clock.runFor(ms - now);
+            now = ms;
+        };
+        const look = () =>
+            page.evaluate(() => ({
+                phase: document.querySelector("main.hushle-stream")?.getAttribute("data-phase"),
+                seconds: document.querySelector("#seconds")?.textContent,
+                low: document.querySelector(".timer.low") !== null,
+                stamp: document.querySelector("#verdict.show") !== null,
+                kind: document.querySelector("#verdict")?.getAttribute("data-kind") ?? null,
+                flipped: document.querySelector("#card.flipped") !== null,
+                last: document.querySelector("#last-name")?.textContent,
+            }));
+
+        await at(9_899);
+        expect(await look()).toMatchObject({ phase: "running", seconds: "52", stamp: false, flipped: false, last: "Luna" });
         // Reveal sequencing: the stamp at once, the card 420 ms later, the score at 1.2 s.
-        const marks = await page.evaluate(
-            () =>
-                new Promise<Record<string, number>>((resolve) => {
-                    const root = document.querySelector("main.hushle-stream")!;
-                    const seen: Record<string, number> = {};
-                    const note = (key: string, on: boolean) => {
-                        if (on && !(key in seen)) seen[key] = performance.now();
-                    };
-                    const observer = new MutationObserver(() => {
-                        note("finished", root.getAttribute("data-phase") === "finished");
-                        note("stamp", Boolean(document.querySelector("#verdict.show")));
-                        note("flip", Boolean(document.querySelector("#card.flipped")));
-                        note("score", document.querySelector("#last-name")?.textContent === "Deniz");
-                        if (Object.keys(seen).length === 4) {
-                            observer.disconnect();
-                            resolve(seen);
-                        }
-                    });
-                    observer.observe(root, { subtree: true, attributes: true, childList: true, characterData: true });
-                })
-        );
-        expect(marks.stamp - marks.finished).toBeLessThan(100);
-        expect(marks.flip - marks.finished).toBeGreaterThanOrEqual(380);
-        expect(marks.flip - marks.finished).toBeLessThan(900);
-        expect(marks.score - marks.finished).toBeGreaterThanOrEqual(1150);
-        expect(marks.score - marks.finished).toBeLessThan(1900);
+        await at(9_900);
+        expect(await look()).toMatchObject({ phase: "finished", stamp: true, kind: "solved", flipped: false, last: "Luna" });
+        await at(10_319);
+        expect(await look()).toMatchObject({ flipped: false });
+        await at(10_320);
+        expect(await look()).toMatchObject({ flipped: true, last: "Luna" });
+        await at(11_099);
+        expect(await look()).toMatchObject({ last: "Luna" });
+        await at(11_100);
+        expect(await look()).toMatchObject({ last: "Deniz" });
         await expect(page.locator("#verdict-word")).toHaveText("Bildi!");
         await page.screenshot({ path: path.join(SHOTS, "play-solved.png") });
 
-        await expect(page.locator("#verdict")).toHaveAttribute("data-kind", "pass", { timeout: 20_000 });
+        await at(20_699);
+        expect(await look()).toMatchObject({ phase: "running", stamp: false });
+        await at(20_700);
+        expect(await look()).toMatchObject({ phase: "running", stamp: true, kind: "pass" });
         await expect(page.locator("#verdict-detail")).toHaveText("KUM SAATİ");
-        await expect(page.locator(".timer")).toHaveClass(/low/, { timeout: 20_000 });
-        await expect(page.locator("#verdict-word")).toHaveText("Süre doldu", { timeout: 20_000 });
-        await expect(page.locator("#card")).toHaveClass(/flipped/, { timeout: 2_000 });
-        await expect(screen).toHaveAttribute("data-phase", "ended", { timeout: 10_000 });
+
+        await at(32_299);
+        expect(await look()).toMatchObject({ seconds: "11", low: false });
+        await at(32_300);
+        expect(await look()).toMatchObject({ seconds: "10", low: true });
+
+        await at(42_300);
+        expect(await look()).toMatchObject({ phase: "finished", seconds: "0", stamp: true, kind: "timeout", flipped: false });
+        await expect(page.locator("#verdict-word")).toHaveText("Süre doldu");
+        await at(42_720);
+        expect(await look()).toMatchObject({ flipped: true });
+
+        await at(46_499);
+        expect(await look()).toMatchObject({ phase: "finished" });
+        await at(46_500);
+        expect(await look()).toMatchObject({ phase: "ended" });
         await expect(page.locator("#winner")).toBeVisible();
         await page.screenshot({ path: path.join(SHOTS, "play-ended.png") });
     });
 });
 
 test.describe("stream screen live session", () => {
-    const live = enabled && Boolean(process.env.STREAMER_TOKEN_KEY);
+    const live = fakePlatform && Boolean(process.env.STREAMER_TOKEN_KEY);
     test.skip(!live, "set STREAMER_FAKE_PLATFORM=1 and STREAMER_TOKEN_KEY (and start the server with them) to run");
     test.describe.configure({ mode: "serial" });
 
@@ -399,8 +501,8 @@ test.describe("stream screen live session", () => {
         await expect(root).not.toHaveClass(/preview/);
         await expect(screen.locator("#channel")).toHaveText(`@${channelLogin} · Twitch`);
         await expect(screen.locator("#seconds")).toHaveText("Hazır");
-        expect(await screen.title()).not.toContain(viewKey);
-        expect(await screen.locator("body").innerText()).not.toContain(viewKey);
+        await expectNoKey(screen, viewKey);
+        await expectSeeThrough(screen);
         await screen.screenshot({ path: path.join(SHOTS, "live-ready.png") });
 
         // A rotated key closes the old screen; the new key opens the same session.
