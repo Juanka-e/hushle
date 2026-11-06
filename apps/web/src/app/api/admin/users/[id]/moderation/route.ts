@@ -8,7 +8,7 @@ import {
 import { clearExpiredSuspensions } from "@/lib/moderation/service";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import { revokeStreamerConnectionsForUser } from "@/lib/streamer/connections-view";
-import { endStreamerSessionsForUser } from "@/lib/streamer/session-deps";
+import { endStreamerSessionsForUser } from "@/lib/streamer/session-account";
 import {
     buildRateLimitHeaders,
     consumeRequestRateLimit,
@@ -150,9 +150,11 @@ export async function POST(
         });
 
         if (action.actionType === "suspend") {
-            // A suspended account keeps no live stream (it ends "stopped") and no live platform grant (streamer spec, karar 4).
-            await endStreamerSessionsForUser(targetUserId);
+            // A suspended account keeps no live platform grant (streamer spec, karar 4) and no live
+            // stream (it ends "stopped"). The grants go first; the stream end is bounded, so a stuck
+            // stream never holds the audit or the answer (its own queue still ends it).
             await revokeStreamerConnectionsForUser(targetUserId, request);
+            await endStreamerSessionsForUser(targetUserId);
         }
 
         await writeAuditLog({

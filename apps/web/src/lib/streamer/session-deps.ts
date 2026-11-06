@@ -10,7 +10,6 @@ import { getSystemSettings } from "@/lib/system-settings/service";
 import { clearWordPool, getNextWord } from "@/lib/socket/word-service";
 import {
     createStreamerSessionRuntime,
-    isStreamerSessionError,
     type ConnectionCheck,
     type SessionConnection,
     type StreamerSessionRuntime,
@@ -73,26 +72,8 @@ async function streamerModeEnabled(): Promise<boolean> {
     return (await getSystemSettings()).features.streamerModeEnabled === true;
 }
 
-/**
- * An account action (an admin suspension) takes the user's stream off the air: their live
- * session ends with reason `stopped`. The runtime of this process only, and never one created
- * here: without a running runtime (a job, a route bundle in another process) it does nothing.
- * Never throws; true when a session was ended.
- */
-export async function endStreamerSessionsForUser(userId: number): Promise<boolean> {
-    const runtime = globalForStreamerSessions.__hushleStreamerSessionRuntime;
-    const live = runtime?.forUser(userId);
-    if (!runtime || !live) return false;
-    try {
-        await runtime.end(live.id, "stopped");
-        return true;
-    } catch (error) {
-        if (!(isStreamerSessionError(error) && error.code === "not_found")) {
-            reportStreamerSessionError("streamer_session.account_stop_failed", error, { sessionId: live.id });
-        }
-        return false;
-    }
-}
+// An account action (an admin suspension) ends the user's live session: see session-account.ts.
+export { endStreamerSessionsForUser } from "./session-account";
 
 /**
  * Server boot, idempotent: no in-memory session survives a restart, so every row the previous

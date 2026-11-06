@@ -381,13 +381,16 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.match(boot, /runtime\.watchMode\(streamerModeEnabled\);/, "boot starts the streamer-mode watch");
     assert.match(deps, /async function streamerModeEnabled\(\): Promise<boolean> \{\s*return \(await getSystemSettings\(\)\)\.features\.streamerModeEnabled === true;/);
     assert.match(deps.split("export function getStreamerSessionRuntime")[1] ?? "", /checkConnection: checkLiveConnection,/, "the runtime checks each live link hourly");
-    // An admin suspension takes the owner's stream off the air, then revokes the links.
+    // An admin suspension revokes the links, then takes the owner's stream off the air (bounded),
+    // then writes its audit: a stuck stream never holds the revoke, and the audit only the bound.
     const moderation = code("apps/web/src/app/api/admin/users/[id]/moderation/route.ts");
     const suspend = moderation.split('if (action.actionType === "suspend") {').slice(1).join("");
     const endAt = suspend.indexOf("await endStreamerSessionsForUser(targetUserId);");
+    const revokeAt = suspend.indexOf("await revokeStreamerConnectionsForUser(targetUserId, request);");
     assert.ok(endAt >= 0, "a suspension ends the user's live stream session");
-    assert.ok(endAt < suspend.indexOf("await revokeStreamerConnectionsForUser(targetUserId, request);"), "before the links are revoked");
-    assert.match(moderation, /import \{ endStreamerSessionsForUser \} from "@\/lib\/streamer\/session-deps";/);
+    assert.ok(revokeAt >= 0 && revokeAt < endAt, "after the links are revoked");
+    assert.ok(endAt < suspend.indexOf("await writeAuditLog("), "and before the audit");
+    assert.match(moderation, /import \{ endStreamerSessionsForUser \} from "@\/lib\/streamer\/session-account";/);
 
     // docs/socket-events.md names every reason, the notice, the limits and the mode-off answers.
     const docs = read("docs/socket-events.md");

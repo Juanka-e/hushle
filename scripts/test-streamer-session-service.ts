@@ -54,6 +54,7 @@ import {
 } from "../apps/web/src/lib/streamer/session-service";
 import { resolveCardBackSelection, type CardBackCatalogItem, type CardBackLoaders } from "../apps/web/src/lib/streamer/card-backs";
 import type { StreamerTimers } from "../apps/web/src/lib/streamer/session-timers";
+import { endStreamerSessionsForUser } from "../apps/web/src/lib/streamer/session-account";
 import { createViewKey, hashViewKey } from "../apps/web/src/lib/streamer/view-key";
 import * as realRateLimit from "../apps/web/src/lib/security/request-rate-limit";
 
@@ -506,6 +507,73 @@ function assertNoSecrets(payload: unknown, card: StreamCard): void {
         assert.equal(json.includes(word), false, `public snapshot leaks "${word}"`);
         assert.equal(lower.includes(word.toLocaleLowerCase("tr")), false, `public snapshot leaks "${word}" (case-folded)`);
     }
+}
+
+/**
+ * The admin moderation route with its database, admin check, audit log and link revoke faked (each
+ * logs to `log`); the stream session helper it calls is the real one. The module cache entries are
+ * put back once the route is loaded (it keeps the fakes it was loaded with).
+ */
+async function loadModerationRoute(log: string[]) {
+    const fakes: Record<string, Record<string, unknown>> = {
+        "apps/web/src/lib/prisma.ts": {
+            prisma: {
+                user: { findUnique: async () => ({ id: 1, username: "yayinci1", role: "user", isSuspended: false }) },
+                $transaction: async (run: (tx: unknown) => Promise<unknown>) =>
+                    run({
+                        user: {
+                            update: async () => {
+                                log.push("suspend");
+                                return {};
+                            },
+                        },
+                        userModerationEvent: {
+                            create: async () => ({
+                                id: 7,
+                                actionType: "suspend",
+                                reason: "kural ihlali",
+                                suspendedUntil: null,
+                                createdAt: new Date(START),
+                                actorUser: { id: 99, username: "yonetici", role: "admin" },
+                            }),
+                        },
+                    }),
+            },
+        },
+        "apps/web/src/lib/admin/require-admin.ts": { requireAdminSession: async () => ({ id: 99, username: "yonetici", role: "admin" }) },
+        "apps/web/src/lib/moderation/service.ts": { clearExpiredSuspensions: async () => undefined },
+        "apps/web/src/lib/security/audit-log.ts": {
+            writeAuditLog: async (entry: { action: string }) => {
+                log.push(`audit:${entry.action}`);
+            },
+        },
+        "apps/web/src/lib/streamer/connections-view.ts": {
+            revokeStreamerConnectionsForUser: async (userId: number) => {
+                log.push(`revoke:${userId}`);
+                return 1;
+            },
+        },
+    };
+    const previous = new Map<string, NodeModule | undefined>();
+    for (const [file, exports] of Object.entries(fakes)) {
+        const filename = require.resolve(path.resolve(file));
+        previous.set(filename, require.cache[filename]);
+        fakeModule(file, exports);
+    }
+    try {
+        return (await import(pathToFileURL(path.resolve("apps/web/src/app/api/admin/users/[id]/moderation/route.ts")).href)) as typeof import("../apps/web/src/app/api/admin/users/[id]/moderation/route");
+    } finally {
+        for (const [filename, module] of previous) {
+            if (module) require.cache[filename] = module;
+            else delete require.cache[filename];
+        }
+    }
+}
+
+/** Lets the event loop turn until `done()` holds (at most 500 turns). */
+async function eventually(done: () => boolean, label: string): Promise<void> {
+    for (let attempt = 0; attempt < 500 && !done(); attempt++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(done(), label);
 }
 
 async function main(): Promise<void> {
@@ -2432,6 +2500,76 @@ async function main(): Promise<void> {
         resetRouteWorld(h);
         const again = await answerOf(await routes.end.POST(routeRequest("/current/end")));
         assert.deepEqual([again.status, again.body?.code], [404, "STREAMER_SESSION_NOT_FOUND"]);
+    });
+
+    await test("routes: a suspension revokes the links and writes its audit without waiting on a stuck stream; the end is bounded, the queue still ends it", async () => {
+        const { clock, h, session, starting, release } = await stuckDraw();
+        const log: string[] = [];
+        const moderation = await loadModerationRoute(log);
+        const slot = globalThis as typeof globalThis & { __hushleStreamerSessionRuntime?: StreamerSessionRuntime };
+        const previous = slot.__hushleStreamerSessionRuntime;
+        slot.__hushleStreamerSessionRuntime = h.runtime;
+        const lines: string[] = [];
+        resetObservabilityForTests({ sink: (_level, line) => lines.push(line) });
+        try {
+            const request = new NextRequest(`${ROUTE_ORIGIN}/api/admin/users/1/moderation`, {
+                method: "POST",
+                headers: { origin: ROUTE_ORIGIN, "content-type": "application/json" },
+                body: JSON.stringify({ actionType: "suspend", reason: "kural ihlali", suspendedUntil: null }),
+            });
+            const answering = moderation.POST(request, { params: Promise.resolve({ id: "1" }) });
+            // The end has asked for its turn behind the stuck draw.
+            await eventually(() => clock.requested.length > 0, "the stream end is waiting for its turn");
+            assert.deepEqual(log, ["suspend", "revoke:1"], "the links are revoked before the stream end is waited for");
+            assert.equal(await settlesNow(answering), false, "the end waits, bounded");
+            clock.fireTimeouts();
+            const response = await answering;
+            assert.equal(response.status, 200);
+            assert.deepEqual(log, ["suspend", "revoke:1", "audit:admin.user.suspend"], "the audit is written once the bounded end gave up");
+            const events = lines.map((line) => (JSON.parse(line) as { event: string; context?: Record<string, unknown> }));
+            assert.deepEqual(
+                events.filter((event) => event.event.startsWith("streamer_session.")).map((event) => [event.event, event.context]),
+                [["streamer_session.account_stop_failed", { streamId: session.id }]],
+            );
+            assert.ok(h.runtime.get(session.id), "still live: its own queue ends it");
+        } finally {
+            resetObservabilityForTests();
+            if (previous) slot.__hushleStreamerSessionRuntime = previous;
+            else delete slot.__hushleStreamerSessionRuntime;
+        }
+        release();
+        await starting;
+        await turn();
+        await h.runtime.flush();
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "stopped" }], "the queued end ran once the draw came back");
+    });
+
+    await test("endStreamerSessionsForUser answers within its own bound even when the end it started never settles", async () => {
+        const slot = globalThis as typeof globalThis & { __hushleStreamerSessionRuntime?: StreamerSessionRuntime };
+        const previous = slot.__hushleStreamerSessionRuntime;
+        const id = "00000000-0000-4000-8000-0000000000b2";
+        let ends = 0;
+        slot.__hushleStreamerSessionRuntime = {
+            forUser: (userId: number) => (userId === 5 ? { id } : null),
+            end: () => {
+                ends += 1;
+                return new Promise<never>(() => undefined);
+            },
+        } as unknown as StreamerSessionRuntime;
+        const lines: string[] = [];
+        resetObservabilityForTests({ sink: (_level, line) => lines.push(line) });
+        try {
+            assert.equal(await endStreamerSessionsForUser(6, { timeoutMs: 5 }), false, "nothing live for that user");
+            assert.equal(ends, 0);
+            assert.equal(await endStreamerSessionsForUser(5, { timeoutMs: 5 }), false, "the bound answered");
+            assert.equal(ends, 1);
+            const events = lines.map((line) => JSON.parse(line) as { event: string; context?: Record<string, unknown> });
+            assert.deepEqual(events.map((event) => [event.event, event.context]), [["streamer_session.account_stop_timeout", { streamId: id }]]);
+        } finally {
+            resetObservabilityForTests();
+            if (previous) slot.__hushleStreamerSessionRuntime = previous;
+            else delete slot.__hushleStreamerSessionRuntime;
+        }
     });
 
     if (fakePlatform === undefined) delete process.env.STREAMER_FAKE_PLATFORM;
