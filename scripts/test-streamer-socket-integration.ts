@@ -710,6 +710,26 @@ async function main(): Promise<void> {
             assertError(await ask(owner, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "after the window");
         });
 
+        await test("host actions are limited per user too: a second tab of the owner shares the same 10 / 10 s", async () => {
+            const tab = await connect(url, "owner");
+            assertOk(await ask(tab, "streamer:host:join", { sessionId }), "a second owner tab");
+            for (let action = 1; action <= 6; action++) {
+                assertError(await ask(owner, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", `first tab, action ${action}`);
+            }
+            for (let action = 1; action <= 4; action++) {
+                assertError(await ask(tab, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", `second tab, action ${action}`);
+            }
+            assertError(await ask(tab, "streamer:host:resume"), "RATE_LIMITED", "the user's 11th action, from the second tab");
+            assertError(await ask(owner, "streamer:host:pause"), "RATE_LIMITED", "and from the first tab, which used 6 of its own 10");
+            assert.equal(runtime.get(sessionId)?.phase, "running", "a limited pause did not run");
+            // A socket that joined no host room has only its own window: the user's is not touched.
+            const unjoined = await connect(url, "owner");
+            assertError(await ask(unjoined, "streamer:host:start"), "STREAMER_SESSION_NOT_FOUND", "an owner socket outside the host room");
+            socketClock.now += 10_001;
+            assertError(await ask(tab, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "after the window");
+            assertError(await ask(owner, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "after the window, the first tab too");
+        });
+
         await test("public joins are limited per IP in the streamer-public-join bucket (30 / 60 s)", async () => {
             limiter.reset();
             const before = limiter.calls.length;

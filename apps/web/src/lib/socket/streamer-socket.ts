@@ -280,14 +280,20 @@ function dataOf(socket: Socket): StreamerSocketData {
     return socket.data as StreamerSocketData;
 }
 
+/** Burst windows kept before the expired ones are swept (per socket and per user). */
+const MAX_BURST_WINDOWS = 1_000;
+
 function createBurstLimiter(now: () => number) {
-    const windows = new Map<string, { startedAt: number; count: number }>();
+    const windows = new Map<string, { startedAt: number; count: number; windowMs: number }>();
     return {
         consume(key: string, limit: { windowMs: number; maxRequests: number }): boolean {
             const at = now();
+            if (windows.size >= MAX_BURST_WINDOWS) {
+                for (const [stale, window] of windows) if (at - window.startedAt >= window.windowMs) windows.delete(stale);
+            }
             const current = windows.get(key);
             if (!current || at - current.startedAt >= limit.windowMs) {
-                windows.set(key, { startedAt: at, count: 1 });
+                windows.set(key, { startedAt: at, count: 1, windowMs: limit.windowMs });
                 return true;
             }
             if (current.count >= limit.maxRequests) return false;
@@ -472,13 +478,21 @@ export function setupStreamerSocket(
             return;
         }
 
+        // Per socket, and once the socket joined a host room per user as well (`user:<id>`, the
+        // same 10 / 10 s): a second tab of the owner shares the user's window instead of doubling it.
+        function hostBurstAllowed(): boolean {
+            if (!burst.consume(`${socket.id}:host-action`, STREAMER_HOST_ACTION_BURST)) return false;
+            const userId = dataOf(socket).streamerHostUserId;
+            return userId === undefined || burst.consume(`user:${userId}:host-action`, STREAMER_HOST_ACTION_BURST);
+        }
+
         function hostAction<T>(
             event: string,
             schema: z.ZodType<T>,
             run: (live: LiveStreamSession, payload: T) => Promise<Record<string, unknown> | void>,
         ): void {
             handle(socket, event, async (raw) => {
-                if (!burst.consume(`${socket.id}:host-action`, STREAMER_HOST_ACTION_BURST)) throw new Refusal(PlayerErrorCode.RATE_LIMITED);
+                if (!hostBurstAllowed()) throw new Refusal(PlayerErrorCode.RATE_LIMITED);
                 const payload = parse(schema, raw);
                 return run(joinedSession(socket), payload);
             });
