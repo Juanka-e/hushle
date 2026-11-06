@@ -585,10 +585,31 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.equal(servers.length, 2, "nginx: the redirect server and the TLS server");
     for (const [index, block] of servers.entries()) {
         const logs = block.match(/^\s*access_log\b.*$/gm) ?? [];
-        assert.deepEqual(logs.map((line) => line.trim()), ["access_log /var/log/nginx/access.log combined if=$hushle_loggable;"], `nginx server ${index + 1}: one access log, conditional`);
+        // The image's own `main` format: it keeps $http_x_forwarded_for, which `combined` drops.
+        assert.deepEqual(logs.map((line) => line.trim()), ["access_log /var/log/nginx/access.log main if=$hushle_loggable;"], `nginx server ${index + 1}: one access log, conditional`);
     }
     assert.ok(servers[1].includes("listen 443 ssl http2;"), "the second server is the TLS one");
     assert.equal((nginx.match(/\baccess_log\b/g) ?? []).length, 2, "nginx: no other access log");
+    // An upstream failure (a 502 during a deploy) is an `error` line that quotes the request:
+    // /stream/<view key> has its own location whose error log keeps only `crit`, proxied the same
+    // way as `location /` (which stays as it was). Its access log is the server's (the map above).
+    const locationOf = (prefix: string) => {
+        const start = servers[1].indexOf(`    location ${prefix} {\n`);
+        assert.ok(start >= 0, `nginx: the TLS server has location ${prefix}`);
+        const body = servers[1].slice(start, servers[1].indexOf("\n    }\n", start));
+        return body.split("\n").slice(1).map((line) => line.trim()).filter(Boolean);
+    };
+    const proxied = [
+        "proxy_http_version 1.1;",
+        "proxy_set_header Upgrade $http_upgrade;",
+        "proxy_set_header Connection $connection_upgrade;",
+        "proxy_read_timeout 3600s;",
+        "proxy_send_timeout 3600s;",
+        "proxy_pass http://hushle_app;",
+    ];
+    assert.deepEqual(locationOf("/"), proxied, "nginx: location / is unchanged");
+    assert.deepEqual(locationOf("^~ /stream/"), ["error_log /var/log/nginx/error.log crit;", ...proxied], "nginx: /stream/ is proxied the same way, its upstream errors unwritten");
+    assert.ok(!servers[0].includes("location"), "nginx: the redirect server proxies nothing");
     // The app's stop() can take about 20 s (a queue turn, then the final writes, each 10 s at most):
     // Docker's default 10 s grace would kill a graceful shutdown halfway.
     const compose = read("docker-compose.yml").replace(/\r\n/g, "\n");
