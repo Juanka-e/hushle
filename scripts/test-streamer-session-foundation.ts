@@ -410,6 +410,10 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     const rotate = docs.split(/\r?\n/).find((line) => line.startsWith("| `streamer:host:rotate-key` |")) ?? "";
     assert.ok(rotate.includes("`streamer-view-key`") && rotate.includes("10 / 15 min") && rotate.includes("per user") && rotate.includes("SERVER_BUSY"), "rotate-key names the shared per-user bucket and the busy answer");
     assert.ok(docs.includes("10 per 10 s per socket and, once the socket joined a host room, 10 per 10 s per user"), "host actions are limited per socket and per user");
+    // A word draw is bounded (STREAM_DRAW_TIMEOUT_MS): start, pass and next can answer SERVER_BUSY.
+    const actions = docs.split(/\r?\n/).find((line) => line.startsWith("| `streamer:host:start`, ")) ?? "";
+    assert.ok(actions.includes("`SERVER_BUSY` (start, pass, next: the word draw did not answer within 10 s; nothing changed, try again)"), "the host actions row names the bounded draw");
+    assert.match(read("apps/web/src/lib/streamer/session-draw.ts"), /export const STREAM_DRAW_TIMEOUT_MS = 10_000;/);
     assert.ok(docs.includes("`STREAMER_MODE_DISABLED`") && docs.includes("opaque `STREAMER_VIEW_KEY_INVALID`"), "the mode-off refusals are documented");
     assert.ok(!docs.includes("does\r\nnot send it yet") && !docs.includes("not send it yet"), "the old interrupted note is gone");
 }

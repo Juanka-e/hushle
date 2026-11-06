@@ -13,6 +13,7 @@ import {
     type StreamSessionState,
 } from "@hushle/domain-streamer";
 import type { StreamerPlatform } from "@hushle/platform-streamer";
+import { createCardDraw } from "./session-draw";
 import { isStreamerSessionError, StreamerSessionError } from "./session-errors";
 import {
     createStreamerSessionPersistence,
@@ -50,6 +51,7 @@ import { createViewKey } from "./view-key";
 // once a second and re-emits the host and public projections. Its writes (each finished round,
 // the session row) go to a per-session chain the queue never waits on (session-persistence.ts).
 
+export { STREAM_DRAW_TIMEOUT_MS } from "./session-draw";
 export { STREAM_PERSIST_DRAIN_TIMEOUT_MS, SUMMARY_SCORE_LIMIT, type StreamerErrorReporter } from "./session-persistence";
 export { isStreamerSessionError, STREAMER_SESSION_ERROR_CODES, StreamerSessionError, type StreamerSessionErrorCode } from "./session-errors";
 export { STREAM_CONNECTION_CHECK_MS, STREAMER_MODE_CHECK_MS, type ConnectionCheck, type ConnectionChecker, type SessionConnection, type StreamerModeState } from "./session-watch";
@@ -99,6 +101,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     // How long an outside caller (an end, the shutdown) waits for a session's pending action.
     const turnTimeoutMs = deps.drainTimeoutMs ?? STREAM_PERSIST_DRAIN_TIMEOUT_MS;
     const writes = createStreamerSessionPersistence({ store: deps.store, report: onError, drainTimeoutMs: deps.drainTimeoutMs, timers });
+    const draw = createCardDraw({ wordSource: deps.wordSource, timers, timeoutMs: deps.drawTimeoutMs, report: onError });
     const watches = createStreamerWatches({
         timers,
         checkConnection: deps.checkConnection,
@@ -207,11 +210,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         if (catchUp(entry, now)) emitState(entry);
     }
 
-    async function drawCard(entry: SessionEntry): Promise<StreamCard> {
-        const card = await deps.wordSource.next(entry.poolKey, wordFiltersOf(entry.input));
-        if (!card) throw new StreamerSessionError("word_source_empty");
-        return card;
-    }
+    // Bounded (session-draw.ts): a hung pool read answers `busy` and frees the queue.
+    const drawCard = (entry: SessionEntry): Promise<StreamCard> => draw(entry.id, entry.poolKey, wordFiltersOf(entry.input));
 
     function beginFrom(phase: StreamPhase) {
         return (sessionId: string) =>
@@ -432,7 +432,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             await Promise.all(
                 open.map(async (entry) => {
                     clearTimer(entry);
-                    // An end that began during the wait moved the entry to `closing`: it writes `ended` itself.
+                    // A second stop() that ran alongside this one got here first: it ended the entry already.
                     if (entries.get(entry.id) !== entry) return;
                     entries.delete(entry.id);
                     // Both rooms hear it before the rows are written: shutdown closes the sockets next.

@@ -39,6 +39,7 @@ import {
     isStreamerSessionError,
     StreamerSessionError,
     STREAM_CONNECTION_CHECK_MS,
+    STREAM_DRAW_TIMEOUT_MS,
     STREAM_SESSION_IDLE_TIMEOUT_MS,
     STREAMER_MODE_CHECK_MS,
     type ConnectionCheck,
@@ -329,6 +330,7 @@ function harness(
         sessions?: MemoryStreamSessionStore;
         tickMs?: number;
         drainTimeoutMs?: number;
+        drawTimeoutMs?: number;
         timers?: StreamerTimers;
         checkConnection?: (connection: SessionConnection) => Promise<ConnectionCheck>;
     } = {},
@@ -352,6 +354,7 @@ function harness(
         onError,
         tickMs: options.tickMs ?? 5,
         drainTimeoutMs: options.drainTimeoutMs,
+        drawTimeoutMs: options.drawTimeoutMs,
         timers: options.timers,
         checkConnection: options.checkConnection,
     });
@@ -1685,18 +1688,20 @@ async function main(): Promise<void> {
         const h = harness({ sessions, timers: clock.timers, drainTimeoutMs: 10_000 });
         const { session } = await opened(h);
         await h.runtime.start(session.id);
+        // The start's word draw was raced with its own bound: the end's waits are what come after.
+        const fromEnd = clock.requested.length;
         held.hold();
         await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
         const ending = h.runtime.end(session.id, "ended");
         await turn();
         // The first bound is the end's wait for its turn on the queue (it started at once).
-        assert.deepEqual(clock.requested, [10_000, 10_000], "the drain waits at most the bound");
+        assert.deepEqual(clock.requested.slice(fromEnd), [10_000, 10_000], "the drain waits at most the bound");
         // The pending write lands 6 s in; the end write then gets what is left of the bound.
         clock.advance(6_000);
         held.release();
         await turn();
         await turn();
-        assert.deepEqual(clock.requested, [10_000, 10_000, 4_000], "one deadline: the end write waits only the 4 s left");
+        assert.deepEqual(clock.requested.slice(fromEnd), [10_000, 10_000, 4_000], "one deadline: the end write waits only the 4 s left");
         assert.equal(await settlesNow(ending), false, "the end write still hangs");
         clock.fireTimeouts();
         await ending;
@@ -1714,13 +1719,15 @@ async function main(): Promise<void> {
         const { session, viewKey } = await opened(h);
         const oldHash = hashViewKey(viewKey);
         await h.runtime.start(session.id);
+        // The start's word draw was raced with its own bound: the rotate's wait is what comes after.
+        const fromRotate = clock.requested.length;
         held.hold();
         await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
         const rotating = h.runtime.rotateViewKey(session.id);
         rotating.catch(() => undefined);
         await turn();
         assert.equal(await settlesNow(rotating), false, "the rotate waits for its turn behind the hung write");
-        assert.deepEqual(clock.requested, [10_000], "bounded by the drain timeout");
+        assert.deepEqual(clock.requested.slice(fromRotate), [10_000], "bounded by the drain timeout");
         clock.fireTimeouts();
         await rejectsWith(() => rotating, "busy");
         assert.equal(h.runtime.get(session.id)?.viewKeyHash, oldHash, "the old key stays live");
@@ -2034,6 +2041,71 @@ async function main(): Promise<void> {
         });
     }
 
+    for (const order of ["the closing end write lands first", "the new create's stale interrupt lands first"] as const) {
+        await test(`E13 a create while the user's last session is still closing opens the new one; the old row ends ended with its summary (${order})`, async () => {
+            const base = createMemoryStreamSessionStore();
+            const gate = () => {
+                let open!: () => void;
+                let seen!: () => void;
+                const released = new Promise<void>((resolve) => (open = resolve));
+                const reached = new Promise<void>((resolve) => (seen = resolve));
+                return { open: () => open(), reached, wait: () => (seen(), released) };
+            };
+            const endWrite = gate();
+            const interrupt = gate();
+            const sessions: MemoryStreamSessionStore = {
+                ...base,
+                async update(id, patch) {
+                    if (patch.status === "ended") await endWrite.wait();
+                    return base.update(id, patch);
+                },
+                async markInterrupted(id, now) {
+                    await interrupt.wait();
+                    return base.markInterrupted(id, now);
+                },
+            };
+            const h = harness({ sessions });
+            const { session: a } = await opened(h);
+            await h.runtime.start(a.id);
+            assert.equal(await h.runtime.guess(a.id, chat(h, "mandalina")), "correct");
+            h.advance(2_000);
+            // A's end holds on its final write: A is closing, no longer live, its row still active.
+            const ending = endCurrent(h.deps, 1);
+            await endWrite.reached;
+            assert.equal(h.runtime.forUser(1), null);
+            assert.equal((await base.findById(a.id))?.status, "active");
+            // The create for the same user is not blocked: it sweeps A's row as a stale one.
+            const creating = createSession(h.deps, { userId: 1, settings: INPUT });
+            creating.catch(() => undefined);
+            await Promise.race([interrupt.reached, creating]);
+            let summary;
+            if (order === "the closing end write lands first") {
+                endWrite.open();
+                ({ summary } = await ending);
+                interrupt.open();
+            } else {
+                interrupt.open();
+                const opened = await creating;
+                assert.equal((await base.findById(a.id))?.status, "interrupted", "the stale interrupt landed first");
+                assert.ok(h.runtime.get(opened.session.id), "B runs while A's end write is still held");
+                endWrite.open();
+                ({ summary } = await ending);
+            }
+            const { session: b } = await creating;
+            assert.notEqual(b.id, a.id);
+            assert.equal(b.status, "active");
+            assert.equal(h.runtime.forUser(1)?.id, b.id, "B is the user's live session");
+            assert.equal((await base.findById(b.id))?.status, "active");
+            const rowA = await base.findById(a.id);
+            assert.equal(rowA?.status, "ended", "A ends ended either way");
+            assert.equal(rowA?.endedAt?.getTime(), START + 2_000);
+            assert.deepEqual(rowA?.summary, summary);
+            assert.deepEqual(summary, { scores: [{ name: "Luna", points: 1, rank: 1, tied: false }], participants: 1, rounds: 1 });
+            assert.deepEqual(h.ended, [{ sessionId: a.id, reason: "ended" }]);
+            await h.runtime.end(b.id, "ended");
+        });
+    }
+
     await test("isStreamerSessionError recognises errors from another copy of the module", () => {
         const brand = Symbol.for("hushle.streamer-session-error");
         // What a route bundle sees when the server's copy of the runtime throws: same shape, other class.
@@ -2157,12 +2229,17 @@ async function main(): Promise<void> {
         assert.equal(h.ended.length, 3, "a second stop reports nothing again");
     });
 
-    /** A harness whose next draw waits until `release()`: a host action stuck on its card. */
+    /**
+     * A harness whose next draw waits until `release()`: a host action stuck on its card past the
+     * drain bound. The draw's own bound is set past that here (STUCK_DRAW_BOUND_MS), so these tests
+     * see the outside callers' bounds alone; the E11 tests cover the draw bound itself.
+     */
+    const STUCK_DRAW_BOUND_MS = 60_000;
     async function stuckDraw() {
         const clock = manualTimers();
         const source = cyclingSource();
         const draw = source.next.bind(source);
-        const h = harness({ source, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const h = harness({ source, timers: clock.timers, drainTimeoutMs: 10_000, drawTimeoutMs: STUCK_DRAW_BOUND_MS });
         const { session } = await opened(h);
         const gate = deferred();
         source.next = async (poolKey, filters) => {
@@ -2180,8 +2257,8 @@ async function main(): Promise<void> {
         const stopping = h.runtime.stop();
         await turn();
         assert.equal(await settlesNow(stopping), false, "stop waits for the pending action...");
-        assert.deepEqual(clock.requested, [10_000], "...at most the drain bound");
-        clock.fireTimeouts();
+        assert.deepEqual(clock.requested, [STUCK_DRAW_BOUND_MS, 10_000], "...at most the drain bound (the draw's own bound came first)");
+        clock.elapse(10_000);
         await stopping;
         assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "interrupted" }], "both rooms hear interrupted");
         assert.equal((await h.sessions.findById(session.id))?.status, "interrupted");
@@ -2239,17 +2316,26 @@ async function main(): Promise<void> {
         assert.deepEqual(h.errors, []);
     });
 
-    await test("stop: an end whose final write never lands still lets stop resolve within the bound", async () => {
+    await test("stop: an end whose final write never lands still lets stop resolve within the bound; the rooms hear ended before stop resolves", async () => {
         const { clock, h, session, reached } = await slowEndWrite();
+        // The end starts at 0, so its own deadline is 10 000; stop starts at 3 000, its bound is 13 000.
         const ending = h.runtime.end(session.id, "ended");
         await eventually(reached, "the end's final write began");
+        clock.advance(3_000);
         const stopping = h.runtime.stop();
+        let heardWhenStopped: Harness["ended"] | null = null;
+        void stopping.then(() => (heardWhenStopped = [...h.ended]));
         await turn();
         assert.equal(await settlesNow(stopping), false);
-        clock.elapse(10_000);
-        await stopping;
+        clock.elapse(6_999);
+        assert.equal(await settlesNow(stopping), false, "nothing gives before the end's own deadline");
+        assert.deepEqual(h.ended, []);
+        clock.elapse(1);
+        assert.equal(await settlesNow(stopping), true, "stop resolves at the end's deadline, 3 s before its own bound");
+        assert.deepEqual(heardWhenStopped, [{ sessionId: session.id, reason: "ended" }], "the rooms heard ended before stop() resolved");
+        assert.ok([...clock.timeouts.values()].every((timeout) => timeout.at !== 13_000), "stop's own bound is cleared, never fired");
         await ending;
-        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }], "the end told the rooms once its own bound passed");
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }], "told once");
         assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.persist_drain_timeout"]);
         assert.equal((await h.sessions.findById(session.id))?.status, "active", "the write never landed: boot reconciliation interrupts the row");
     });
@@ -2275,7 +2361,7 @@ async function main(): Promise<void> {
         ending.catch(() => undefined);
         await turn();
         assert.equal(await settlesNow(ending), false);
-        clock.fireTimeouts();
+        clock.elapse(10_000);
         await rejectsWith(() => ending, "busy");
         assert.ok(h.runtime.get(session.id), "still live: the end waits its turn");
         assert.deepEqual(h.errors.map((error) => [error.event, error.context]), [["streamer_session.queue_wait_timeout", { sessionId: session.id }]]);
@@ -2286,6 +2372,131 @@ async function main(): Promise<void> {
         assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "stopped" }], "the queued end ran once the draw came back");
         assert.equal((await h.sessions.findById(session.id))?.status, "ended");
         assert.equal(h.runtime.get(session.id), null);
+    });
+
+    /** A harness whose draws never return while `hang` is on (a hung pool read), on manual timers. */
+    async function hangingDraws() {
+        const clock = manualTimers();
+        const source = cyclingSource();
+        const draw = source.next.bind(source);
+        let hang = false;
+        let hung = 0;
+        source.next = (poolKey, filters) => {
+            if (!hang) return draw(poolKey, filters);
+            hung += 1;
+            return new Promise<never>(() => undefined);
+        };
+        const h = harness({ source, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const { session } = await opened(h);
+        return { clock, h, session, hang: (on: boolean) => (hang = on), hung: () => hung };
+    }
+
+    await test("E11 a word draw that never returns: start, pass and next answer busy at the draw bound, change nothing, and the end then completes", async () => {
+        assert.equal(STREAM_DRAW_TIMEOUT_MS, 10_000);
+        const { clock, h, session, hang, hung } = await hangingDraws();
+        const id = session.id;
+        const refusedAtTheBound = async (label: string, action: Promise<unknown>) => {
+            action.catch(() => undefined);
+            await turn();
+            assert.equal(clock.requested.at(-1), STREAM_DRAW_TIMEOUT_MS, `${label}: the draw is raced with its bound`);
+            clock.elapse(STREAM_DRAW_TIMEOUT_MS - 1);
+            assert.equal(await settlesNow(action), false, `${label}: still drawing 1 ms before the bound`);
+            clock.elapse(1);
+            await rejectsWith(() => action, "busy");
+        };
+
+        hang(true);
+        let emitted = h.emitted.length;
+        await refusedAtTheBound("start", h.runtime.start(id));
+        assert.equal(h.runtime.get(id)?.phase, "ready", "start: still ready");
+        assert.equal(h.emitted.length, emitted, "start: nothing emitted");
+
+        hang(false);
+        await h.runtime.start(id);
+        const card = h.lastHost().card;
+        assert.equal(card?.target, "MANDALİNA");
+        hang(true);
+        emitted = h.emitted.length;
+        await refusedAtTheBound("pass", h.runtime.pass(id));
+        assert.equal(h.runtime.get(id)?.phase, "running", "pass: the round goes on");
+        assert.deepEqual(h.lastHost().card, card, "pass: the round keeps its card");
+        assert.equal(h.emitted.length, emitted, "pass: nothing emitted");
+        await h.runtime.flush();
+        assert.equal(h.sessions.results.length, 0, "pass: nothing recorded");
+
+        hang(false);
+        assert.equal(await h.runtime.guess(id, chat(h, "mandalina")), "correct");
+        hang(true);
+        emitted = h.emitted.length;
+        await refusedAtTheBound("next", h.runtime.next(id));
+        assert.equal(h.runtime.get(id)?.phase, "finished", "next: still finished");
+        assert.equal(h.emitted.length, emitted, "next: nothing emitted");
+
+        assert.equal(hung(), 3);
+        assert.deepEqual(
+            h.errors.map((error) => [error.event, error.context, (error.error as Error).message]),
+            Array.from({ length: 3 }, () => ["streamer_session.draw_timeout", { sessionId: id }, `a word draw outlived ${STREAM_DRAW_TIMEOUT_MS} ms`]),
+            "each hung draw is reported once, by the session id only",
+        );
+        // The queue is free: the end runs at once, with no bound to wait out.
+        const summary = await h.runtime.end(id, "ended");
+        assert.deepEqual(summary, { scores: [{ name: "Luna", points: 1, rank: 1, tied: false }], participants: 1, rounds: 1 });
+        assert.deepEqual(h.ended, [{ sessionId: id, reason: "ended" }]);
+        assert.equal((await h.sessions.findById(id))?.status, "ended");
+        assert.equal(clock.timeouts.size, 0, "no bound is left pending");
+    });
+
+    await test("E11 an end asked while a draw hangs waits its turn and completes once the draw bound frees the queue", async () => {
+        const { clock, h, session, hang } = await hangingDraws();
+        hang(true);
+        const starting = h.runtime.start(session.id);
+        starting.catch(() => undefined);
+        await turn();
+        clock.elapse(4_000);
+        const ending = h.runtime.end(session.id, "ended");
+        await turn();
+        assert.equal(await settlesNow(ending), false, "the end waits behind the draw");
+        clock.elapse(6_000);
+        await rejectsWith(() => starting, "busy");
+        await ending;
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }]);
+        assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.draw_timeout"], "the end's own turn bound never fired");
+        assert.equal((await h.sessions.findById(session.id))?.status, "ended");
+        assert.equal(clock.timeouts.size, 0);
+    });
+
+    await test("E11 a draw that comes back after its bound is dropped: nothing changes, and the next start draws again", async () => {
+        const clock = manualTimers();
+        const source = cyclingSource();
+        const draw = source.next.bind(source);
+        const h = harness({ source, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const { session } = await opened(h);
+        let lateCard!: (card: StreamCard) => void;
+        let lateFailure!: (error: Error) => void;
+        const pending = [
+            new Promise<StreamCard>((resolve) => (lateCard = resolve)),
+            new Promise<StreamCard>((_, reject) => (lateFailure = reject)),
+        ];
+        source.next = (poolKey, filters) => pending.shift() ?? draw(poolKey, filters);
+        for (const [label, settle] of [
+            ["a late card", () => lateCard({ wordId: 999, target: "GECİKMİŞ", taboos: ["Geç"] })],
+            ["a late failure", () => lateFailure(new Error("pool read failed late"))],
+        ] as const) {
+            const starting = h.runtime.start(session.id);
+            starting.catch(() => undefined);
+            await turn();
+            clock.elapse(STREAM_DRAW_TIMEOUT_MS);
+            await rejectsWith(() => starting, "busy");
+            const emitted = h.emitted.length;
+            settle();
+            await turn();
+            assert.equal(h.runtime.get(session.id)?.phase, "ready", `${label} changes nothing`);
+            assert.equal(h.emitted.length, emitted, `${label}: nothing emitted`);
+        }
+        assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.draw_timeout", "streamer_session.draw_timeout"], "a late failure is not reported again");
+        await h.runtime.start(session.id);
+        assert.equal(h.lastHost().card?.target, "MANDALİNA", "the next start draws a card of its own");
+        await h.runtime.end(session.id, "ended");
     });
 
     await test("streamer mode read: on and off come from the stored features row (cached 5 s), anything else is unknown and never cached", async () => {
@@ -2753,11 +2964,11 @@ async function main(): Promise<void> {
                 body: JSON.stringify({ actionType: "suspend", reason: "kural ihlali", suspendedUntil: null }),
             });
             const answering = moderation.POST(request, { params: Promise.resolve({ id: "1" }) });
-            // The end has asked for its turn behind the stuck draw.
-            await eventually(() => clock.requested.length > 0, "the stream end is waiting for its turn");
+            // The end has asked for its turn behind the stuck draw (whose own bound came first).
+            await eventually(() => clock.requested.length > 1, "the stream end is waiting for its turn");
             assert.deepEqual(log, ["suspend", "revoke:1"], "the links are revoked before the stream end is waited for");
             assert.equal(await settlesNow(answering), false, "the end waits, bounded");
-            clock.fireTimeouts();
+            clock.elapse(10_000);
             const response = await answering;
             assert.equal(response.status, 200);
             assert.deepEqual(log, ["suspend", "revoke:1", "audit:admin.user.suspend"], "the audit is written once the bounded end gave up");
@@ -2789,12 +3000,16 @@ async function main(): Promise<void> {
             const ending = endStreamerSessionsForUser(1, { timers: clock.timers });
             await turn();
             assert.equal(await settlesNow(ending), false);
-            assert.deepEqual([...clock.timeouts.values()].map((timeout) => timeout.ms).sort((a, b) => a - b), [10_000, 21_000], "the runtime's turn bound, then the helper's last resort past it");
+            assert.deepEqual(
+                [...clock.timeouts.values()].map((timeout) => timeout.ms).sort((a, b) => a - b),
+                [10_000, 21_000, STUCK_DRAW_BOUND_MS],
+                "the runtime's turn bound, then the helper's last resort past it (and the stuck draw's own)",
+            );
             clock.elapse(10_000);
             assert.equal(await ending, false, "the runtime's bound answered first");
             assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.queue_wait_timeout"]);
             assert.deepEqual(lines, [], "no second report from the helper");
-            assert.equal(clock.timeouts.size, 0, "the helper's own bound is cleared");
+            assert.deepEqual([...clock.timeouts.values()].map((timeout) => timeout.ms), [STUCK_DRAW_BOUND_MS], "the helper's own bound is cleared; only the stuck draw's is left");
         } finally {
             resetObservabilityForTests();
             if (previous) slot.__hushleStreamerSessionRuntime = previous;

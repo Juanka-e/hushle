@@ -64,6 +64,8 @@ export interface StreamerSessionRuntimeDeps {
     idleTimeoutMs?: number;
     /** How long end, idle, stop and a key rotation wait for a session's pending writes (STREAM_PERSIST_DRAIN_TIMEOUT_MS). */
     drainTimeoutMs?: number;
+    /** How long one word draw may take before its action answers `busy` (STREAM_DRAW_TIMEOUT_MS). */
+    drawTimeoutMs?: number;
     /** The wall clock and timers of the ticks, the checks and the bounds (real ones when absent). */
     timers?: StreamerTimers;
     /** Validates the channel link of a live session, hourly (STREAM_CONNECTION_CHECK_MS); none when absent. */
