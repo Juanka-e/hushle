@@ -1,14 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { EyeOff } from "lucide-react";
 import type { HostStreamSnapshot } from "@hushle/domain-streamer";
 import { useI18n } from "@/components/providers/i18n-provider";
 
 // The host's secret card: the word and its taboo list from the host room's snapshot. It lives
-// only on the panel; nothing here is sent anywhere or shared with the stream screen.
+// only on the panel; nothing here is sent anywhere or shared with the stream screen. A streamer
+// who captures the whole display can hide it: the words then leave the page (not just the view).
 
 export function StreamerCardView({ state }: { state: HostStreamSnapshot }) {
     const { t } = useI18n();
+    // In memory only. Shown by default: the streamer needs the card to describe the word.
+    const [hidden, setHidden] = useState(false);
     const card = state.card;
     return (
         <section
@@ -20,13 +24,26 @@ export function StreamerCardView({ state }: { state: HostStreamSnapshot }) {
                     <EyeOff size={14} aria-hidden="true" />
                     {t("streamer.panel.cardSecret")}
                 </span>
-                {state.pool ? (
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("streamer.panel.cardPool", { drawn: state.pool.drawn, eligible: state.pool.eligible })}
-                    </span>
-                ) : null}
+                <span className="flex flex-wrap items-center gap-3">
+                    {state.pool ? (
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {t("streamer.panel.cardPool", { drawn: state.pool.drawn, eligible: state.pool.eligible })}
+                        </span>
+                    ) : null}
+                    <button
+                        type="button"
+                        onClick={() => setHidden((current) => !current)}
+                        className="min-h-9 rounded-xl border border-rose-200 bg-white px-3 text-xs font-black text-rose-700 transition hover:bg-rose-50 dark:border-rose-900/60 dark:bg-slate-950 dark:text-rose-300"
+                    >
+                        {hidden ? t("streamer.panel.cardShow") : t("streamer.panel.cardHide")}
+                    </button>
+                </span>
             </div>
-            {card ? (
+            {hidden ? (
+                <p data-testid="streamer-card-hidden" className="mt-4 text-base font-semibold text-slate-600 dark:text-slate-300">
+                    {t("streamer.panel.cardHidden")}
+                </p>
+            ) : card ? (
                 <div className="mt-4">
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{t("streamer.panel.cardTarget")}</p>
                     <p data-testid="streamer-card-target" className="mt-1 break-words text-4xl font-black tracking-tight text-slate-900 dark:text-white">

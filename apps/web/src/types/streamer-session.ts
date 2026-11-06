@@ -62,4 +62,6 @@ export interface StreamerPanelInitial {
     /** Both packs: the session's word language picks the list. */
     categories: Record<CreateSessionInput["language"], StreamerPanelCategory[]>;
     locale: AppLocale;
+    /** No channel link is active but a session is still live: the panel warns that a new one needs a reconnect. */
+    needsReconnect: boolean;
 }

@@ -16,8 +16,8 @@ import type { ScreenSettingsPatch } from "@/lib/streamer/session-settings";
 import {
     STREAMER_SOCKET_EVENTS,
     type StreamerActionAck,
-    type StreamerEndedReason,
     type StreamerHostJoinAck,
+    type StreamerHostNoticePayload,
     type StreamerRotateKeyAck,
 } from "@/lib/streamer/socket-contract";
 import type {
@@ -32,17 +32,26 @@ import type {
 import { StreamerCardView } from "./streamer-card-view";
 import { StreamerObsBox } from "./streamer-obs-box";
 import {
+    actionRefusalAction,
     appendLog,
+    closedKindOf,
+    connectionLabel,
+    createSessionRereader,
     describeTransition,
+    hostNoticeOf,
     isHostSnapshot,
     isLivePhase,
     joinRefusalAction,
-    rereadSession,
+    scoreKeys,
     summaryFromSnapshot,
+    withCardNameRule,
+    type ClosedKind,
+    type ConnectionState,
     type LogDraft,
     type LogEntry,
     type PanelSummary,
     type RereadStatus,
+    type ScoreEntry,
 } from "./streamer-panel-model";
 import { ScreenSettingsFields, StreamerSetupForm } from "./streamer-setup-form";
 
@@ -53,9 +62,12 @@ import { ScreenSettingsFields, StreamerSetupForm } from "./streamer-setup-form";
 // What the panel shows:
 //   summary      the session just ended here or elsewhere (`streamer:ended` reason "ended")
 //   idle         the server closed it after 6 h without activity (reason "idle")
+//   stopped      the service stopped it: streamer mode switched off, or an account action (reason "stopped")
 //   interrupted  the process that ran it went away (GET says so, or reason "interrupted")
 //   live         an active session: the socket joins its host room
 //   setup        nothing open: the form
+// Above them, a warning while the channel link needs a reconnect (the gate let a live session
+// through, or the host room said so); the session keeps running.
 
 const EVENTS = STREAMER_SOCKET_EVENTS;
 const ACK_TIMEOUT_MS = 10_000;
@@ -68,9 +80,7 @@ type HostActionEvent =
     | typeof EVENTS.hostPass
     | typeof EVENTS.hostNext;
 
-type ClosedOutcome = { kind: "ended"; summary: PanelSummary } | { kind: "idle" } | { kind: "interrupted" };
-
-type ConnectionState = "connecting" | "joined" | "reconnecting" | "closed";
+type ClosedOutcome = { kind: "ended"; summary: PanelSummary } | { kind: Exclude<ClosedKind, "ended"> };
 
 function errorCodeOf(value: unknown): unknown {
     return value && typeof value === "object" ? (value as { code?: unknown }).code : undefined;
@@ -91,13 +101,14 @@ function buttonClass(kind: "primary" | "plain" | "danger"): string {
 
 // ---------------------------------------------------------------- scores and summary
 
-function ScoreList({ scores }: { scores: PanelSummary["scores"] }) {
+function ScoreList({ scores }: { scores: ScoreEntry[] }) {
     const { t } = useI18n();
+    const keys = scoreKeys(scores);
     return (
         <ol className="space-y-2">
-            {scores.map((entry) => (
+            {scores.map((entry, index) => (
                 <li
-                    key={`${entry.rank}-${entry.name}`}
+                    key={keys[index]}
                     className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
                 >
                     <span className="flex min-w-0 items-center gap-3">
@@ -172,9 +183,11 @@ interface LiveSessionProps {
     onClosed: (outcome: ClosedOutcome) => void;
     /** The host room refused the session (gone or not ours): the caller reloads what is current. */
     onGone: () => void;
+    /** A host-room notice (the channel link needs a reconnect); the session keeps running. */
+    onNotice: (notice: StreamerHostNoticePayload) => void;
 }
 
-function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone }: LiveSessionProps) {
+function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone, onNotice }: LiveSessionProps) {
     const { t, locale } = useI18n();
     const [snapshot, setSnapshot] = useState<HostStreamSnapshot | null>(null);
     const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -183,7 +196,11 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
     const [log, setLog] = useState<LogEntry[]>([]);
     const [rotated, setRotated] = useState(false);
     const [signedOut, setSignedOut] = useState(false);
+    // Streamer mode was switched off: the host room refuses everything, so the panel stops asking.
+    const [modeOff, setModeOff] = useState(false);
     const socketRef = useRef<Socket | null>(null);
+    // Stops the live connection for good (no rejoin); set by the socket effect.
+    const haltRef = useRef<(() => void) | null>(null);
     const lastRef = useRef<HostStreamSnapshot | null>(null);
     const logIdRef = useRef(0);
     // Set while this panel's HTTP end runs: its answer carries the stored summary.
@@ -209,17 +226,23 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
         onClosed(outcome);
     };
 
-    const closed = useEffectEvent((reason: StreamerEndedReason) => {
-        if (reason === "idle") finish({ kind: "idle" });
-        else if (reason === "interrupted") finish({ kind: "interrupted" });
+    const closed = useEffectEvent((kind: ClosedKind) => {
+        if (kind !== "ended") finish({ kind });
         else if (endingRef.current) endedRef.current = true;
         else finish({ kind: "ended", summary: summaryFromSnapshot(lastRef.current) });
     });
 
     const gone = useEffectEvent(() => {
-        setConnection("closed");
+        setConnection("gone");
         onGone();
     });
+    const showModeOff = () => {
+        setConnection("closed");
+        setFailure(null);
+        setModeOff(true);
+    };
+    const modeIsOff = useEffectEvent(() => showModeOff());
+    const noticed = useEffectEvent((notice: StreamerHostNoticePayload) => onNotice(notice));
     const loggedOut = useEffectEvent(() => {
         setConnection("closed");
         setFailure(null);
@@ -240,6 +263,7 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
             tryAllTransports: true,
         });
         socketRef.current = socket;
+        haltRef.current = () => stop();
         const guard = createRevisionGuard();
         let last: HostStreamSnapshot | null = null;
         let stopped = false;
@@ -282,6 +306,11 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
                     loggedOut();
                     return;
                 }
+                if (action === "disabled") {
+                    stop();
+                    modeIsOff();
+                    return;
+                }
                 // Rate limited, a server error or no answer: say so and ask again shortly.
                 joinRefused(error ? {} : reply);
                 retry = setTimeout(join, JOIN_RETRY_MS);
@@ -314,13 +343,18 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
             if (stopped || !isHostSnapshot(payload) || !guard.accept(payload.revision)) return;
             take(payload);
         });
+        socket.on(EVENTS.hostNotice, (payload: unknown) => {
+            if (stopped) return;
+            const notice = hostNoticeOf(payload);
+            if (notice) noticed(notice);
+        });
         socket.on(EVENTS.ended, (payload: unknown) => {
             if (stopped) return;
-            const reason = payload && typeof payload === "object" ? (payload as { reason?: unknown }).reason : undefined;
-            // Only the stream screens are closed by a rotation; the host room stays.
-            if (reason === "view-key-rotated") return;
+            // null: a rotation closes only the stream screens; the host room stays.
+            const kind = closedKindOf(payload);
+            if (kind === null) return;
             stop();
-            closed(reason === "idle" || reason === "interrupted" ? reason : "ended");
+            closed(kind);
         });
 
         return () => {
@@ -329,6 +363,7 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
             socket.removeAllListeners();
             socket.disconnect();
             if (socketRef.current === socket) socketRef.current = null;
+            haltRef.current = null;
         };
     }, [sessionId]);
 
@@ -343,8 +378,12 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
         const ack = (error: Error | null, reply: StreamerActionAck | StreamerRotateKeyAck) => {
             setPending(null);
             if (error) setFailure({ payload: {} });
-            else if (reply?.ok !== true) setFailure({ payload: reply });
-            else onOk?.(reply as unknown as Record<string, unknown>);
+            else if (reply?.ok !== true) {
+                if (actionRefusalAction(errorCodeOf(reply)) === "disabled") {
+                    haltRef.current?.();
+                    showModeOff();
+                } else setFailure({ payload: reply });
+            } else onOk?.(reply as unknown as Record<string, unknown>);
         };
         // Socket.IO sends `undefined` arguments as null: the round actions take none at all.
         if (payload === undefined) socket.timeout(ACK_TIMEOUT_MS).emit(event, ack);
@@ -353,7 +392,7 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
 
     const act = (event: HostActionEvent) => emitAction(event, undefined);
 
-    const changeScreen = (patch: ScreenSettingsPatch) => emitAction(EVENTS.hostSettings, patch);
+    const changeScreen = (patch: ScreenSettingsPatch) => emitAction(EVENTS.hostSettings, withCardNameRule(patch));
 
     const rotate = () => {
         if (!window.confirm(t("streamer.panel.rotateConfirm"))) return;
@@ -400,14 +439,7 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
     };
 
     const phase = snapshot?.phase ?? "ready";
-    const connectionText =
-        connection === "joined"
-            ? t("streamer.panel.connected")
-            : connection === "connecting"
-              ? t("streamer.panel.connecting")
-              : connection === "reconnecting"
-                ? t("streamer.panel.reconnecting")
-                : t("streamer.panel.connectionClosed");
+    const connectionKey = connectionLabel(connection);
     const failureText = failure ? resolveApiErrorMessage(locale, failure.payload, t("streamer.panel.actionFailed")) : null;
     const disabled = !joined || busy;
 
@@ -441,16 +473,18 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
                         <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-black text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">
                             {t(`streamer.panel.phases.${phase}`)}
                         </span>
-                        <span
-                            role="status"
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${
-                                joined
-                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-                                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-                            }`}
-                        >
-                            {connectionText}
-                        </span>
+                        {connectionKey ? (
+                            <span
+                                role="status"
+                                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                                    joined
+                                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+                                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                                }`}
+                            >
+                                {t(connectionKey)}
+                            </span>
+                        ) : null}
                     </div>
                 }
             >
@@ -525,6 +559,15 @@ function LiveSession({ session, viewKey, cardBacks, onViewKey, onClosed, onGone 
                                     {t("streamer.panel.signIn")}
                                 </a>
                             </div>
+                        ) : null}
+                        {modeOff ? (
+                            <p
+                                role="alert"
+                                data-testid="streamer-mode-off"
+                                className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+                            >
+                                {t("streamer.panel.modeDisabled")}
+                            </p>
                         ) : null}
                     </div>
 
@@ -622,7 +665,10 @@ function ChannelHeader({ channels }: { channels: StreamerPanelChannel[] }) {
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-600 dark:text-violet-300">{t("streamer.gateTitle")}</p>
-                    <h1 className="mt-3 text-2xl font-black text-slate-900 dark:text-white">{t("streamer.ready")}</h1>
+                    {/* No active link: the gate let a live session through so it can still be ended. */}
+                    <h1 className="mt-3 text-2xl font-black text-slate-900 dark:text-white">
+                        {channels.length > 0 ? t("streamer.ready") : t("streamer.reconnect")}
+                    </h1>
                     {channels.map((channel) => (
                         <p key={channel.platform} className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
                             {t("streamer.panel.channelLine", { name: channel.displayName, platform: channel.label })}
@@ -647,16 +693,23 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
     // The stream screen key: in memory only, from the create or rotate answer. Never stored.
     const [viewKey, setViewKey] = useState<string | null>(null);
     const [summary, setSummary] = useState<PanelSummary | null>(null);
-    const [idle, setIdle] = useState(false);
+    // The session was closed by the idle timer or stopped by the service.
+    const [notice, setNotice] = useState<"idle" | "stopped" | null>(null);
     // A re-read of the current session (after a refused join, a create that found one open, or
     // an end) that failed is shown with a retry; the live view's socket has stopped by then.
     const [reread, setReread] = useState<RereadStatus>("idle");
+    // Overlapping re-reads: only the newest answer is applied.
+    const [rereader] = useState(() =>
+        createSessionRereader(() => fetch("/api/streamer/sessions", { cache: "no-store" }), { apply: setData, status: setReread })
+    );
+    // The channel link needs a reconnect: kept until the page is left, the session keeps running.
+    const [needsReconnect, setNeedsReconnect] = useState(initial.needsReconnect);
 
     const session = data.session;
     const mode = summary
         ? "summary"
-        : idle
-          ? "idle"
+        : notice
+          ? notice
           : session?.interrupted
             ? "interrupted"
             : session?.status === "active"
@@ -664,13 +717,16 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
               : "setup";
 
     const refresh = () => {
-        void rereadSession(() => fetch("/api/streamer/sessions", { cache: "no-store" }), { apply: setData, status: setReread });
+        void rereader.run();
     };
 
     const created = (body: CreateStreamSessionResponse) => {
+        // A re-read still on its way read the state before this session: it must not replace it.
+        rereader.cancel();
+        setReread("idle");
         setViewKey(body.viewKey);
         setSummary(null);
-        setIdle(false);
+        setNotice(null);
         setData((current) => ({ ...current, session: body.session, lastSettings: body.session.settings ?? current.lastSettings }));
     };
 
@@ -683,22 +739,42 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
             return;
         }
         if (outcome.kind === "ended") setSummary(outcome.summary);
-        else setIdle(true);
+        else setNotice(outcome.kind);
         setData((current) => ({ ...current, session: null }));
+        // Stopped by the service (mode off, or an account action): a re-read would only fail or
+        // find the mode off, so the notice stands alone.
+        if (outcome.kind === "stopped") return;
         // The next form is prefilled from the stored settings, live look changes included.
         refresh();
     };
 
     const startOver = () => {
+        setReread("idle");
         setSummary(null);
-        setIdle(false);
+        setNotice(null);
         setViewKey(null);
         setData((current) => ({ ...current, session: null }));
+    };
+
+    const hostNotice = (received: StreamerHostNoticePayload) => {
+        if (received.kind === "connection-needs-reconnect") setNeedsReconnect(true);
     };
 
     return (
         <div data-testid="streamer-panel" className="mx-auto max-w-6xl space-y-6">
             <ChannelHeader channels={initial.channels} />
+            {needsReconnect ? (
+                <div
+                    role="alert"
+                    data-testid="streamer-reconnect-warning"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30"
+                >
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">{t("streamer.panel.reconnectWarning")}</p>
+                    <a href="/dashboard?tab=settings" className="text-sm font-black text-amber-900 underline dark:text-amber-100">
+                        {t("streamer.goSettings")}
+                    </a>
+                </div>
+            ) : null}
             {reread === "failed" ? (
                 <div
                     role="alert"
@@ -713,6 +789,9 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
             ) : null}
             {mode === "summary" && summary ? <SessionSummary summary={summary} onNew={startOver} /> : null}
             {mode === "idle" ? <Notice title={t("streamer.panel.idleTitle")} help={t("streamer.panel.idleHelp")} onNew={startOver} /> : null}
+            {mode === "stopped" ? (
+                <Notice title={t("streamer.panel.stoppedTitle")} help={t("streamer.panel.stoppedHelp")} onNew={startOver} />
+            ) : null}
             {mode === "interrupted" ? (
                 <Notice title={t("streamer.panel.interruptedTitle")} help={t("streamer.panel.interruptedHelp")} onNew={startOver} />
             ) : null}
@@ -725,6 +804,7 @@ export function StreamerPanel({ initial }: { initial: StreamerPanelInitial }) {
                     onViewKey={setViewKey}
                     onClosed={closedSession}
                     onGone={refresh}
+                    onNotice={hostNotice}
                 />
             ) : null}
             {mode === "setup" ? (

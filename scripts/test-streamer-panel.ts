@@ -1,23 +1,47 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { HostStreamSnapshot } from "@hushle/domain-streamer";
 import * as model from "@/components/streamer/streamer-panel-model";
 import {
+    actionRefusalAction,
     appendLog,
     cameraMeasurements,
+    closedKindOf,
+    connectionLabel,
+    createSessionRereader,
     describeTransition,
+    hostNoticeOf,
     isHostSnapshot,
+    isLiveSession,
     LOG_LIMIT,
+    maskStreamUrl,
+    scoreKeys,
+    streamerGateState,
     streamUrlsFor,
     summaryFromSnapshot,
+    withCardNameRule,
+    type ClosedKind,
     type LogEntry,
+    type RereadStatus as ModelRereadStatus,
 } from "@/components/streamer/streamer-panel-model";
+import { cameraRect } from "@/components/stream/camera-rects";
+import { dictionaries, translate, type TranslationKey } from "@/lib/i18n/dictionaries";
 import { buildStreamUrls } from "@/lib/streamer/session-http";
-import type { StreamSessionResponse } from "@/types/streamer-session";
+import type { StreamerEndedReason } from "@/lib/streamer/socket-contract";
+import type { StreamSessionResponse, StreamSessionView } from "@/types/streamer-session";
 
-// The host panel's pure parts (event log, snapshot summary, stream addresses, camera hole) and
-// the source rules the panel keeps: the view key and the card stay in memory, stream addresses
-// open as plain new-tab links. The browser side is tests/streamer-session.spec.ts.
+// The host panel's pure parts (event log, snapshot summary, stream addresses, camera hole, the
+// gate decision, the closed reasons and notices, the re-read guard) and the source rules the
+// panel keeps: the view key and the card stay in memory, stream addresses open as plain new-tab
+// links. The browser side is tests/streamer-session.spec.ts.
+
+// Source files are read from the repo root this script sits under, whatever the cwd.
+const ROOT = path.resolve(__dirname, "..");
+const PANEL_DIR = path.join(ROOT, "apps/web/src/components/streamer");
+function source(relative: string): string {
+    return readFileSync(path.join(ROOT, relative), "utf8").replace(/\r\n/g, "\n");
+}
 
 // Cases are queued and run in order by main(); a failing case is reported and the rest still run.
 const cases: Array<[string, () => void | Promise<void>]> = [];
@@ -225,6 +249,8 @@ test("a refused host join: a gone session is re-read, a sign-out stops, anything
     assert.equal(decide("STREAMER_SESSION_NOT_OWNED"), "gone");
     // Signed out (or suspended): retrying every 5 s can never succeed.
     assert.equal(decide("AUTH_REQUIRED"), "signedOut");
+    // Streamer mode switched off: no retry can pass either.
+    assert.equal(decide("STREAMER_MODE_DISABLED"), "disabled");
     for (const code of ["RATE_LIMITED", "UNKNOWN_ERROR", "INVALID_REQUEST", "STREAMER_VIEW_KEY_INVALID", undefined, null, 42, {}]) {
         assert.equal(decide(code), "retry", `${String(code)} is retried`);
     }
@@ -258,8 +284,8 @@ test("a failed re-read of the session is surfaced, never swallowed; a retry that
 });
 
 test("the panel wires both: re-read failures show a retry banner, a signed-out join stops with a sign-in link", () => {
-    const panel = readFileSync("apps/web/src/components/streamer/streamer-panel.tsx", "utf8");
-    assert.ok(panel.includes("rereadSession("), "the panel re-reads through rereadSession");
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.ok(panel.includes("createSessionRereader("), "the panel re-reads through rereadSession, behind the sequence guard");
     assert.ok(panel.includes(`t("streamer.panel.rereadFailed")`), "a failed re-read is shown");
     assert.ok(panel.includes(`t("streamer.panel.retry")`), "with a retry button");
     assert.ok(panel.includes("joinRefusalAction("), "a refused join goes through joinRefusalAction");
@@ -268,21 +294,304 @@ test("the panel wires both: re-read failures show a retry banner, a signed-out j
 });
 
 test("panel sources keep the key and the card in memory and open stream addresses as plain links", () => {
-    const dir = "apps/web/src/components/streamer";
-    const files = readdirSync(dir).filter((file) => /\.tsx?$/.test(file));
+    const files = readdirSync(PANEL_DIR).filter((file) => /\.tsx?$/.test(file));
     assert.ok(files.length >= 5, `expected the panel files, found ${files.length}`);
     for (const file of files) {
-        const source = readFileSync(`${dir}/${file}`, "utf8");
+        const text = readFileSync(path.join(PANEL_DIR, file), "utf8");
         for (const forbidden of ["localStorage", "sessionStorage", "document.cookie", "console.", "<iframe", "router.push"]) {
-            assert.ok(!source.includes(forbidden), `${file} must not use ${forbidden}`);
+            assert.ok(!text.includes(forbidden), `${file} must not use ${forbidden}`);
         }
     }
-    const obs = readFileSync(`${dir}/streamer-obs-box.tsx`, "utf8");
+    const obs = readFileSync(path.join(PANEL_DIR, "streamer-obs-box.tsx"), "utf8");
     assert.ok(!obs.includes("next/link"), "stream addresses are not client-side links");
     assert.match(obs, /target="_blank"\s+rel="noopener noreferrer"/);
-    const panel = readFileSync(`${dir}/streamer-panel.tsx`, "utf8");
+    const panel = readFileSync(path.join(PANEL_DIR, "streamer-panel.tsx"), "utf8");
     assert.match(panel, /io\(\{\s+path: "\/api\/socketio",\s+auth: SOCKET_CLIENT_AUTH,/);
     assert.ok(!panel.includes("instanceof"), "errors are read by code, not by class");
+});
+
+// ---------------------------------------------------------------- phase 2 gaps (batch 4)
+
+test("P1 streamer:ended: every reason closes the session its own way; a rotation keeps the host room", () => {
+    const expected: Record<StreamerEndedReason, ClosedKind | null> = {
+        ended: "ended",
+        idle: "idle",
+        interrupted: "interrupted",
+        stopped: "stopped",
+        "view-key-rotated": null,
+    };
+    for (const [reason, kind] of Object.entries(expected)) assert.equal(closedKindOf({ reason }), kind, `reason ${reason}`);
+    // Anything unreadable still closes the session (as before): the summary is the last snapshot.
+    for (const odd of [{}, { reason: "later" }, { reason: 1 }, { reason: "toString" }, { reason: "__proto__" }, null, undefined, "ended"]) {
+        assert.equal(closedKindOf(odd), "ended", `${JSON.stringify(odd)} reads as ended`);
+    }
+});
+
+test("P1 a round action refused because streamer mode is off stops the panel; other refusals are shown", () => {
+    assert.equal(actionRefusalAction("STREAMER_MODE_DISABLED"), "disabled");
+    for (const code of ["RATE_LIMITED", "STREAMER_ACTION_INVALID_PHASE", "AUTH_REQUIRED", "STREAMER_SESSION_NOT_FOUND", undefined, null, {}]) {
+        assert.equal(actionRefusalAction(code), "failed", `${String(code)} is shown as a failure`);
+    }
+});
+
+test("P1 the panel shows a stopped notice and a mode-off notice, and stops on both refusals", () => {
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.ok(panel.includes("closedKindOf(payload)"), "streamer:ended goes through closedKindOf");
+    assert.ok(!/reason === "idle" \|\| reason === "interrupted"/.test(panel), "no hand-written reason list is left");
+    assert.ok(panel.includes(`t("streamer.panel.stoppedTitle")`) && panel.includes(`t("streamer.panel.stoppedHelp")`), "stopped has its own notice");
+    assert.ok(panel.includes(`t("streamer.panel.interruptedTitle")`), "interrupted keeps its notice");
+    assert.ok(panel.includes(`action === "disabled"`), "a refused join with streamer mode off is handled");
+    assert.ok(panel.includes(`actionRefusalAction(`), "a refused action goes through actionRefusalAction");
+    assert.ok(panel.includes(`t("streamer.panel.modeDisabled")`), "streamer mode off is shown");
+    assert.equal(dictionaries.tr.streamer.panel.stoppedTitle, "Yayın oturumu sistem tarafından durduruldu.");
+    assert.match(dictionaries.tr.streamer.panel.modeDisabled, /^Yayıncı modu şu an kapalı/);
+});
+
+test("P2 a host notice is read only when it is the known kind for a known platform", () => {
+    assert.deepEqual(hostNoticeOf({ kind: "connection-needs-reconnect", platform: "twitch" }), { kind: "connection-needs-reconnect", platform: "twitch" });
+    assert.deepEqual(hostNoticeOf({ kind: "connection-needs-reconnect", platform: "kick", extra: "x" }), {
+        kind: "connection-needs-reconnect",
+        platform: "kick",
+    });
+    for (const odd of [
+        { kind: "connection-needs-reconnect" },
+        { kind: "connection-needs-reconnect", platform: "youtube" },
+        { kind: "other", platform: "twitch" },
+        { platform: "twitch" },
+        null,
+        undefined,
+        "connection-needs-reconnect",
+    ]) {
+        assert.equal(hostNoticeOf(odd), null, `${JSON.stringify(odd)} is ignored`);
+    }
+});
+
+test("P2 the panel listens for host notices and keeps a reconnect warning with a settings link", () => {
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.ok(panel.includes("socket.on(EVENTS.hostNotice"), "the host room's notices are received");
+    assert.ok(panel.includes("hostNoticeOf("), "through hostNoticeOf");
+    assert.ok(panel.includes(`t("streamer.panel.reconnectWarning")`), "the warning is shown");
+    assert.ok(panel.includes(`href="/dashboard?tab=settings"`), "with a plain link to the settings");
+    assert.equal(
+        dictionaries.tr.streamer.panel.reconnectWarning,
+        "Kanal bağlantın yenilenmeli; bu yayın sürüyor, yeni oturum için ayarlardan yeniden bağlan."
+    );
+});
+
+function sessionView(patch: Partial<StreamSessionView> = {}): StreamSessionView {
+    return {
+        id: "s-1",
+        status: "active",
+        interrupted: false,
+        platform: "twitch",
+        settings: null,
+        startedAt: "2026-11-06T10:00:00.000Z",
+        endedAt: null,
+        roundCount: 0,
+        summary: null,
+        ...patch,
+    };
+}
+
+test("P3 the gate: a live session opens the panel even when the channel link needs a reconnect", () => {
+    assert.equal(isLiveSession(sessionView()), true);
+    assert.equal(isLiveSession(sessionView({ status: "interrupted", interrupted: true })), false);
+    assert.equal(isLiveSession(sessionView({ interrupted: true })), false, "an interrupted view is never live");
+    assert.equal(isLiveSession(sessionView({ status: "ended" })), false);
+    assert.equal(isLiveSession(null), false);
+    const gate = (enabled: boolean, activeChannel: boolean, brokenChannel: boolean, liveSession: boolean) =>
+        streamerGateState({ enabled, activeChannel, brokenChannel, liveSession });
+    for (const flags of [
+        [false, false, false],
+        [true, false, false],
+        [false, true, true],
+        [true, true, true],
+    ] as const) {
+        assert.equal(gate(false, flags[0], flags[1], flags[2]), "coming-soon", "streamer mode off is the same with or without a session");
+    }
+    assert.equal(gate(true, true, false, false), "ready");
+    assert.equal(gate(true, true, true, true), "ready");
+    assert.equal(gate(true, false, true, true), "live-reconnect", "needs_reconnect with a live session keeps End reachable");
+    assert.equal(gate(true, false, false, true), "live-reconnect", "a link that is gone with a live session too");
+    assert.equal(gate(true, false, true, false), "reconnect", "no live session: unchanged");
+    assert.equal(gate(true, false, false, false), "not-linked", "no live session: unchanged");
+});
+
+test("P3 the page reads the session before choosing the gate and hands the panel the warning", () => {
+    const page = source("apps/web/src/app/streamer/page.tsx");
+    assert.ok(page.includes("streamerGateState("), "the page decides through streamerGateState");
+    assert.ok(page.includes("isLiveSession("), "with the live-session rule");
+    assert.ok(/needsReconnect:/.test(page), "the panel is told the channel needs a reconnect");
+});
+
+test("P6 no English panel string reads as a wrong plural for one", () => {
+    const en = dictionaries.en.streamer as Record<string, unknown>;
+    const counted: string[] = [];
+    const walk = (node: Record<string, unknown>, prefix: string) => {
+        for (const [key, value] of Object.entries(node)) {
+            if (typeof value === "string" && value.includes("{count}")) counted.push(`${prefix}${key}`);
+            else if (value && typeof value === "object") walk(value as Record<string, unknown>, `${prefix}${key}.`);
+        }
+    };
+    walk(en, "streamer.");
+    assert.ok(counted.length >= 6, `found ${counted.length} counted strings`);
+    for (const key of counted) {
+        const text = translate("en", key as TranslationKey, { count: 1, max: 1 });
+        assert.ok(!/\b1 (?:people|points|rounds|words|players|guesses|seconds|categories)\b/.test(text), `${key}: "${text}"`);
+    }
+    assert.equal(translate("en", "streamer.panel.points", { count: 1 }), "Points: 1");
+    assert.equal(translate("en", "streamer.panel.participants", { count: 1 }), "Guessers: 1");
+    assert.equal(translate("en", "streamer.panel.summaryRounds", { count: 1 }), "Rounds: 1");
+    assert.equal(translate("en", "streamer.panel.summaryParticipants", { count: 1 }), "Participants: 1");
+});
+
+test("P7 score rows are keyed by the player id; tied players of the same name never collide", () => {
+    const tied = [
+        { id: "twitch:1", name: "Deniz", points: 2, rank: 1, tied: true },
+        { id: "twitch:2", name: "Deniz", points: 2, rank: 1, tied: true },
+        { id: "kick:1", name: "Luna", points: 1, rank: 3, tied: false },
+    ];
+    assert.deepEqual(scoreKeys(tied), ["twitch:1", "twitch:2", "kick:1"]);
+    // The stored summary carries no ids: its fixed list is keyed by position.
+    const summary = tied.map(({ name, points, rank, tied: isTied }) => ({ name, points, rank, tied: isTied }));
+    const keys = scoreKeys(summary);
+    assert.equal(new Set(keys).size, summary.length);
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.ok(!panel.includes("${entry.rank}-${entry.name}"), "no rank-name key is left");
+    assert.ok(panel.includes("scoreKeys("), "the score list keys rows through scoreKeys");
+});
+
+test("P8 choosing no card back also switches the card name off, in the same patch, live and in the form", () => {
+    assert.deepEqual(withCardNameRule({ cardBack: null }), { cardBack: null, showCardName: false });
+    assert.deepEqual(withCardNameRule({ cardBack: { itemId: 7 } }), { cardBack: { itemId: 7 } });
+    assert.deepEqual(withCardNameRule({ theme: "sade" }), { theme: "sade" });
+    assert.deepEqual(withCardNameRule({ showCardName: true }), { showCardName: true });
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.match(panel, /emitAction\(EVENTS\.hostSettings, withCardNameRule\(patch\)\)/, "the live patch goes through the rule");
+    const form = source("apps/web/src/components/streamer/streamer-setup-form.tsx");
+    assert.ok(form.includes("withCardNameRule(patch)"), "the form uses the same rule");
+});
+
+test("P9 stream addresses are masked for display; the key never shows, the query stays", () => {
+    const key = "Ab_9-".repeat(8) + "xyz";
+    const urls = streamUrlsFor("https://hushle.com", key);
+    assert.equal(maskStreamUrl(urls.full), "https://hushle.com/stream/••••••");
+    assert.equal(maskStreamUrl(urls.half), "https://hushle.com/stream/••••••?layout=half");
+    assert.equal(maskStreamUrl(urls.stripTop), "https://hushle.com/stream/••••••?overlay=top");
+    assert.equal(maskStreamUrl(urls.stripBottom), "https://hushle.com/stream/••••••?overlay=bottom");
+    for (const url of Object.values(urls)) assert.ok(!maskStreamUrl(url).includes(key));
+    assert.equal(maskStreamUrl(maskStreamUrl(urls.half)), maskStreamUrl(urls.half), "masking twice changes nothing");
+    const obs = source("apps/web/src/components/streamer/streamer-obs-box.tsx");
+    assert.ok(obs.includes("maskStreamUrl("), "the OBS box shows masked addresses");
+    assert.ok(obs.includes("copy(row.key, urls[row.key])"), "copy still takes the real address");
+    const card = source("apps/web/src/components/streamer/streamer-card-view.tsx");
+    assert.ok(card.includes(`t("streamer.panel.cardHide")`) && card.includes(`t("streamer.panel.cardShow")`), "the card has a hide / show toggle");
+});
+
+test("P10 every toggle group in the setup form is a labelled group", () => {
+    const form = source("apps/web/src/components/streamer/streamer-setup-form.tsx");
+    assert.match(form, /role="group" aria-labelledby=\{labelId\}/, "Field is a group named by its label");
+    assert.match(form, /<p id=\{labelId\} className=\{labelClass\}>/, "the label element carries the id");
+});
+
+test("P12 the stale readyHelp text is gone from both locales", () => {
+    assert.ok(!("readyHelp" in dictionaries.tr.streamer), "tr");
+    assert.ok(!("readyHelp" in dictionaries.en.streamer), "en");
+});
+
+test("P13 P14 overlapping re-reads: only the newest answer counts, and a cancel drops what is in flight", async () => {
+    assert.equal(typeof createSessionRereader, "function", "createSessionRereader guards overlapping re-reads");
+    const good = (id: string): StreamSessionResponse => ({ enabled: true, session: sessionView({ id }), lastSettings: null, cardBacks: [] });
+    const answers: Array<{ resolve: (response: Response) => void; reject: (error: unknown) => void }> = [];
+    const load = () => new Promise<Response>((resolve, reject) => answers.push({ resolve, reject }));
+    const applied: string[] = [];
+    const statuses: ModelRereadStatus[] = [];
+    const rereader = createSessionRereader(load, {
+        apply: (data) => applied.push(data.session?.id ?? "none"),
+        status: (status) => statuses.push(status),
+    });
+    const older = rereader.run();
+    const newer = rereader.run();
+    answers[1].resolve(new Response(JSON.stringify(good("newer")), { status: 200 }));
+    await newer;
+    answers[0].resolve(new Response(JSON.stringify(good("older")), { status: 200 }));
+    await older;
+    assert.deepEqual(applied, ["newer"], "the older answer, arriving last, is dropped");
+    assert.deepEqual(statuses, ["loading", "loading", "idle"]);
+
+    // An older failure after a newer success never shows the retry banner.
+    applied.length = 0;
+    statuses.length = 0;
+    const failingOld = rereader.run();
+    const fine = rereader.run();
+    answers[3].resolve(new Response(JSON.stringify(good("fine")), { status: 200 }));
+    await fine;
+    answers[2].reject(new TypeError("fetch failed"));
+    await failingOld;
+    assert.deepEqual(applied, ["fine"]);
+    assert.ok(!statuses.includes("failed"), `statuses ${statuses.join(",")}`);
+
+    // A cancel (a session was just created) drops the answers still on their way, success or failure.
+    applied.length = 0;
+    statuses.length = 0;
+    const late = rereader.run();
+    const lateFail = rereader.run();
+    rereader.cancel();
+    answers[4].resolve(new Response(JSON.stringify(good("late")), { status: 200 }));
+    answers[5].reject(new TypeError("fetch failed"));
+    await Promise.all([late, lateFail]);
+    assert.deepEqual(applied, []);
+    assert.deepEqual(statuses, ["loading", "loading"]);
+    // The next run works as usual.
+    const after = rereader.run();
+    answers[6].resolve(new Response(JSON.stringify(good("after")), { status: 200 }));
+    await after;
+    assert.deepEqual(applied, ["after"]);
+    assert.equal(statuses.at(-1), "idle");
+});
+
+test("P13 the retry banner is cleared on a new session and on starting over; a create drops a re-read in flight", () => {
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    const body = (name: string) => {
+        const start = panel.indexOf(`const ${name} = (`);
+        assert.ok(start >= 0, `${name} exists`);
+        return panel.slice(start, panel.indexOf("\n    };", start));
+    };
+    assert.ok(body("created").includes(`setReread("idle")`), "created clears the banner");
+    assert.ok(body("created").includes("rereader.cancel()"), "created drops an older re-read");
+    assert.ok(body("startOver").includes(`setReread("idle")`), "startOver clears the banner");
+    assert.ok(panel.includes("createSessionRereader("), "re-reads go through the guarded rereader");
+});
+
+test("P15 a session that is gone shows no connection badge: the re-read (or its retry banner) speaks", () => {
+    assert.equal(connectionLabel("gone"), null);
+    assert.equal(connectionLabel("joined"), "streamer.panel.connected");
+    assert.equal(connectionLabel("connecting"), "streamer.panel.connecting");
+    assert.equal(connectionLabel("reconnecting"), "streamer.panel.reconnecting");
+    assert.equal(connectionLabel("closed"), "streamer.panel.connectionClosed");
+    const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
+    assert.ok(panel.includes(`setConnection("gone")`), "a gone session sets the gone state");
+    assert.ok(panel.includes("connectionLabel(connection)"), "the badge reads through connectionLabel");
+});
+
+test("P16 the signed-out text also covers a suspended account", () => {
+    assert.equal(dictionaries.tr.streamer.panel.signedOut, "Oturumun kapandı ya da hesabın şu an kullanılamıyor. Yeniden giriş yap.");
+    assert.match(dictionaries.en.streamer.panel.signedOut, /account/i);
+});
+
+test("P17 the panel takes the camera hole from camera-rects and never imports the renderer or the demo", () => {
+    const files = readdirSync(PANEL_DIR).filter((file) => /\.tsx?$/.test(file));
+    const importsOf = (text: string) => [...text.matchAll(/(?:from\s+|import\s*\(\s*|import\s+)["']([^"']+)["']/g)].map((match) => match[1]);
+    for (const file of files) {
+        const imports = importsOf(readFileSync(path.join(PANEL_DIR, file), "utf8"));
+        for (const target of imports) {
+            assert.ok(!/stream-renderer$/.test(target), `${file} imports the renderer (${target})`);
+            assert.ok(!/stream-demo$/.test(target), `${file} imports the demo scenes (${target})`);
+        }
+    }
+    const modelSource = source("apps/web/src/components/streamer/streamer-panel-model.ts");
+    assert.ok(importsOf(modelSource).includes("@/components/stream/camera-rects"), "the model imports camera-rects");
+    assert.deepEqual(cameraMeasurements("br", "l")?.p1080, cameraRect("br", "l"), "the same numbers as the shared module");
 });
 
 async function main(): Promise<void> {

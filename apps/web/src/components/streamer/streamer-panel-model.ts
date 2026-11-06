@@ -1,12 +1,16 @@
 import type { CameraSize, CameraSlot, HostStreamSnapshot, StreamPhase } from "@hushle/domain-streamer";
-import { cameraRect } from "@/components/stream/stream-renderer";
+import { cameraRect } from "@/components/stream/camera-rects";
 import { PlayerErrorCode } from "@/lib/errors/player-error-codes";
-import type { StreamSessionResponse, StreamUrls } from "@/types/streamer-session";
+import type { TranslationKey } from "@/lib/i18n/dictionaries";
+import type { ScreenSettingsPatch } from "@/lib/streamer/session-settings";
+import type { StreamerEndedReason, StreamerHostNoticePayload } from "@/lib/streamer/socket-contract";
+import type { StreamSessionResponse, StreamSessionView, StreamUrls } from "@/types/streamer-session";
 
 // The host panel's pure parts: the event log read off host snapshots (no server event exists for
-// it), the summary when only a snapshot is left, the stream addresses, the camera hole's
-// measurements and the two error-path decisions (a refused host join, a re-read of the session).
-// No DOM and no React here, so scripts/test-streamer-panel.ts runs them under node.
+// it), the summary when only a snapshot is left, the stream addresses (and their masked form),
+// the camera hole's measurements, the gate decision of /streamer, what a closed room or a host
+// notice means, and the error-path decisions (a refused host join or action, a re-read of the
+// session). No DOM and no React here, so scripts/test-streamer-panel.ts runs them under node.
 
 export type LogKind = "roundStarted" | "correct" | "passed" | "timeout" | "paused" | "resumed" | "ended";
 
@@ -20,8 +24,17 @@ export interface LogEntry {
 
 export type LogDraft = Omit<LogEntry, "id">;
 
+export interface ScoreEntry {
+    /** The host snapshot's player id; the stored summary has none. */
+    id?: string;
+    name: string;
+    points: number;
+    rank: number;
+    tied: boolean;
+}
+
 export interface PanelSummary {
-    scores: Array<{ name: string; points: number; rank: number; tied: boolean }>;
+    scores: ScoreEntry[];
     participants: number;
     /** Finished rounds; unknown when the summary was read off the last snapshot. */
     rounds: number | null;
@@ -85,10 +98,30 @@ export function summaryFromSnapshot(state: HostStreamSnapshot | null): PanelSumm
     };
 }
 
+/**
+ * React keys for a score list: the player id where the snapshot has one (two tied players may
+ * share a name), the position otherwise (the stored summary is a fixed list without ids).
+ */
+export function scoreKeys(entries: ScoreEntry[]): string[] {
+    return entries.map((entry, index) => entry.id ?? `#${index}`);
+}
+
 /** The same shape as the server's buildStreamUrls (lib/streamer/session-http.ts). */
 export function streamUrlsFor(origin: string, viewKey: string): StreamUrls {
     const full = `${origin}/stream/${viewKey}`;
     return { full, half: `${full}?layout=half`, stripTop: `${full}?overlay=top`, stripBottom: `${full}?overlay=bottom` };
+}
+
+export const MASKED_VIEW_KEY = "••••••";
+
+/** A stream address as the panel shows it by default: the key masked, the layout query kept. */
+export function maskStreamUrl(url: string): string {
+    return url.replace(/\/stream\/[^/?#]+/, `/stream/${MASKED_VIEW_KEY}`);
+}
+
+/** The card name belongs to a card back: choosing none switches the name off in the same patch. */
+export function withCardNameRule(patch: ScreenSettingsPatch): ScreenSettingsPatch {
+    return patch.cardBack === null ? { ...patch, showCardName: false } : patch;
 }
 
 export interface CameraHole {
@@ -106,19 +139,99 @@ export function cameraMeasurements(slot: CameraSlot, size: CameraSize): { p1080:
     return { p1080: rect, p720: { x: scale(rect.x), y: scale(rect.y), w: scale(rect.w), h: scale(rect.h) } };
 }
 
+// ---------------------------------------------------------------- the gate of /streamer
+
+export type StreamerGateState = "coming-soon" | "ready" | "live-reconnect" | "reconnect" | "not-linked";
+
+/** A session the host can still drive (and must be able to end). */
+export function isLiveSession(session: StreamSessionView | null): boolean {
+    return session !== null && session.status === "active" && !session.interrupted;
+}
+
+/**
+ * Which state /streamer shows. An active channel link opens the panel (`ready`). Without one, a
+ * session that is still live opens it too (`live-reconnect`, with the reconnect warning), so End
+ * stays reachable; otherwise the link that needs a reconnect, or none, points to the settings.
+ */
+export function streamerGateState(input: {
+    enabled: boolean;
+    activeChannel: boolean;
+    brokenChannel: boolean;
+    liveSession: boolean;
+}): StreamerGateState {
+    if (!input.enabled) return "coming-soon";
+    if (input.activeChannel) return "ready";
+    if (input.liveSession) return "live-reconnect";
+    return input.brokenChannel ? "reconnect" : "not-linked";
+}
+
+// ---------------------------------------------------------------- the host room
+
+export type ClosedKind = "ended" | "idle" | "interrupted" | "stopped";
+
+// Keyed by the contract's type: a reason added there fails the typecheck until it is listed.
+const CLOSED_KINDS: Record<StreamerEndedReason, ClosedKind | null> = {
+    ended: "ended",
+    idle: "idle",
+    interrupted: "interrupted",
+    stopped: "stopped",
+    // Only the stream screens are closed by a rotation; the host room stays.
+    "view-key-rotated": null,
+};
+
+/** What a `streamer:ended` does to the panel: null keeps the host room; an unreadable reason reads as "ended". */
+export function closedKindOf(payload: unknown): ClosedKind | null {
+    const reason = payload && typeof payload === "object" ? (payload as { reason?: unknown }).reason : undefined;
+    if (typeof reason === "string" && Object.hasOwn(CLOSED_KINDS, reason)) return CLOSED_KINDS[reason as StreamerEndedReason];
+    return "ended";
+}
+
+/** A host notice the panel knows; anything else is ignored. */
+export function hostNoticeOf(payload: unknown): StreamerHostNoticePayload | null {
+    if (typeof payload !== "object" || payload === null) return null;
+    const { kind, platform } = payload as Record<string, unknown>;
+    if (kind !== "connection-needs-reconnect") return null;
+    if (platform !== "twitch" && platform !== "kick") return null;
+    return { kind, platform };
+}
+
+export type ConnectionState = "connecting" | "joined" | "reconnecting" | "closed" | "gone";
+
+/** The live view's connection badge. A gone session has none: the panel's re-read (or its retry banner) speaks. */
+export function connectionLabel(state: ConnectionState): TranslationKey | null {
+    switch (state) {
+        case "joined":
+            return "streamer.panel.connected";
+        case "connecting":
+            return "streamer.panel.connecting";
+        case "reconnecting":
+            return "streamer.panel.reconnecting";
+        case "closed":
+            return "streamer.panel.connectionClosed";
+        case "gone":
+            return null;
+    }
+}
+
 // ---------------------------------------------------------------- error paths
 
-export type JoinRefusalAction = "gone" | "signedOut" | "retry";
+export type JoinRefusalAction = "gone" | "signedOut" | "disabled" | "retry";
 
 /**
  * What a refused host join does: a session that is gone (or not this user's) is re-read, a
- * sign-out (or a suspension) stops for good since no retry can pass, anything else (rate limit,
- * server error, no answer) is asked again shortly.
+ * sign-out (or a suspension) or streamer mode switched off stops for good since no retry can
+ * pass, anything else (rate limit, server error, no answer) is asked again shortly.
  */
 export function joinRefusalAction(code: unknown): JoinRefusalAction {
     if (code === PlayerErrorCode.STREAMER_SESSION_NOT_FOUND || code === PlayerErrorCode.STREAMER_SESSION_NOT_OWNED) return "gone";
     if (code === PlayerErrorCode.AUTH_REQUIRED) return "signedOut";
+    if (code === PlayerErrorCode.STREAMER_MODE_DISABLED) return "disabled";
     return "retry";
+}
+
+/** A refused round action: streamer mode switched off stops the panel; anything else is shown. */
+export function actionRefusalAction(code: unknown): "disabled" | "failed" {
+    return code === PlayerErrorCode.STREAMER_MODE_DISABLED ? "disabled" : "failed";
 }
 
 export type RereadStatus = "idle" | "loading" | "failed";
@@ -154,4 +267,34 @@ export async function rereadSession(load: () => Promise<Response>, handlers: Rer
     }
     handlers.apply(data);
     handlers.status("idle");
+}
+
+export interface SessionRereader {
+    run(): Promise<void>;
+    /** Drops every answer still on its way (the panel just set a newer state itself). */
+    cancel(): void;
+}
+
+/**
+ * rereadSession with a sequence guard: when re-reads overlap, only the newest one applies its
+ * answer or reports its status, so an older (slower) answer never overwrites a newer one.
+ */
+export function createSessionRereader(load: () => Promise<Response>, handlers: RereadHandlers): SessionRereader {
+    let sequence = 0;
+    return {
+        run: () => {
+            const mine = ++sequence;
+            return rereadSession(load, {
+                apply: (data) => {
+                    if (mine === sequence) handlers.apply(data);
+                },
+                status: (status) => {
+                    if (mine === sequence) handlers.status(status);
+                },
+            });
+        },
+        cancel: () => {
+            sequence += 1;
+        },
+    };
 }

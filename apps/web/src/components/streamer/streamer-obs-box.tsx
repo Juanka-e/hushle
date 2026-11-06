@@ -7,12 +7,14 @@ import { DashboardSection } from "@/components/game/dashboard-page-shell";
 import { useI18n } from "@/components/providers/i18n-provider";
 import type { TranslationKey } from "@/lib/i18n/dictionaries";
 import type { StreamUrls } from "@/types/streamer-session";
-import { cameraMeasurements, streamUrlsFor } from "./streamer-panel-model";
+import { cameraMeasurements, maskStreamUrl, streamUrlsFor } from "./streamer-panel-model";
 
 // The addresses the host gives OBS, the camera hole's measurements and the key rotation. The
 // view key exists only in the panel's memory, from the create or rotate answer: it is never
 // stored, logged or put anywhere but these fields. Stream URLs open as plain new-tab links (a
 // client-side navigation would draw the screen inside the app chrome; framing is refused).
+// The fields show the addresses masked (a captured display must not show the key); each row's
+// "Göster" reveals its own, and a new key masks them all again. Copy always takes the real one.
 
 const URL_ROWS: Array<{ key: keyof StreamUrls; testId: string; label: TranslationKey; size: [number, number] }> = [
     { key: "full", testId: "streamer-url-full", label: "streamer.panel.urlFull", size: [1920, 1080] },
@@ -38,6 +40,15 @@ export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating
     const { t } = useI18n();
     const [copied, setCopied] = useState<string | null>(null);
     const [copyFailed, setCopyFailed] = useState(false);
+    const [shown, setShown] = useState<ReadonlyArray<keyof StreamUrls>>([]);
+    // A new key starts masked again (the old one may just have leaked).
+    const [shownFor, setShownFor] = useState(viewKey);
+    if (shownFor !== viewKey) {
+        setShownFor(viewKey);
+        setShown([]);
+    }
+    const toggleShown = (row: keyof StreamUrls) =>
+        setShown((current) => (current.includes(row) ? current.filter((entry) => entry !== row) : [...current, row]));
 
     useEffect(() => {
         if (!copied) return;
@@ -80,6 +91,7 @@ export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating
                         {URL_ROWS.map((row) => {
                             const label = t(row.label);
                             const done = copied === row.key;
+                            const revealed = shown.includes(row.key);
                             return (
                                 <div key={row.key} data-testid={row.testId} className="space-y-1.5">
                                     <div className="flex items-baseline justify-between gap-2">
@@ -91,11 +103,18 @@ export function StreamerObsBox({ viewKey, camera, cameraSize, onRotate, rotating
                                     <div className="flex gap-2">
                                         <input
                                             readOnly
-                                            value={urls[row.key]}
+                                            value={revealed ? urls[row.key] : maskStreamUrl(urls[row.key])}
                                             aria-label={label}
                                             onFocus={(event) => event.currentTarget.select()}
                                             className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleShown(row.key)}
+                                            className="min-h-11 shrink-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                        >
+                                            {revealed ? t("streamer.panel.urlHide") : t("streamer.panel.urlShow")}
+                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => copy(row.key, urls[row.key])}

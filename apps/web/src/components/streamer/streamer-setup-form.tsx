@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import {
     BROADCAST_THEMES,
@@ -26,6 +26,7 @@ import type {
     StreamerPanelCategory,
     StreamerPanelChannel,
 } from "@/types/streamer-session";
+import { withCardNameRule } from "./streamer-panel-model";
 
 // "Yeni oturum aç": channel, word language, categories (the visible ones of that language, as
 // rooms list them), difficulty, round length, guess check and the stream screen look. The last
@@ -57,10 +58,12 @@ function flatIds(categories: StreamerPanelCategory[]): number[] {
     return categories.flatMap((root) => [root.id, ...root.children.map((child) => child.id)]);
 }
 
+/** A labelled group of toggle buttons: screen readers announce the label with the group. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
+    const labelId = useId();
     return (
-        <div className="space-y-2">
-            <p className={labelClass}>{label}</p>
+        <div role="group" aria-labelledby={labelId} className="space-y-2">
+            <p id={labelId} className={labelClass}>{label}</p>
             {children}
         </div>
     );
@@ -275,12 +278,8 @@ export function StreamerSetupForm({
         update({ difficulties: next });
     };
 
-    const updateScreen = (patch: ScreenSettingsPatch) => {
-        const next: Partial<CreateSessionInput> = { ...patch };
-        // The card name belongs to a card back; without one there is nothing to name.
-        if (patch.cardBack === null) next.showCardName = false;
-        update(next);
-    };
+    // The card name belongs to a card back; without one there is nothing to name (live too).
+    const updateScreen = (patch: ScreenSettingsPatch) => update(withCardNameRule(patch));
 
     const submit = async () => {
         if (form.categoryIds.length === 0) {
