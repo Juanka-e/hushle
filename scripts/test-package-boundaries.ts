@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 // The light gate is imported first and alone: what it loads is checked below.
 import { isFakePlatformEnabled as fakeGate } from "@hushle/platform-streamer/fake-gate";
@@ -90,6 +90,15 @@ assert.match(
     readFileSync(join(root, "apps/web/src/lib/redis.ts"), "utf8"),
     /@hushle\/platform-cache/
 );
+
+// `npm run typecheck:packages` checks every package that has a tsconfig of its own.
+{
+    const scripts = (JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts;
+    const steps = scripts["typecheck:packages"].split(" && ");
+    for (const name of readdirSync(join(root, "packages")).filter((entry) => existsSync(join(root, "packages", entry, "tsconfig.json")))) {
+        assert.ok(steps.includes(`tsc -p packages/${name}/tsconfig.json`), `typecheck:packages must check packages/${name}`);
+    }
+}
 
 const dockerfile = readFileSync(join(root, "Dockerfile"), "utf8");
 assert.match(dockerfile, /apps\/api\/package\.json/);
