@@ -532,10 +532,27 @@ function assertNoSecrets(payload: unknown, card: StreamCard): void {
 
 /**
  * The admin moderation route with its database, admin check, audit log and link revoke faked (each
- * logs to `log`); the stream session helper it calls is the real one. The module cache entries are
- * put back once the route is loaded (it keeps the fakes it was loaded with).
+ * logs to the current test's `log`; the revoke is the current test's own); the stream session
+ * helper it calls is the real one. The route is loaded once: its imports keep the fake modules it
+ * was loaded with, so each call only points those fakes at the caller's log and revoke. The module
+ * cache entries are put back once the route is loaded.
  */
-async function loadModerationRoute(log: string[]) {
+const moderationWorld: { log: string[]; revoke: (userId: number) => Promise<number> } = { log: [], revoke: async () => 0 };
+let moderationRoute: Promise<typeof import("../apps/web/src/app/api/admin/users/[id]/moderation/route")> | null = null;
+async function loadModerationRoute(
+    log: string[],
+    revoke: (userId: number) => Promise<number> = async (userId) => {
+        log.push(`revoke:${userId}`);
+        return 1;
+    },
+) {
+    moderationWorld.log = log;
+    moderationWorld.revoke = revoke;
+    moderationRoute ??= importModerationRoute();
+    return moderationRoute;
+}
+
+async function importModerationRoute() {
     const fakes: Record<string, Record<string, unknown>> = {
         "apps/web/src/lib/prisma.ts": {
             prisma: {
@@ -544,7 +561,7 @@ async function loadModerationRoute(log: string[]) {
                     run({
                         user: {
                             update: async () => {
-                                log.push("suspend");
+                                moderationWorld.log.push("suspend");
                                 return {};
                             },
                         },
@@ -565,14 +582,11 @@ async function loadModerationRoute(log: string[]) {
         "apps/web/src/lib/moderation/service.ts": { clearExpiredSuspensions: async () => undefined },
         "apps/web/src/lib/security/audit-log.ts": {
             writeAuditLog: async (entry: { action: string }) => {
-                log.push(`audit:${entry.action}`);
+                moderationWorld.log.push(`audit:${entry.action}`);
             },
         },
         "apps/web/src/lib/streamer/connections-view.ts": {
-            revokeStreamerConnectionsForUser: async (userId: number) => {
-                log.push(`revoke:${userId}`);
-                return 1;
-            },
+            revokeStreamerConnectionsForUser: (userId: number) => moderationWorld.revoke(userId),
         },
     };
     const previous = new Map<string, NodeModule | undefined>();
@@ -3151,6 +3165,86 @@ async function main(): Promise<void> {
         await turn();
         await h.runtime.flush();
         assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "stopped" }], "the queued end ran once the draw came back");
+    });
+
+    /** POSTs a suspension of user 1 to `moderation` with `runtime` as the live runtime; observability lines go to `lines`. */
+    async function suspendWith(moderation: Awaited<ReturnType<typeof loadModerationRoute>>, runtime: StreamerSessionRuntime, lines: string[], during: (answering: Promise<Response>) => Promise<void> = async () => undefined) {
+        const slot = globalThis as typeof globalThis & { __hushleStreamerSessionRuntime?: StreamerSessionRuntime };
+        const previous = slot.__hushleStreamerSessionRuntime;
+        slot.__hushleStreamerSessionRuntime = runtime;
+        resetObservabilityForTests({ sink: (_level, line) => lines.push(line) });
+        try {
+            const request = new NextRequest(`${ROUTE_ORIGIN}/api/admin/users/1/moderation`, {
+                method: "POST",
+                headers: { origin: ROUTE_ORIGIN, "content-type": "application/json" },
+                body: JSON.stringify({ actionType: "suspend", reason: "kural ihlali", suspendedUntil: null }),
+            });
+            const answering = moderation.POST(request, { params: Promise.resolve({ id: "1" }) });
+            await during(answering);
+            return await answering;
+        } finally {
+            resetObservabilityForTests();
+            if (previous) slot.__hushleStreamerSessionRuntime = previous;
+            else delete slot.__hushleStreamerSessionRuntime;
+        }
+    }
+    const reportedEvents = (lines: string[]) => lines.map((line) => (JSON.parse(line) as { event: string }).event).filter((event) => event.startsWith("streamer_session."));
+
+    await test("Z5 a suspension starts the link revoke and the stream end together; the audit waits for both", async () => {
+        const h = harness();
+        const { session } = await opened(h);
+        const log: string[] = [];
+        let finishRevoke!: () => void;
+        const moderation = await loadModerationRoute(log, (userId) => {
+            log.push(`revoke:start:${userId}`);
+            return new Promise<number>((resolve) => (finishRevoke = () => resolve(1)));
+        });
+        const lines: string[] = [];
+        const response = await suspendWith(moderation, h.runtime, lines, async (answering) => {
+            await eventually(() => h.ended.length === 1, "the stream ends while the revoke still runs");
+            assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "stopped" }]);
+            assert.deepEqual(log, ["suspend", "revoke:start:1"], "both started; no audit yet");
+            assert.equal(await settlesNow(answering), false, "the answer waits for the revoke");
+            finishRevoke();
+        });
+        assert.equal(response.status, 200);
+        assert.deepEqual(log, ["suspend", "revoke:start:1", "audit:admin.user.suspend"], "the audit once both settled");
+        assert.deepEqual(reportedEvents(lines), [], "nothing failed");
+    });
+
+    await test("Z5 a revoke that fails is reported sanitized; the stream still ends and the audit is still written", async () => {
+        const h = harness();
+        const { session } = await opened(h);
+        const log: string[] = [];
+        const planted = "PLANTED-revoke-0123456789abcdef";
+        const moderation = await loadModerationRoute(log, async () => {
+            log.push("revoke:fails");
+            throw Object.assign(new Error(`revoke failed for token ${planted}`), { name: "TypeError" });
+        });
+        const lines: string[] = [];
+        const response = await suspendWith(moderation, h.runtime, lines);
+        assert.equal(response.status, 200);
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "stopped" }], "the end is not skipped");
+        assert.deepEqual(log, ["suspend", "revoke:fails", "audit:admin.user.suspend"], "nor the audit");
+        assert.deepEqual(reportedEvents(lines), ["streamer_session.account_revoke_failed"]);
+        assert.ok(!lines.join("\n").includes(planted), "reported without the error's own text");
+    });
+
+    await test("Z5 an end that fails is reported sanitized; the links are still revoked and the audit is still written", async () => {
+        const log: string[] = [];
+        const planted = "PLANTED-end-0123456789abcdef";
+        const moderation = await loadModerationRoute(log);
+        const broken = {
+            forUser: () => {
+                throw new Error(`runtime lookup failed: ${planted}`);
+            },
+        } as unknown as StreamerSessionRuntime;
+        const lines: string[] = [];
+        const response = await suspendWith(moderation, broken, lines);
+        assert.equal(response.status, 200);
+        assert.deepEqual(log, ["suspend", "revoke:1", "audit:admin.user.suspend"], "the revoke and the audit are not skipped");
+        assert.deepEqual(reportedEvents(lines), ["streamer_session.account_stop_failed"]);
+        assert.ok(!lines.join("\n").includes(planted), "reported without the error's own text");
     });
 
     await test("a stuck suspension end is reported once, by the runtime; the helper answers on the injected clock", async () => {

@@ -501,15 +501,17 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.match(socketSource, /return \(await readMode\(\)\) !== "off";/, "the socket refuses on an authoritative off only");
     assert.ok(!deps.includes("streamerModeEnabled"), "session-deps no longer reads the cached switch");
     assert.match(deps.split("export function getStreamerSessionRuntime")[1] ?? "", /checkConnection: checkLiveConnection,/, "the runtime checks each live link hourly");
-    // An admin suspension revokes the links, then takes the owner's stream off the air (bounded),
-    // then writes its audit: a stuck stream never holds the revoke, and the audit only the bound.
+    // An admin suspension revokes the links and takes the owner's stream off the air (bounded) side
+    // by side, then writes its audit: neither waits on the other, a failure of one skips nothing.
     const moderation = code("apps/web/src/app/api/admin/users/[id]/moderation/route.ts");
     const suspend = moderation.split('if (action.actionType === "suspend") {').slice(1).join("");
-    const endAt = suspend.indexOf("await endStreamerSessionsForUser(targetUserId);");
-    const revokeAt = suspend.indexOf("await revokeStreamerConnectionsForUser(targetUserId, request);");
-    assert.ok(endAt >= 0, "a suspension ends the user's live stream session");
-    assert.ok(revokeAt >= 0 && revokeAt < endAt, "after the links are revoked");
-    assert.ok(endAt < suspend.indexOf("await writeAuditLog("), "and before the audit");
+    assert.match(
+        suspend,
+        /await Promise\.allSettled\(\[\s*revokeStreamerConnectionsForUser\(targetUserId, request\),\s*endStreamerSessionsForUser\(targetUserId\),\s*\]\)/,
+        "a suspension revokes the links and ends the live stream session together",
+    );
+    assert.ok(!/await (?:revokeStreamerConnectionsForUser|endStreamerSessionsForUser)\(/.test(suspend), "neither is awaited on its own");
+    assert.ok(suspend.indexOf("Promise.allSettled(") < suspend.indexOf("await writeAuditLog("), "both settle before the audit");
     assert.match(moderation, /import \{ endStreamerSessionsForUser \} from "@\/lib\/streamer\/session-account";/);
 
     // docs/socket-events.md names every reason, the notice, the limits and the mode-off answers.

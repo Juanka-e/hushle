@@ -9,6 +9,8 @@ import { clearExpiredSuspensions } from "@/lib/moderation/service";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import { revokeStreamerConnectionsForUser } from "@/lib/streamer/connections-view";
 import { endStreamerSessionsForUser } from "@/lib/streamer/session-account";
+import { storeFailure } from "@/lib/streamer/session-persistence";
+import { reportStreamerSessionError } from "@/lib/streamer/session-service";
 import {
     buildRateLimitHeaders,
     consumeRequestRateLimit,
@@ -151,10 +153,19 @@ export async function POST(
 
         if (action.actionType === "suspend") {
             // A suspended account keeps no live platform grant (streamer spec, karar 4) and no live
-            // stream (it ends "stopped"). The grants go first; the stream end is bounded, so a stuck
-            // stream never holds the audit or the answer (its own queue still ends it).
-            await revokeStreamerConnectionsForUser(targetUserId, request);
-            await endStreamerSessionsForUser(targetUserId);
+            // stream (it ends "stopped"). Both run side by side: a slow or failing one never holds
+            // or skips the other, nor the audit below. The stream end is bounded (its own queue
+            // still ends a stuck stream); a failure is reported sanitized, the suspension stands.
+            const [revoked, ended] = await Promise.allSettled([
+                revokeStreamerConnectionsForUser(targetUserId, request),
+                endStreamerSessionsForUser(targetUserId),
+            ]);
+            if (revoked.status === "rejected") {
+                reportStreamerSessionError("streamer_session.account_revoke_failed", storeFailure(revoked.reason, "the streamer links could not be revoked"));
+            }
+            if (ended.status === "rejected") {
+                reportStreamerSessionError("streamer_session.account_stop_failed", storeFailure(ended.reason, "the stream end failed"));
+            }
         }
 
         await writeAuditLog({
