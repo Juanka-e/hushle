@@ -21,9 +21,6 @@ assert.ok(session, "StreamSession model must exist");
 assert.match(session, /id\s+String\s+@id @default\(uuid\(\)\) @db\.Char\(36\)/);
 assert.match(session, /userId\s+Int\s+@map\("user_id"\)/);
 assert.match(session, /connectionId\s+String\?\s+@map\("connection_id"\) @db\.Char\(36\)/);
-assert.match(session, /platform\s+StreamerPlatform/);
-assert.match(session, /status\s+StreamSessionStatus\s+@default\(active\)/);
-assert.match(session, /settings\s+Json/);
 assert.match(session, /viewKeyHash\s+String\s+@map\("view_key_hash"\) @db\.Char\(64\)/);
 assert.match(session, /startedAt\s+DateTime\s+@default\(now\(\)\) @map\("started_at"\)/);
 assert.match(session, /endedAt\s+DateTime\?\s+@map\("ended_at"\)/);
@@ -44,7 +41,6 @@ assert.match(result, /id\s+Int\s+@id @default\(autoincrement\(\)\)/);
 assert.match(result, /sessionId\s+String\s+@map\("session_id"\) @db\.Char\(36\)/);
 assert.match(result, /round\s+Int\b/);
 assert.match(result, /wordId\s+Int\?\s+@map\("word_id"\)/);
-assert.match(result, /outcome\s+StreamRoundOutcome/);
 assert.match(result, /winnerPlatformUserId\s+String\?\s+@map\("winner_platform_user_id"\) @db\.VarChar\(64\)/);
 assert.match(result, /winnerName\s+String\?\s+@map\("winner_name"\) @db\.VarChar\(100\)/);
 assert.match(result, /solveMs\s+Int\?\s+@map\("solve_ms"\)/);
@@ -71,6 +67,41 @@ assert.match(migration, /FOREIGN KEY \(`user_id`\) REFERENCES `users`\(`id`\) ON
 assert.match(migration, /FOREIGN KEY \(`connection_id`\) REFERENCES `streamer_connections`\(`id`\) ON DELETE SET NULL/);
 assert.match(migration, /FOREIGN KEY \(`session_id`\) REFERENCES `stream_sessions`\(`id`\) ON DELETE CASCADE/);
 assert.doesNotMatch(migration, /DROP TABLE|ALTER TABLE `oauth_accounts`/);
+
+// The enum and JSON columns, exactly: a whole line each, in the schema and in the migration (a
+// nullable column, another default, an extra attribute or another value list is a different line).
+function enumColumnFailures(sessionModel: string, resultModel: string, migrationSql: string): string[] {
+    const lines = (text: string) => text.split(/\r?\n/).map((line) => line.trim().replace(/\s+/g, " "));
+    const failures: string[] = [];
+    const expect = (where: string, text: string, line: string) => {
+        if (!lines(text).includes(line)) failures.push(`${where}: ${line}`);
+    };
+    expect("StreamSession", sessionModel, "platform StreamerPlatform");
+    expect("StreamSession", sessionModel, "status StreamSessionStatus @default(active)");
+    expect("StreamSession", sessionModel, "settings Json");
+    expect("StreamRoundResult", resultModel, "outcome StreamRoundOutcome");
+    expect("migration", migrationSql, "`platform` ENUM('twitch', 'kick') NOT NULL,");
+    expect("migration", migrationSql, "`status` ENUM('active', 'ended', 'interrupted') NOT NULL DEFAULT 'active',");
+    expect("migration", migrationSql, "`settings` JSON NOT NULL,");
+    expect("migration", migrationSql, "`outcome` ENUM('solved', 'timeout', 'passed') NOT NULL,");
+    return failures;
+}
+assert.deepEqual(enumColumnFailures(session, result, migration), [], "the enum and JSON columns are defined exactly");
+for (const [label, mutate] of [
+    ["a nullable platform", (s: string, r: string, m: string) => [s.replace(/platform(\s+)StreamerPlatform/, "platform$1StreamerPlatform?"), r, m]],
+    ["a platform with a default", (s: string, r: string, m: string) => [s.replace(/platform(\s+)StreamerPlatform/, "platform$1StreamerPlatform @default(twitch)"), r, m]],
+    ["a nullable settings column", (s: string, r: string, m: string) => [s.replace(/settings(\s+)Json/, "settings$1Json?"), r, m]],
+    ["another status default", (s: string, r: string, m: string) => [s.replace("@default(active)", "@default(ended)"), r, m]],
+    ["a nullable outcome", (s: string, r: string, m: string) => [s, r.replace(/outcome(\s+)StreamRoundOutcome/, "outcome$1StreamRoundOutcome?"), m]],
+    ["a third platform in the migration", (s: string, r: string, m: string) => [s, r, m.replace("ENUM('twitch', 'kick')", "ENUM('twitch', 'kick', 'youtube')")]],
+    ["a nullable platform in the migration", (s: string, r: string, m: string) => [s, r, m.replace("`platform` ENUM('twitch', 'kick') NOT NULL", "`platform` ENUM('twitch', 'kick') NULL")]],
+    ["a nullable settings column in the migration", (s: string, r: string, m: string) => [s, r, m.replace("`settings` JSON NOT NULL", "`settings` JSON NULL")]],
+    ["another status default in the migration", (s: string, r: string, m: string) => [s, r, m.replace("DEFAULT 'active'", "DEFAULT 'ended'")]],
+    ["an outcome list without passed", (s: string, r: string, m: string) => [s, r, m.replace("ENUM('solved', 'timeout', 'passed')", "ENUM('solved', 'timeout')")]],
+] as const) {
+    const [s, r, m] = mutate(session, result, migration);
+    assert.notDeepEqual(enumColumnFailures(s, r, m), [], `the column check refuses ${label}`);
+}
 
 assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scripts\/test-streamer-session-foundation.ts"/);
 
@@ -124,9 +155,24 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         "view-key.ts must export the view-key rotation limit",
     );
     const streamerSocket = read("apps/web/src/lib/socket/streamer-socket.ts");
+    // Any string that holds the bucket name counts, whatever its quotes (a template too); a comment does not.
+    const spellsViewKeyBucket = (text: string) =>
+        text
+            .replace(/\/\*[\s\S]*?\*\//g, "")
+            .replace(/(^|[^:"'`])\/\/.*$/gm, "$1")
+            .includes("streamer-view-key");
+    for (const [label, spelt] of [
+        ["double quotes", 'const bucket = "streamer-view-key";'],
+        ["single quotes", "const bucket = 'streamer-view-key';"],
+        ["a template", "const bucket = `streamer-view-key`;"],
+        ["a template with a part", "const key = `${prefix}:streamer-view-key:${id}`;"],
+    ] as const) {
+        assert.ok(spellsViewKeyBucket(spelt), `the bucket check catches ${label}`);
+    }
+    assert.ok(!spellsViewKeyBucket("// the streamer-view-key bucket is shared\n/* streamer-view-key */ const x = 1;"), "a comment naming the bucket is no spelling");
     for (const [label, source] of [["view-key route", sources.viewKey], ["streamer socket", streamerSocket]]) {
         assert.match(source, /import \{[^}]*\bSTREAMER_VIEW_KEY_LIMIT\b[^}]*\} from "@\/lib\/streamer\/view-key";/, `${label} must import STREAMER_VIEW_KEY_LIMIT`);
-        assert.ok(!source.includes('"streamer-view-key"'), `${label} must not spell the view-key bucket itself`);
+        assert.ok(!spellsViewKeyBucket(source), `${label} must not spell the view-key bucket itself`);
     }
     const viewKeyPost = sources.viewKey.split("export async function POST")[1] ?? "";
     const viewKeyLimitAt = viewKeyPost.search(/consumeDistributedRequestRateLimit\(\{\s*\.\.\.STREAMER_VIEW_KEY_LIMIT,\s*key: `user:\$\{sessionUser\.id\}`,?\s*\}\)/);
@@ -234,8 +280,60 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     ]) {
         assert.ok(guide.includes(needle), `guide section 8 must mention ${needle}`);
     }
+    // The numbers the guide gives operators, each as the code has it (line breaks folded).
+    const section8 = guide.slice(guide.search(/^## 8\. /m)).replace(/\s+/g, " ");
+    const section7 = guide.slice(guide.search(/^## 7\. /m), guide.search(/^## 8\. /m)).replace(/\s+/g, " ");
+    for (const needle of [
+        "Oturum oluşturma kullanıcı başına 15 dakikada 10",
+        "Yenileme kullanıcı başına 15 dakikada 10 ile sınırlıdır; panel ve `POST /api/streamer/sessions/current/view-key` aynı kotayı paylaşır",
+        "| Oturum açma | kullanıcı başına 15 dakikada 10 |",
+        "| Anahtar yenileme | kullanıcı başına 15 dakikada 10 (panel ve HTTP ucu aynı kotayı paylaşır) |",
+        "| Host olayları | soket başına 10 saniyede 10; host odasına katılmış sokette ayrıca kullanıcı başına 10 saniyede 10",
+        "| Host odasına katılım | soket başına 10 saniyede 10 |",
+        "| Yayın ekranına katılım | IP başına dakikada 30 |",
+        "| test-guess (yalnız geliştirme) | kullanıcı başına dakikada 120 |",
+        "| Sohbetten izlenen oyuncu | oturum başına en çok 2000 |",
+        "katılımcı sayısı (`participants`) oturum boyunca tahmini kabul edilen kişi sayısıdır",
+        "kesildiği andan itibaren 24 saat",
+        "| `idle` | 6 saat boyunca etkinlik olmaz. |",
+        "turun kabul ettiği tahminlerdir (yanlış ya da doğru)",
+        "sunucu anahtarı 15 saniyede bir okur ve okunan değeri 5 saniye saklar; kapalı okununca bütün canlı oturumlar en geç yaklaşık 20 saniye içinde `stopped` ile biter",
+        "canlı oturumu `stopped` ile biter. Bitiş en çok 10 saniye beklenir (son çare sınırı 21 saniye)",
+        "| `interrupted` | Sunucu düzgün kapanır (deploy, `SIGTERM` / `SIGINT`). | `interrupted` |",
+        "bekleyen işlemler en çok 10 saniye beklenir",
+        "açıldığı kanal bağlantısı saatte bir doğrulanır",
+        "30 sn, 60 sn, 120 sn, sonra her 300 sn'de bir",
+        "kelime havuzu 10 saniyede cevap vermezse",
+        "Çıkış cihaz başınadır",
+        "Anahtar canlı oturumlara geriye dönük uygulanmaz",
+        "`/stream/••••••`",
+        "Maskeli alan seçilemez ve sürüklenemez",
+        "Kartı gizle",
+        "Yeni sekmede önizle",
+        "desen ölçeği 8–42 px, hareket süresi 1800–12000 ms, parlama bulanıklığı 8–56; desen, parlama ve kaplama opaklığı en çok 0,42, 0,36 ve 0,45",
+        "en çok 2048 karakter; ad en çok 60 karakterdir",
+        "Anahtar adresin yolunda durur",
+    ]) {
+        assert.ok(section8.includes(needle), `guide section 8 must say: ${needle}`);
+    }
+    for (const needle of [
+        "state'in sha256 özeti 10 dakikalığına kaydedilir",
+        "Redis'te (`SET NX PX`), değilse süreç belleğindedir (en çok 10 000 kayıt)",
+        "Token yenileme karşılaştır-ve-yaz ile yapılır",
+        "aynı bağlantı için aynı anda tek platform yenilemesi çalışır",
+        "başka bir kanala yeniden bağlandıysa",
+    ]) {
+        assert.ok(section7.includes(needle), `guide section 7 must say: ${needle}`);
+    }
+    for (const outdated of ["sunucu tarafında kullanılmış state kaydı yok", "2. aşamada refresh token üzerinden", "2. aşamada uygulanacak", "10 saniyede 10 ile sınırlıdır. Yayın"]) {
+        assert.ok(!guide.replace(/\s+/g, " ").includes(outdated), `the guide no longer says: ${outdated}`);
+    }
     const readme = read("docs/stream/README.md");
     assert.ok(readme.includes("platform-connections-guide.md#8-yayın-oturumu-ve-obs"), "stream README links the phase-2 guide section");
+    const phase2Line = readme.split(/\r?\n/).find((line) => line.includes("#8-yayın-oturumu-ve-obs")) ?? "";
+    for (const topic of ["kapanma nedenleri", "acil durdurma", "saatlik kanal doğrulaması", "sınırlar"]) {
+        assert.ok(phase2Line.includes(topic), `the stream README's phase-2 line names ${topic}`);
+    }
     assert.ok(readme.includes("2026-11-05-streamer-session-and-screens-design.md"), "stream README links the phase-2 spec");
     assert.ok(readme.includes("2026-11-05-streamer-session-and-screens.md"), "stream README links the phase-2 plan");
 

@@ -1,8 +1,8 @@
-# Hushle Streamer Studio / V3 Design Prototype
+# Hushle Streamer Studio / V4 Design Prototype
 
-Hushle görsel diliyle özel yayıncı paneli, dört temalı yayın ekranı, OBS alt
-şeridi ve kart/renk laboratuvarı. Yayın ekranı V3 taslağıdır; panel ve kart
-laboratuvarı V2 görünümünde kaldı. **Çalışan yerel demo;
+Hushle görsel diliyle özel yayıncı paneli, beş temalı yayın ekranı, OBS alt
+şeridi ve kart/renk laboratuvarı. Yayın ekranı V4 taslağıdır (zamanlayıcı şablonları V4.1);
+panel ve kart laboratuvarı V2 görünümünde kaldı. **Çalışan yerel demo;
 production özelliği değil.** Next.js uygulamasına, API'ye veya veritabanına bağlı
 değildir. Bu klasör workspace paketi değildir ve uygulama build'ine girmez.
 
