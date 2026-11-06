@@ -63,7 +63,22 @@ const OFFLINE_AFTER_MS = 5_000;
 const RETRY_MAX_MS = 30_000;
 // Refusals that no retry can change: the key opens nothing (rotated, ended, never existed).
 const FINAL_JOIN_CODES = new Set(["STREAMER_VIEW_KEY_INVALID", "INVALID_REQUEST"]);
-const ENDED_REASONS: readonly StreamerEndedReason[] = ["ended", "idle", "view-key-rotated", "interrupted"];
+// Every closed reason of the contract. A record, so a reason added there fails the typecheck
+// until it is listed here too.
+const ENDED_REASONS: Record<StreamerEndedReason, true> = {
+    ended: true,
+    idle: true,
+    "view-key-rotated": true,
+    interrupted: true,
+    stopped: true,
+};
+
+function endedReason(payload: unknown): StreamerEndedReason {
+    const reason = isBag(payload) ? payload.reason : undefined;
+    return typeof reason === "string" && Object.prototype.hasOwnProperty.call(ENDED_REASONS, reason)
+        ? (reason as StreamerEndedReason)
+        : "interrupted";
+}
 
 const systemTimers: StreamTimers = {
     setTimeout: (run, ms) => setTimeout(run, ms),
@@ -146,9 +161,9 @@ export function connectStreamTransport(options: StreamTransportOptions): StreamT
     });
     socket.on(STREAMER_SOCKET_EVENTS.ended, (payload: unknown) => {
         if (closed) return;
-        const reason = isBag(payload) && ENDED_REASONS.includes(payload.reason as StreamerEndedReason)
-            ? (payload.reason as StreamerEndedReason)
-            : "interrupted";
+        const reason = endedReason(payload);
+        // Every reason (ended, idle, rotated, interrupted, stopped) means the view key is dead:
+        // the server will refuse it from now on, so the screen never retries after any of them.
         stop();
         options.onEnded(reason);
     });

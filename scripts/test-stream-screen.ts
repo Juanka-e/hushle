@@ -481,7 +481,7 @@ async function main(): Promise<void> {
     });
 
     await test("streamer:ended closes the screen for good, whatever the reason", () => {
-        for (const reason of ["ended", "idle", "view-key-rotated", "interrupted", "bogus"]) {
+        for (const reason of ["ended", "idle", "view-key-rotated", "interrupted", "stopped", "bogus"]) {
             const { socket, clock, events } = harness();
             socket.up();
             socket.emits[0].ack({ ok: true, state: snapshot({ revision: 1 }) });
