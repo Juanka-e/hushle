@@ -441,6 +441,13 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
 
 {
     const socketSource = read("apps/web/src/lib/socket/streamer-socket.ts");
+    // The guard has its own module; the socket layer imports it and keeps no copy.
+    const guardSource = read("apps/web/src/lib/socket/streamer-leak-guard.ts");
+    assert.match(socketSource, /^import \{ assertNoSecret, StreamerSecretLeakError \} from "\.\/streamer-leak-guard";$/m, "the socket layer imports the guard");
+    for (const own of ["export function assertNoSecret(", "class StreamerSecretLeakError", "const KNOWN_KEYS", "function eachString("]) {
+        assert.ok(guardSource.includes(own), `the guard module has ${own}`);
+        assert.ok(!socketSource.includes(own), `streamer-socket.ts keeps no ${own}`);
+    }
     // Every fixed vocabulary the guard skips is an exhaustive record of its union: a new member
     // (a theme, a clock, a pattern...) fails tsc until the guard lists it.
     for (const union of [
@@ -465,9 +472,9 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         "keyof ResolvedCardThemeLike",
         "keyof NonNullable<Snapshot[\"reveal\"]>",
     ]) {
-        assert.ok(socketSource.includes(`: Record<${union}, true> = {`), `the leak guard's ${union} list is an exhaustive Record<${union}, true>`);
+        assert.ok(guardSource.includes(`: Record<${union}, true> = {`), `the leak guard's ${union} list is an exhaustive Record<${union}, true>`);
     }
-    assert.ok(!/readonly string\[\]>\(\[/.test(socketSource), "no hand-written vocabulary list is left in the guard");
+    assert.ok(!/readonly string\[\]>\(\[/.test(guardSource), "no hand-written vocabulary list is left in the guard");
 
     // Comments are dropped: only real calls count.
     const code = (path: string) =>

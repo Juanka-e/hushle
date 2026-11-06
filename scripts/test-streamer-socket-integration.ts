@@ -20,8 +20,8 @@ import {
     type StreamerPlatform,
 } from "@hushle/platform-streamer";
 import { SOCKET_CLIENT_AUTH } from "../apps/web/src/lib/socket/protocol-version";
+import { assertNoSecret } from "../apps/web/src/lib/socket/streamer-leak-guard";
 import {
-    assertNoSecret,
     setupStreamerSocket,
     streamerHostRoom,
     streamerPublicRoom,
