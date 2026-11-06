@@ -349,6 +349,15 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         "CosmeticPattern",
         "CosmeticMotionPreset",
         "Extract<keyof ResolvedCardThemeLike, `${string}Color`>",
+        // The projection keys that are never compared.
+        "keyof Snapshot",
+        "keyof PassedCard",
+        "keyof Snapshot[\"scores\"][number]",
+        "keyof LastCorrect",
+        "keyof NonNullable<Snapshot[\"channel\"]>",
+        "keyof StreamCardBack",
+        "keyof ResolvedCardThemeLike",
+        "keyof NonNullable<Snapshot[\"reveal\"]>",
     ]) {
         assert.ok(socketSource.includes(`: Record<${union}, true> = {`), `the leak guard's ${union} list is an exhaustive Record<${union}, true>`);
     }

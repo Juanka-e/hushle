@@ -9,6 +9,8 @@ import {
     type ChannelPlatform,
     type ClockStyle,
     type HostStreamSnapshot,
+    type LastCorrect,
+    type PassedCard,
     type PublicStreamSnapshot,
     type ResolvedCardThemeLike,
     type StreamCardBack,
@@ -168,6 +170,38 @@ const NAME_FIELDS: Pattern[] = [["scores", INDEX, "name"], ["lastCorrect", "name
 // same (viewers never see the taboos); only the live word itself is a leak there.
 const PASSED_WORD_FIELD: Pattern = ["passed", "target"];
 
+// The projection's own keys, per object path: never compared. Any other key is card data until
+// shown otherwise and is compared like a value. Exhaustive records again: a new projection field
+// fails tsc until it is listed.
+type Snapshot = PublicStreamSnapshot;
+const ROOT_KEYS: Record<keyof Snapshot, true> = {
+    type: true, schemaVersion: true, revision: true, phase: true, remaining: true, duration: true, round: true, passedRound: true,
+    theme: true, camera: true, cameraSize: true, clock: true, showCardName: true, channel: true, passed: true, participants: true,
+    pack: true, scores: true, lastCorrect: true, cardBack: true, connected: true, reveal: true,
+};
+const PASSED_KEYS: Record<keyof PassedCard, true> = { round: true, target: true };
+const SCORE_KEYS: Record<keyof Snapshot["scores"][number], true> = { name: true, points: true, rank: true, tied: true };
+const LAST_CORRECT_KEYS: Record<keyof LastCorrect, true> = { eventId: true, name: true, round: true, pointsGranted: true, solveMs: true };
+const CHANNEL_KEYS: Record<keyof NonNullable<Snapshot["channel"]>, true> = { platform: true, name: true };
+const CARD_BACK_KEYS: Record<keyof StreamCardBack, true> = { itemId: true, name: true, theme: true, imageUrl: true };
+const THEME_KEYS: Record<keyof ResolvedCardThemeLike, true> = {
+    renderSpecVersion: true, requestedRenderSpecVersion: true, usedRenderSpecFallback: true, surfaceColor: true, borderColor: true,
+    accentColor: true, secondaryColor: true, titleColor: true, detailColor: true, pattern: true, patternOpacity: true, patternScale: true,
+    motionPreset: true, motionSpeedMs: true, glowColor: true, glowBlur: true, glowOpacity: true, overlayImageUrl: true, overlayOpacity: true,
+};
+const REVEAL_KEYS: Record<keyof NonNullable<Snapshot["reveal"]>, true> = { target: true, taboos: true, solved: true };
+
+const KNOWN_KEYS = [
+    vocabulary([], ROOT_KEYS),
+    vocabulary(["passed"], PASSED_KEYS),
+    vocabulary(["scores", INDEX], SCORE_KEYS),
+    vocabulary(["lastCorrect"], LAST_CORRECT_KEYS),
+    vocabulary(["channel"], CHANNEL_KEYS),
+    vocabulary(["cardBack"], CARD_BACK_KEYS),
+    vocabulary(["cardBack", "theme"], THEME_KEYS),
+    vocabulary(["reveal"], REVEAL_KEYS),
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -177,39 +211,68 @@ function comparable(word: string): string {
     return normalizeGuess(word, "normal");
 }
 
-/** Calls `visit` with every string value and its path. */
-function eachString(value: unknown, path: PathSegment[], visit: (path: readonly PathSegment[], text: string) => void): void {
+/**
+ * Calls `visit` with every string value and its path, and `visitKey` with every object key that is
+ * not one of the projection's own at that path (with the path of the object holding it).
+ */
+function eachString(
+    value: unknown,
+    path: PathSegment[],
+    visit: (path: readonly PathSegment[], text: string) => void,
+    visitKey: (path: readonly PathSegment[], key: string) => void,
+): void {
     if (typeof value === "string") visit(path, value);
-    else if (Array.isArray(value)) value.forEach((item, index) => eachString(item, [...path, index], visit));
+    else if (Array.isArray(value)) value.forEach((item, index) => eachString(item, [...path, index], visit, visitKey));
     else if (isRecord(value)) {
-        for (const [key, child] of Object.entries(value)) eachString(child, [...path, key], visit);
+        const known = KNOWN_KEYS.find(([pattern]) => matches(pattern, path))?.[1];
+        for (const [key, child] of Object.entries(value)) {
+            if (!known?.has(key)) visitKey(path, key);
+            eachString(child, [...path, key], visit, visitKey);
+        }
     }
 }
 
-/** Exactly what Socket.IO puts on the wire for `payload`; fails closed when it cannot be sent as JSON. */
+// Socket.IO sends these as binary attachments, beside the JSON the guard reads: never sent.
+function isBinary(value: unknown): boolean {
+    if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return true;
+    if (typeof SharedArrayBuffer !== "undefined" && value instanceof SharedArrayBuffer) return true;
+    if (typeof Blob !== "undefined" && value instanceof Blob) return true;
+    // What a Buffer's toJSON leaves (its bytes as numbers): refused too, however it got there.
+    return isRecord(value) && value.type === "Buffer" && Array.isArray(value.data);
+}
+
+/**
+ * The JSON copy of `payload` the guard checks and the caller then sends: fails closed when it
+ * cannot be sent as JSON or holds a binary value. The replacer looks at each value before and
+ * after its toJSON.
+ */
 function onTheWire(payload: unknown): Record<string, unknown> {
     let wire: unknown;
     try {
-        const json = JSON.stringify(payload);
+        const json = JSON.stringify(payload, function (this: unknown, key: string, value: unknown) {
+            if (isBinary(value) || (typeof this === "object" && this !== null && isBinary((this as Record<string, unknown>)[key]))) throw new StreamerSecretLeakError("not-public", "a binary value");
+            return value;
+        });
         wire = json === undefined ? undefined : JSON.parse(json);
     } catch {
-        throw new StreamerSecretLeakError("not-public", "the payload does not serialize");
+        throw new StreamerSecretLeakError("not-public", "the payload does not serialize as plain JSON");
     }
     if (!isRecord(wire) || wire.type !== "public-state") throw new StreamerSecretLeakError("not-public", "not a public state");
     return wire;
 }
 
 /**
- * Throws unless `payload` may go to the public room of `live`. The JSON of the payload (what
- * Socket.IO sends) is checked: a public projection with no host-only field, no reveal while the
- * round is not over, and no string value equal to the live card's word or one of its taboos once
- * both are folded (normal tolerance). Keys are never compared, and neither are names, a field's
- * fixed vocabulary or a card-back hex colour. The passed card's word is compared with the live
- * word only. A finished round's reveal is on the stream screen by design, so it is not compared;
- * the rest of that payload is. Fails closed when the live card has no word to compare against.
- * Each refusal names its rule (`StreamerSecretLeakError.rule`).
+ * Returns the JSON copy of `payload` that may go to the public room of `live`, and throws
+ * otherwise. The copy is what is checked and what the caller sends (nothing is read from the
+ * payload again): a public projection with no host-only field, no binary value, no reveal while
+ * the round is not over, and no string value, nor key outside the projection's own, equal to the
+ * live card's word or one of its taboos once both are folded (normal tolerance). Names, a field's
+ * fixed vocabulary and a card-back hex colour are not compared. The passed card's word is
+ * compared with the live word only. A finished round's reveal is on the stream screen by design,
+ * so it is not compared; the rest of that payload is. Fails closed when the live card has no word
+ * to compare against. Each refusal names its rule (`StreamerSecretLeakError.rule`).
  */
-export function assertNoSecret(payload: unknown, live: Pick<LiveStreamSession, "hostSnapshot">): void {
+export function assertNoSecret(payload: unknown, live: Pick<LiveStreamSession, "hostSnapshot">): Record<string, unknown> {
     const wire = onTheWire(payload);
     for (const field of HOST_ONLY_FIELDS) {
         if (field in wire) throw new StreamerSecretLeakError("host-field", `host-only field "${field}"`);
@@ -218,26 +281,39 @@ export function assertNoSecret(payload: unknown, live: Pick<LiveStreamSession, "
     const finished = host.phase === "finished";
     if (!finished && wire.reveal !== null && wire.reveal !== undefined) throw new StreamerSecretLeakError("early-reveal", "reveal before the round is over");
     const card = host.card;
-    if (!card) return;
+    if (!card) return wire;
     const target = typeof card.target === "string" ? comparable(card.target) : "";
     if (!target) throw new StreamerSecretLeakError("no-target", "the live card has no word to compare against");
     // The passed card cuts its word: the live word cut the same way is the same leak.
     const shownTarget = comparable(card.target.slice(0, PASSED_TARGET_MAX));
     const taboos = new Set((Array.isArray(card.taboos) ? card.taboos : []).filter((word) => typeof word === "string").map(comparable).filter(Boolean));
-    eachString(wire, [], (path, text) => {
-        if (NAME_FIELDS.some((pattern) => matches(pattern, path))) return;
-        if (finished && path[0] === "reveal") return;
-        if (VOCABULARY_FIELDS.some(([pattern, members]) => members.has(text) && matches(pattern, path))) return;
-        if (HEX_COLOUR.test(text) && COLOUR_FIELDS.some((pattern) => matches(pattern, path))) return;
+    const secret = (text: string, where: string) => {
         const word = comparable(text);
         if (!word) return;
-        if (matches(PASSED_WORD_FIELD, path)) {
-            if (word === target || word === shownTarget) throw new StreamerSecretLeakError("passed-target", "the live word in the passed card");
-            return;
-        }
-        if (word === target) throw new StreamerSecretLeakError("target", "the live word in the payload");
-        if (taboos.has(word)) throw new StreamerSecretLeakError("taboo", "a taboo of the live card in the payload");
-    });
+        if (word === target) throw new StreamerSecretLeakError("target", `the live word ${where}`);
+        if (taboos.has(word)) throw new StreamerSecretLeakError("taboo", `a taboo of the live card ${where}`);
+    };
+    eachString(
+        wire,
+        [],
+        (path, text) => {
+            if (NAME_FIELDS.some((pattern) => matches(pattern, path))) return;
+            if (finished && path[0] === "reveal") return;
+            if (VOCABULARY_FIELDS.some(([pattern, members]) => members.has(text) && matches(pattern, path))) return;
+            if (HEX_COLOUR.test(text) && COLOUR_FIELDS.some((pattern) => matches(pattern, path))) return;
+            if (matches(PASSED_WORD_FIELD, path)) {
+                const word = comparable(text);
+                if (word && (word === target || word === shownTarget)) throw new StreamerSecretLeakError("passed-target", "the live word in the passed card");
+                return;
+            }
+            secret(text, "in the payload");
+        },
+        (path, key) => {
+            if (finished && path[0] === "reveal") return;
+            secret(key, "as a key of the payload");
+        },
+    );
+    return wire;
 }
 
 // ---------------------------------------------------------------- payloads and replies
@@ -383,16 +459,18 @@ export function setupStreamerSocket(
         const host = pendingHost.get(sessionId);
         pendingHost.delete(sessionId);
         const reference = runtime.get(sessionId) ?? (host ? { hostSnapshot: () => host } : null);
+        let checked: Record<string, unknown>;
         try {
             if (!reference) throw new StreamerSecretLeakError("no-reference", "no host projection to check against");
-            assertNoSecret(payload, reference);
+            checked = assertNoSecret(payload, reference);
         } catch (error) {
             const round = host ? host.round : (payload as { round?: unknown }).round;
             if (error instanceof StreamerSecretLeakError) reportBlocked(sessionId, round, error);
             else report("streamer_socket.public_state_blocked", error);
             return;
         }
-        io.to(streamerPublicRoom(sessionId)).emit(EVENTS.publicState, payload);
+        // The checked copy goes out, never the payload: nothing is read from it after the check.
+        io.to(streamerPublicRoom(sessionId)).emit(EVENTS.publicState, checked);
     });
 
     runtime.setOnEnded((sessionId, reason) => {
@@ -576,11 +654,12 @@ export function setupStreamerSocket(
             // A row still `active` that no live runtime runs was interrupted: its key opens nothing.
             const live = row?.status === "active" ? runtime.get(row.id) : null;
             if (!live || live.viewKeyHash !== hash) throw new Refusal(PlayerErrorCode.STREAMER_VIEW_KEY_INVALID);
-            const state = live.publicSnapshot();
+            const snapshot = live.publicSnapshot();
+            let state: Record<string, unknown>;
             try {
-                assertNoSecret(state, live);
+                state = assertNoSecret(snapshot, live);
             } catch (error) {
-                if (error instanceof StreamerSecretLeakError) reportBlocked(live.id, state.round, error);
+                if (error instanceof StreamerSecretLeakError) reportBlocked(live.id, snapshot.round, error);
                 throw error;
             }
             const data = dataOf(socket);

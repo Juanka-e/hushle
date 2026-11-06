@@ -372,8 +372,15 @@ async function main(): Promise<void> {
 
     // The socket layer sees the runtime through this wrapper so the test can replay its emitter.
     let wiredEmit: StreamerEmitter | null = null;
+    // When set, the public projection a join reads is replaced (to test what the ack sends).
+    let joinSnapshot: (() => unknown) | null = null;
     const wiredRuntime: StreamerSessionRuntime = {
         ...runtime,
+        get(id) {
+            const live = runtime.get(id);
+            const replace = joinSnapshot;
+            return live && replace ? { ...live, publicSnapshot: () => replace() as PublicStreamSnapshot } : live;
+        },
         setEmitter(emit) {
             wiredEmit = emit;
             runtime.setEmitter(emit);
@@ -980,6 +987,88 @@ async function main(): Promise<void> {
             assertTrips(circular, "not-public", "a payload Socket.IO cannot serialize", source);
             assertTrips({ ...pub, big: BigInt(1) }, "not-public", "a BigInt", source);
             assertTrips({ toJSON: () => null }, "not-public", "a payload that serializes to no object", source);
+        });
+
+        await test("leak guard: binary values are refused and keys outside the projection are compared like values", () => {
+            const live = runtime.get(sessionId);
+            assert.ok(live);
+            const host = live.hostSnapshot();
+            const card = host.card as StreamCard;
+            const pub = live.publicSnapshot();
+            const source = { hostSnapshot: () => host };
+            // Socket.IO sends binary values as attachments the JSON walk never sees: refused outright.
+            const bytes = () => new TextEncoder().encode(card.target);
+            const binaries: Array<[string, unknown]> = [
+                ["a Buffer", Buffer.from(card.target)],
+                ["a Uint8Array", bytes()],
+                ["an ArrayBuffer", bytes().buffer],
+                ["a DataView", new DataView(bytes().buffer)],
+                ["a Float64Array", new Float64Array([1, 2])],
+                ["a Blob", new Blob([card.target])],
+            ];
+            for (const [label, value] of binaries) {
+                assertTrips({ ...pub, extra: value }, "not-public", label, source);
+                assertTrips({ ...pub, extra: { nested: [value] } }, "not-public", `${label}, nested`, source);
+            }
+            assertTrips({ ...pub, extra: { type: "Buffer", data: [...Buffer.from(card.target)] } }, "not-public", "a serialized Buffer", source);
+            // A key outside the projection's fixed key set is compared like a value.
+            assertTrips({ ...pub, extra: { [card.target]: 1 } }, "target", "the live word as a key", source);
+            assertTrips({ ...pub, [card.taboos[0]]: true }, "taboo", "a taboo as a top-level key", source);
+            assertTrips({ ...pub, extra: [{ deep: { [card.taboos[1].toLocaleLowerCase("tr")]: null } }] }, "taboo", "a taboo as a nested key", source);
+            assertTrips(
+                { ...pub, cardBack: { itemId: 10, name: "Kor", theme: { pattern: "grid", [card.taboos[2]]: "#102030" }, imageUrl: null } },
+                "taboo",
+                "a taboo as an unknown card-back theme key",
+                source,
+            );
+            assertTrips({ ...pub, scores: [{ name: "Luna", points: 1, rank: 1, tied: false, [card.target]: 0 }] }, "target", "a key inside a score", source);
+            // The projection's own keys are never compared, even when a card is spelt like one.
+            const spelt = { hostSnapshot: () => ({ ...host, card: { wordId: 1, target: "TARGET", taboos: ["Round", "Name", "Theme", "Points", "Pattern"] } }) };
+            assertNoSecret(
+                {
+                    ...pub,
+                    passed: { round: 1, target: "KAPI" },
+                    scores: [{ name: "Luna", points: 1, rank: 1, tied: false }],
+                    cardBack: { itemId: 10, name: "Kor", theme: { pattern: "grid", surfaceColor: "#102030" }, imageUrl: null },
+                },
+                spelt,
+            );
+            // What the guard returns is the copy it checked: plain JSON, not the payload itself.
+            const checked = assertNoSecret(pub, source);
+            assert.deepEqual(checked, JSON.parse(JSON.stringify(pub)));
+            assert.notEqual(checked, pub);
+        });
+
+        await test("leak guard: the emitter and the join ack send the copy the guard checked, never the payload read again", async () => {
+            const live = runtime.get(sessionId);
+            assert.ok(live && wiredEmit);
+            const secret = liveCard().target;
+            // A getter that answers safely the first time it is read and with the live word after.
+            const tricky = () => {
+                let reads = 0;
+                const payload: Record<string, unknown> = { ...live.publicSnapshot() };
+                Object.defineProperty(payload, "lastCorrect", {
+                    enumerable: true,
+                    get: () => (reads++ === 0 ? null : { eventId: secret, name: "Luna", round: 1, pointsGranted: 1, solveMs: 1 }),
+                });
+                return payload;
+            };
+            const mark = viewer.events.length;
+            const followUp = nextState<PublicStreamSnapshot>(viewer, "streamer:public:state");
+            wiredEmit(sessionId, "public", tricky() as unknown as PublicStreamSnapshot);
+            const sent = await followUp;
+            assert.equal(sent.lastCorrect, null, "the client got the checked copy");
+            assert.ok(!JSON.stringify(received(viewer, "streamer:public:state", mark)).includes(secret), "the live word never left the server");
+            joinSnapshot = tricky;
+            try {
+                const screen = await connect(url);
+                const ack = await ask(screen, "streamer:public:join", { viewKey });
+                assertOk(ack, "a join while the projection reads differently the second time");
+                assert.equal((ack.state as PublicStreamSnapshot).lastCorrect, null);
+                assert.ok(!JSON.stringify(ack).includes(secret), "the ack carries the checked copy");
+            } finally {
+                joinSnapshot = null;
+            }
         });
 
         await test("leak guard: words are compared folded (normal tolerance), as the domain drops a recycled pass", () => {
