@@ -88,7 +88,6 @@ function isBag(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
 }
 
-
 /** The wait before the next reload, given how many reloads in a row came before it. */
 export function protocolReloadDelayMs(reloadsSoFar: number): number {
     return RELOAD_DELAYS_MS[reloadsSoFar] ?? RELOAD_EVERY_MS;

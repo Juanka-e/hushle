@@ -286,7 +286,7 @@ test("a failed re-read of the session is surfaced, never swallowed; a retry that
     assert.deepEqual(ok.applied, [good]);
 });
 
-test("the panel wires both: re-read failures show a retry banner, a signed-out join stops with a sign-in link", () => {
+test("pins the panel's source: re-read failures show a retry banner, a signed-out join stops with a sign-in link", () => {
     const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
     assert.ok(panel.includes("createSessionRereader("), "the panel re-reads through rereadSession, behind the sequence guard");
     assert.ok(panel.includes(`t("streamer.panel.rereadFailed")`), "a failed re-read is shown");
@@ -296,7 +296,7 @@ test("the panel wires both: re-read failures show a retry banner, a signed-out j
     assert.ok(panel.includes("/login?callbackUrl=/streamer"), "with a link back to the panel after signing in");
 });
 
-test("panel sources keep the key and the card in memory and open stream addresses in a full new tab", () => {
+test("pins the panel sources: the key and the card stay in memory, stream addresses open in a full new tab", () => {
     const files = readdirSync(PANEL_DIR).filter((file) => /\.tsx?$/.test(file));
     assert.ok(files.length >= 5, `expected the panel files, found ${files.length}`);
     for (const file of files) {
@@ -339,7 +339,7 @@ test("P1 a round action refused because streamer mode is off stops the panel; ot
     }
 });
 
-test("P1 the panel shows a stopped notice and a mode-off notice, and stops on both refusals", () => {
+test("P1 pins the panel's source: a stopped notice, a mode-off notice, and a stop on both refusals", () => {
     const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
     assert.ok(panel.includes("closedKindOf(payload)"), "streamer:ended goes through closedKindOf");
     assert.ok(!/reason === "idle" \|\| reason === "interrupted"/.test(panel), "no hand-written reason list is left");
@@ -371,7 +371,7 @@ test("P2 a host notice is read only when it is the known kind for a known platfo
     }
 });
 
-test("P2 the panel listens for host notices and keeps a reconnect warning with a settings link", () => {
+test("P2 pins the panel's source: it listens for host notices and keeps a reconnect warning with a settings link", () => {
     const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
     assert.ok(panel.includes("socket.on(EVENTS.hostNotice"), "the host room's notices are received");
     assert.ok(panel.includes("hostNoticeOf("), "through hostNoticeOf");
@@ -430,7 +430,7 @@ test("P3 X4 the gate: a live session opens the panel; the warning depends on its
     assert.equal(gate(true, [], false, null), "not-linked", "no live session: unchanged");
 });
 
-test("P3 X4 the page reads the session before choosing the gate and hands the panel the warning", () => {
+test("P3 X4 pins the page's source: the session is read before the gate is chosen, and the panel gets the warning", () => {
     const page = source("apps/web/src/app/streamer/page.tsx");
     assert.ok(page.includes("streamerGateState("), "the page decides through streamerGateState");
     assert.match(page, /^\s+activePlatforms[,:]/m, "with the platforms whose link is active");
@@ -438,7 +438,7 @@ test("P3 X4 the page reads the session before choosing the gate and hands the pa
     assert.ok(/needsReconnect:/.test(page), "the panel is told the channel needs a reconnect");
 });
 
-test("E10 the page reads the session and the panel's own data together; the gate decision is unchanged", () => {
+test("E10 pins the page's source: the session and the panel's own data are read together; the gate gets the same inputs", () => {
     const page = source("apps/web/src/app/streamer/page.tsx");
     // With an active link the gate opens the panel whatever the session says, so its reads start
     // beside the session read; without one (only a live session can open it then) they wait.
@@ -522,13 +522,13 @@ test("P9 stream addresses are masked for display; the key never shows, the query
     assert.ok(card.includes(`t("streamer.panel.cardHide")`) && card.includes(`t("streamer.panel.cardShow")`), "the card has a hide / show toggle");
 });
 
-test("P10 every toggle group in the setup form is a labelled group", () => {
+test("P10 pins the setup form's source: every toggle group is a labelled group", () => {
     const form = source("apps/web/src/components/streamer/streamer-setup-form.tsx");
     assert.match(form, /role="group" aria-labelledby=\{labelId\}/, "Field is a group named by its label");
     assert.match(form, /<p id=\{labelId\} className=\{labelClass\}>/, "the label element carries the id");
 });
 
-test("P12 the stale readyHelp text is gone from both locales", () => {
+test("P12 pins the dictionaries: the stale readyHelp text is gone from both locales", () => {
     assert.ok(!("readyHelp" in dictionaries.tr.streamer), "tr");
     assert.ok(!("readyHelp" in dictionaries.en.streamer), "en");
 });
@@ -584,7 +584,7 @@ test("P13 P14 overlapping re-reads: only the newest answer counts, and a cancel 
     assert.equal(statuses.at(-1), "idle");
 });
 
-test("P13 the retry banner is cleared on a new session and on starting over; a create drops a re-read in flight", () => {
+test("P13 pins the panel's source: the retry banner is cleared on a new session and on starting over; a create drops a re-read in flight", () => {
     const panel = source("apps/web/src/components/streamer/streamer-panel.tsx");
     const body = (name: string) => {
         const start = panel.indexOf(`const ${name} = (`);
@@ -608,7 +608,7 @@ test("P15 a session that is gone shows no connection badge: the re-read (or its 
     assert.ok(panel.includes("connectionLabel(connection)"), "the badge reads through connectionLabel");
 });
 
-test("P16 the signed-out text also covers a suspended account", () => {
+test("P16 pins the signed-out text: it also covers a suspended account", () => {
     assert.equal(dictionaries.tr.streamer.panel.signedOut, "Oturumun kapandı ya da hesabın şu an kullanılamıyor. Yeniden giriş yap.");
     assert.match(dictionaries.en.streamer.panel.signedOut, /account/i);
 });
@@ -630,7 +630,7 @@ test("P17 the panel takes the camera hole from camera-rects and never imports th
 
 // ---------------------------------------------------------------- batch 4 fix round 1
 
-test("X1 a masked address is never selected on focus, and the copy-failure text points at Göster", () => {
+test("X1 pins the OBS box's source and the copy-failure text: a masked address is never selected on focus; the text points at Göster", () => {
     assert.match(dictionaries.tr.streamer.panel.copyFailed, /«Göster»/);
     assert.match(dictionaries.en.streamer.panel.copyFailed, /“Show”/);
     const obs = source("apps/web/src/components/streamer/streamer-obs-box.tsx");
@@ -638,7 +638,7 @@ test("X1 a masked address is never selected on focus, and the copy-failure text 
     assert.ok(!obs.includes("onFocus={(event) => event.currentTarget.select()}"), "no unconditional select is left");
 });
 
-test("E6 a masked address keeps no selection and cannot be dragged, so no copy by hand picks up the dots", () => {
+test("E6 pins the OBS box's source: a masked address keeps no selection and cannot be dragged (the session e2e checks it in a browser)", () => {
     const obs = source("apps/web/src/components/streamer/streamer-obs-box.tsx");
     const input = obs.slice(obs.indexOf("<input"), obs.indexOf("/>", obs.indexOf("<input")));
     assert.ok(input.length > 0, "the address field");

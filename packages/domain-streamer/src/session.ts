@@ -54,7 +54,8 @@ export function ranking(state: StreamSessionState): RankedPlayer[] {
  * The passed card stays face up until the next pass. When the card just dealt is that same word,
  * it would show the live word: the passed card goes. Compared folded (the normal tolerance, the
  * widest notion of one word) with the dealt word both cut as the passed card shows it and in full,
- * so this drop is at least as wide as the stream socket's leak guard (which compares strictly).
+ * so this drop matches the stream socket's leak guard, which folds the same way (normal tolerance)
+ * and refuses the live word in the passed card, cut or in full.
  */
 function dropRecycledPass(state: StreamSessionState): void {
     const passed = state.passedCard;
