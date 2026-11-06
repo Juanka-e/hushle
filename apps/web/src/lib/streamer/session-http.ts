@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
+import { buildRateLimitHeaders, type RequestRateLimitResult } from "@/lib/security/request-rate-limit";
 import type { StreamUrls } from "@/types/streamer-session";
 import { isStreamerSessionError, type StreamerSessionErrorCode } from "./session-service";
 
@@ -22,6 +23,19 @@ export function streamerSessionErrorResponse(error: unknown): NextResponse | nul
     const mapped = MAPPING[error.code];
     if (!mapped) return null;
     return NextResponse.json(playerError(mapped.code), { status: mapped.status });
+}
+
+/** The answer of a streamer session route whose quota ran out. */
+export function rateLimitedResponse(limit: RequestRateLimitResult): NextResponse {
+    return NextResponse.json(playerError(PlayerErrorCode.RATE_LIMITED), { status: 429, headers: buildRateLimitHeaders(limit) });
+}
+
+/** A failure inside a streamer session route: a known session error's own answer, anything else logged and a 500. */
+export function streamerRouteFailure(error: unknown, label: string): NextResponse {
+    const mapped = streamerSessionErrorResponse(error);
+    if (mapped) return mapped;
+    console.error(label, error);
+    return NextResponse.json(playerError(PlayerErrorCode.UNKNOWN_ERROR), { status: 500 });
 }
 
 export function buildStreamUrls(origin: string, viewKey: string): StreamUrls {

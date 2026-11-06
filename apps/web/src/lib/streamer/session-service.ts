@@ -230,13 +230,44 @@ function liveSessionOf(deps: StreamerSessionServiceDeps, userId: number) {
     return live;
 }
 
-export async function endCurrent(
-    deps: StreamerSessionServiceDeps,
-    userId: number,
-): Promise<{ sessionId: string; summary: StreamSessionSummary }> {
+/** What ending the current session answers: its id, its summary and the ended session as the panel shows it. */
+export interface EndedStreamSession {
+    sessionId: string;
+    summary: StreamSessionSummary;
+    session: StreamSessionView;
+}
+
+/**
+ * Ends the user's live session; `not_found` when nothing is live. The ended view is built from
+ * what the end call returns (the summary) and when the end was asked for, over the row's fixed
+ * fields (platform, settings, start). The row is read alongside the end, never after it: the end
+ * write may still be pending, or may have failed, when the answer leaves. The read never holds up
+ * the end itself.
+ */
+export async function endCurrent(deps: StreamerSessionServiceDeps, userId: number): Promise<EndedStreamSession> {
     const live = liveSessionOf(deps, userId);
+    const read = deps.sessions.findById(live.id).then(
+        (record) => ({ record }),
+        (error: unknown) => ({ record: null, error }),
+    );
+    const endedAt = clock(deps);
     const summary = await deps.runtime.end(live.id, "ended");
-    return { sessionId: live.id, summary };
+    const row = await read;
+    if ("error" in row) throw row.error;
+    // The row went away with its owner meanwhile: the stream is off the air, nothing is left to show.
+    if (!row.record) throw new StreamerSessionError("not_found");
+    return {
+        sessionId: live.id,
+        summary,
+        session: {
+            ...toSessionView(row.record, deps.onError),
+            status: "ended",
+            interrupted: false,
+            endedAt: new Date(endedAt).toISOString(),
+            roundCount: summary.rounds,
+            summary,
+        },
+    };
 }
 
 export async function rotateViewKey(deps: StreamerSessionServiceDeps, userId: number): Promise<{ viewKey: string }> {

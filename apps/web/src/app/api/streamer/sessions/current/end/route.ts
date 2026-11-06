@@ -3,11 +3,17 @@ import { PlayerErrorCode, playerError } from "@/lib/errors/player-error";
 import { isTrustedStateChangeRequest } from "@/lib/security/request-origin";
 import { getSessionUser } from "@/lib/session";
 import { createSessionServiceDeps } from "@/lib/streamer/session-deps";
-import { streamerSessionErrorResponse } from "@/lib/streamer/session-http";
-import { endCurrent, toSessionView } from "@/lib/streamer/session-service";
+import { streamerRouteFailure } from "@/lib/streamer/session-http";
+import { endCurrent } from "@/lib/streamer/session-service";
+import type { EndStreamSessionResponse } from "@/types/streamer-session";
 
 export const dynamic = "force-dynamic";
 
+// Checks in order (pinned by scripts/test-streamer-session-foundation.ts): origin, a signed-in
+// owner, then the work. Unlike the other session routes there is no account-status, streamer-mode
+// or quota gate, on purpose: ending only takes the caller's own stream off the air, so it is always
+// safe, and an owner whose account stopped being active (or whose streamer mode was switched off)
+// must still be able to stop a stream that is running.
 export async function POST(request: Request) {
     if (!isTrustedStateChangeRequest(request)) {
         return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
@@ -17,14 +23,11 @@ export async function POST(request: Request) {
         return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
     try {
-        const deps = createSessionServiceDeps();
-        const { sessionId } = await endCurrent(deps, sessionUser.id);
-        const record = await deps.sessions.findById(sessionId);
-        return NextResponse.json({ ok: true, session: record ? toSessionView(record) : null }, { headers: { "cache-control": "no-store" } });
+        // Nothing live to end is the typed `not_found`: 404 STREAMER_SESSION_NOT_FOUND.
+        const { session } = await endCurrent(createSessionServiceDeps(), sessionUser.id);
+        const body: EndStreamSessionResponse = { ok: true, session };
+        return NextResponse.json(body, { headers: { "cache-control": "no-store" } });
     } catch (error) {
-        const mapped = streamerSessionErrorResponse(error);
-        if (mapped) return mapped;
-        console.error("streamer session end failed", error);
-        return NextResponse.json(playerError(PlayerErrorCode.UNKNOWN_ERROR), { status: 500 });
+        return streamerRouteFailure(error, "streamer session end failed");
     }
 }

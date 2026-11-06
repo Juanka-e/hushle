@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { PlayerErrorCode, playerError, playerErrorFromValidation } from "@/lib/errors/player-error";
 import { isTrustedStateChangeRequest } from "@/lib/security/request-origin";
-import { buildRateLimitHeaders, consumeDistributedRequestRateLimit } from "@/lib/security/request-rate-limit";
+import { consumeDistributedRequestRateLimit } from "@/lib/security/request-rate-limit";
 import { getSessionUser } from "@/lib/session";
 import { listCardBacksForUser } from "@/lib/streamer/card-backs";
 import { publicOriginFor } from "@/lib/streamer/redirects";
 import { createSessionServiceDeps } from "@/lib/streamer/session-deps";
-import { buildStreamUrls, streamerSessionErrorResponse } from "@/lib/streamer/session-http";
+import { buildStreamUrls, rateLimitedResponse, streamerRouteFailure } from "@/lib/streamer/session-http";
 import { createSession, createSessionInputSchema, currentSession, lastSettings } from "@/lib/streamer/session-service";
 import { getSystemSettings } from "@/lib/system-settings/service";
 import type { CreateStreamSessionResponse, StreamSessionResponse } from "@/types/streamer-session";
@@ -33,13 +33,13 @@ export async function GET() {
         const body: StreamSessionResponse = { enabled: true, session, lastSettings: last, cardBacks };
         return NextResponse.json(body, { headers: { "cache-control": "no-store" } });
     } catch (error) {
-        const mapped = streamerSessionErrorResponse(error);
-        if (mapped) return mapped;
-        console.error("streamer session view failed", error);
-        return NextResponse.json(playerError(PlayerErrorCode.UNKNOWN_ERROR), { status: 500 });
+        return streamerRouteFailure(error, "streamer session view failed");
     }
 }
 
+// Checks in order (pinned by scripts/test-streamer-session-foundation.ts): origin, an active
+// account, streamer mode on, the rate limit, then the work. The quota is spent only on a request
+// that may open a session.
 export async function POST(request: NextRequest) {
     if (!isTrustedStateChangeRequest(request)) {
         return NextResponse.json(playerError(PlayerErrorCode.ORIGIN_REJECTED), { status: 403 });
@@ -48,19 +48,17 @@ export async function POST(request: NextRequest) {
     if (!sessionUser || sessionUser.accountStatus !== "active") {
         return NextResponse.json(playerError(PlayerErrorCode.AUTH_REQUIRED), { status: 401 });
     }
-    const limit = await consumeDistributedRequestRateLimit({
-        bucket: "streamer-session-create",
-        key: `user:${sessionUser.id}`,
-        windowMs: 15 * 60_000,
-        maxRequests: 10,
-    });
-    if (!limit.allowed) {
-        return NextResponse.json(playerError(PlayerErrorCode.RATE_LIMITED), { status: 429, headers: buildRateLimitHeaders(limit) });
-    }
     try {
         if (!(await getSystemSettings()).features.streamerModeEnabled) {
             return NextResponse.json(playerError(PlayerErrorCode.STREAMER_MODE_DISABLED), { status: 403 });
         }
+        const limit = await consumeDistributedRequestRateLimit({
+            bucket: "streamer-session-create",
+            key: `user:${sessionUser.id}`,
+            windowMs: 15 * 60_000,
+            maxRequests: 10,
+        });
+        if (!limit.allowed) return rateLimitedResponse(limit);
         let raw: unknown;
         try {
             raw = await request.json();
@@ -76,9 +74,6 @@ export async function POST(request: NextRequest) {
         const body: CreateStreamSessionResponse = { session, viewKey, urls: buildStreamUrls(origin, viewKey) };
         return NextResponse.json(body, { status: 201, headers: { "cache-control": "no-store" } });
     } catch (error) {
-        const mapped = streamerSessionErrorResponse(error);
-        if (mapped) return mapped;
-        console.error("streamer session create failed", error);
-        return NextResponse.json(playerError(PlayerErrorCode.UNKNOWN_ERROR), { status: 500 });
+        return streamerRouteFailure(error, "streamer session create failed");
     }
 }

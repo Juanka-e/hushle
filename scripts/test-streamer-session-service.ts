@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import Module from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { NextRequest } from "next/server";
 import type { z } from "zod";
 import type { ChatGuess, HostStreamSnapshot, PublicStreamSnapshot, StreamCard } from "@hushle/domain-streamer";
 import { resetObservabilityForTests } from "@hushle/platform-observability";
@@ -38,6 +42,7 @@ import {
 } from "../apps/web/src/lib/streamer/session-service";
 import { resolveCardBackSelection, type CardBackCatalogItem, type CardBackLoaders } from "../apps/web/src/lib/streamer/card-backs";
 import { createViewKey, hashViewKey } from "../apps/web/src/lib/streamer/view-key";
+import * as realRateLimit from "../apps/web/src/lib/security/request-rate-limit";
 
 // Streamer session runtime and service (phase 2, Task 4): memory stores, a fake word source
 // and a fake clock. Ticks are driven by advancing the clock and calling `tickAll`; writes run off
@@ -309,6 +314,107 @@ async function rejectsWith(run: () => Promise<unknown>, code: StreamerSessionErr
     });
 }
 
+// ------------------------------------------------------------ HTTP route harness
+//
+// The route handlers run as they are; only the modules that need a Next request (the session
+// cookie), the database (system settings), Redis (rate limits) or the real wiring (session deps)
+// are replaced, through the CommonJS module cache, before a route is first loaded. Every fake
+// logs what was asked of it, so a test reads the order of the checks.
+
+interface RouteWorld {
+    user: { id: number; role: string; accountStatus: string } | null;
+    modeOn: boolean;
+    limited: boolean;
+    calls: string[];
+    deps: StreamerSessionServiceDeps | null;
+}
+
+const routeWorld: RouteWorld = { user: null, modeOn: true, limited: false, calls: [], deps: null };
+
+function fakeModule(relativePath: string, exports: Record<string, unknown>): void {
+    const filename = require.resolve(path.resolve(relativePath));
+    const fake = new Module(filename);
+    fake.filename = filename;
+    fake.loaded = true;
+    fake.exports = exports;
+    require.cache[filename] = fake;
+}
+
+function worldDeps(): StreamerSessionServiceDeps {
+    routeWorld.calls.push("work");
+    assert.ok(routeWorld.deps, "a test set the route deps");
+    return routeWorld.deps;
+}
+
+let routeFakesInstalled = false;
+function installRouteFakes(): void {
+    if (routeFakesInstalled) return;
+    routeFakesInstalled = true;
+    fakeModule("apps/web/src/lib/session.ts", {
+        getSessionUser: async () => {
+            routeWorld.calls.push("auth");
+            return routeWorld.user;
+        },
+    });
+    fakeModule("apps/web/src/lib/system-settings/service.ts", {
+        getSystemSettings: async () => {
+            routeWorld.calls.push("mode");
+            return { features: { streamerModeEnabled: routeWorld.modeOn, streamerShowcaseAllCosmetics: false } };
+        },
+    });
+    fakeModule("apps/web/src/lib/security/request-rate-limit.ts", {
+        ...realRateLimit,
+        consumeDistributedRequestRateLimit: async (options: { bucket: string; maxRequests: number }) => {
+            routeWorld.calls.push(`limit:${options.bucket}`);
+            return routeWorld.limited
+                ? { allowed: false, limit: options.maxRequests, remaining: 0, retryAfterSeconds: 60 }
+                : { allowed: true, limit: options.maxRequests, remaining: options.maxRequests - 1, retryAfterSeconds: 0 };
+        },
+    });
+    fakeModule("apps/web/src/lib/streamer/session-deps.ts", {
+        createSessionServiceDeps: worldDeps,
+        getStreamerSessionRuntime: () => worldDeps().runtime,
+    });
+}
+
+interface StreamerRoutes {
+    collection: typeof import("../apps/web/src/app/api/streamer/sessions/route");
+    end: typeof import("../apps/web/src/app/api/streamer/sessions/current/end/route");
+    viewKey: typeof import("../apps/web/src/app/api/streamer/sessions/current/view-key/route");
+    testGuess: typeof import("../apps/web/src/app/api/streamer/sessions/current/test-guess/route");
+}
+
+async function loadRoutes(): Promise<StreamerRoutes> {
+    installRouteFakes();
+    const load = (file: string) => import(pathToFileURL(path.resolve(`apps/web/src/app/api/streamer/sessions/${file}`)).href);
+    return {
+        collection: await load("route.ts"),
+        end: await load("current/end/route.ts"),
+        viewKey: await load("current/view-key/route.ts"),
+        testGuess: await load("current/test-guess/route.ts"),
+    };
+}
+
+const ROUTE_ORIGIN = "http://localhost:3000";
+
+function routeRequest(pathname: string, body?: unknown, origin = ROUTE_ORIGIN): NextRequest {
+    return new NextRequest(`${ROUTE_ORIGIN}/api/streamer/sessions${pathname}`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+    });
+}
+
+async function answerOf(response: Response): Promise<{ status: number; body: Record<string, unknown> | null }> {
+    const text = await response.text();
+    return { status: response.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : null };
+}
+
+/** Resets the fakes for one request: an active user 1, the mode on, quota left. */
+function resetRouteWorld(h: Harness, overrides: Partial<RouteWorld> = {}): void {
+    Object.assign(routeWorld, { user: { id: 1, role: "user", accountStatus: "active" }, modeOn: true, limited: false, calls: [], deps: h.deps }, overrides);
+}
+
 function secretWords(card: StreamCard): string[] {
     return [card.target, ...card.taboos];
 }
@@ -438,14 +544,31 @@ async function main(): Promise<void> {
         assert.equal(h.sessions.rows.length, 0);
     });
 
-    await test("CreateSessionInput dedupes categories and difficulties: at most 3 difficulties and 20 distinct categories", async () => {
-        for (const difficulties of [[1, 2, 3, 1], [1, 1, 1, 1], [1, 2, 3, 3, 2, 1]]) {
+    await test("CreateSessionInput dedupes categories and difficulties: at most 100 raw entries, then 3 difficulties and 20 distinct categories", async () => {
+        // Difficulties dedupe first, then the cap of 3 applies (same shape as categories).
+        for (const [difficulties, expected] of [
+            [[1, 2, 3, 1], [1, 2, 3]],
+            [[1, 1, 1, 1], [1]],
+            [[1, 2, 3, 3, 2, 1], [1, 2, 3]],
+            [[3, 3, 1], [3, 1]],
+        ] as const) {
             const parsed = createSessionInputSchema.safeParse({ ...INPUT, difficulties });
-            assert.equal(parsed.success, false, `${difficulties.length} difficulties must be rejected`);
+            assert.ok(parsed.success, `${JSON.stringify(difficulties)} is accepted`);
+            assert.deepEqual(parsed.data.difficulties, expected);
         }
         const twice = createSessionInputSchema.safeParse({ ...INPUT, difficulties: [1, 1, 2] });
         assert.ok(twice.success, "[1, 1, 2] is accepted");
         assert.deepEqual(twice.data.difficulties, [1, 2]);
+        // The raw lists are capped before the dedupe: 100 entries pass, 101 never do, however few are distinct.
+        assert.deepEqual(createSessionInputSchema.parse({ ...INPUT, categoryIds: Array.from({ length: 100 }, () => 5) }).categoryIds, [5]);
+        assert.equal(createSessionInputSchema.safeParse({ ...INPUT, categoryIds: Array.from({ length: 101 }, () => 5) }).success, false, "101 raw ids must be rejected");
+        assert.equal(
+            createSessionInputSchema.safeParse({ ...INPUT, categoryIds: Array.from({ length: 101 }, (_, index) => (index % 20) + 1) }).success,
+            false,
+            "101 raw ids with 20 distinct must be rejected",
+        );
+        assert.deepEqual(createSessionInputSchema.parse({ ...INPUT, difficulties: Array.from({ length: 100 }, () => 2) }).difficulties, [2]);
+        assert.equal(createSessionInputSchema.safeParse({ ...INPUT, difficulties: Array.from({ length: 101 }, () => 2) }).success, false, "101 raw difficulties must be rejected");
         // 25 ids, 20 distinct: repeats collapse before the cap of 20, first-seen order kept.
         const twenty = Array.from({ length: 20 }, (_, index) => index + 1);
         const repeated = [...twenty, 5, 1, 20, 5, 3];
@@ -893,8 +1016,18 @@ async function main(): Promise<void> {
         }
         await h.runtime.next(session.id);
         h.advance(3_000);
+        const endedAt = h.clock.now;
         const ended = await endCurrent(h.deps, 1);
         assert.equal(ended.sessionId, session.id);
+        // The ended view is what the end call produced: status, end time, rounds and summary.
+        assert.deepEqual(ended.session, {
+            ...session,
+            status: "ended",
+            interrupted: false,
+            endedAt: new Date(endedAt).toISOString(),
+            roundCount: 15,
+            summary: ended.summary,
+        });
         const expectedScores = [
             { name: "U01", points: 3, rank: 1, tied: false },
             { name: "U02", points: 2, rank: 2, tied: false },
@@ -1633,6 +1766,144 @@ async function main(): Promise<void> {
         await h.runtime.end(session.id, "ended");
         assert.deepEqual(endedReasons, ["ended"]);
     });
+
+    // ------------------------------------------------------------ HTTP routes
+
+    const routes = await loadRoutes();
+    const fakePlatform = process.env.STREAMER_FAKE_PLATFORM;
+    process.env.STREAMER_FAKE_PLATFORM = "1";
+
+    await test("routes: a foreign origin is refused before anything is read; test-guess is a bare 404 first while the fake platform is off", async () => {
+        const h = harness();
+        const foreign = "https://evil.example";
+        const attempts: Array<[string, () => Promise<Response>]> = [
+            ["create", () => routes.collection.POST(routeRequest("", INPUT, foreign))],
+            ["end", () => routes.end.POST(routeRequest("/current/end", undefined, foreign))],
+            ["view-key", () => routes.viewKey.POST(routeRequest("/current/view-key", undefined, foreign))],
+            ["test-guess", () => routes.testGuess.POST(routeRequest("/current/test-guess", { name: "Luna", text: "x" }, foreign))],
+        ];
+        for (const [label, attempt] of attempts) {
+            resetRouteWorld(h);
+            const answer = await answerOf(await attempt());
+            assert.deepEqual([answer.status, answer.body?.code], [403, "ORIGIN_REJECTED"], label);
+            assert.deepEqual(routeWorld.calls, [], `${label}: nothing read before the origin check`);
+        }
+        delete process.env.STREAMER_FAKE_PLATFORM;
+        try {
+            for (const origin of [foreign, ROUTE_ORIGIN]) {
+                resetRouteWorld(h);
+                const answer = await answerOf(await routes.testGuess.POST(routeRequest("/current/test-guess", { name: "Luna", text: "x" }, origin)));
+                assert.deepEqual([answer.status, answer.body], [404, null], `fake platform off (${origin}): the route does not exist`);
+                assert.deepEqual(routeWorld.calls, [], "nothing else is checked or read");
+            }
+        } finally {
+            process.env.STREAMER_FAKE_PLATFORM = "1";
+        }
+    });
+
+    await test("routes: origin, then account, then streamer mode, then rate limit, then the work", async () => {
+        const h = harness();
+        h.connections.seed(connection(1, "twitch"));
+        const cases: Array<[string, string, () => Promise<Response>]> = [
+            ["create", "streamer-session-create", () => routes.collection.POST(routeRequest("", INPUT))],
+            ["view-key", "streamer-view-key", () => routes.viewKey.POST(routeRequest("/current/view-key"))],
+            ["test-guess", "streamer-test-guess", () => routes.testGuess.POST(routeRequest("/current/test-guess", { name: "Luna", text: "merhaba" }))],
+        ];
+        for (const [label, bucket, attempt] of cases) {
+            resetRouteWorld(h, { modeOn: false });
+            const off = await answerOf(await attempt());
+            assert.deepEqual([off.status, off.body?.code], [403, "STREAMER_MODE_DISABLED"], `${label}: mode off`);
+            assert.deepEqual(routeWorld.calls, ["auth", "mode"], `${label}: the mode is checked before any quota is spent`);
+
+            resetRouteWorld(h, { limited: true });
+            const limited = await answerOf(await attempt());
+            assert.deepEqual([limited.status, limited.body?.code], [429, "RATE_LIMITED"], `${label}: no quota left`);
+            assert.deepEqual(routeWorld.calls, ["auth", "mode", `limit:${bucket}`], `${label}: no work without quota`);
+        }
+        // With everything in order the work runs last: create opens, rotate and a test guess act on it.
+        resetRouteWorld(h);
+        const created = await answerOf(await routes.collection.POST(routeRequest("", INPUT)));
+        assert.equal(created.status, 201);
+        assert.deepEqual(routeWorld.calls, ["auth", "mode", "limit:streamer-session-create", "work"]);
+        resetRouteWorld(h);
+        const rotated = await answerOf(await routes.viewKey.POST(routeRequest("/current/view-key")));
+        assert.equal(rotated.status, 200);
+        assert.notEqual(rotated.body?.viewKey, created.body?.viewKey);
+        assert.deepEqual(routeWorld.calls, ["auth", "mode", "limit:streamer-view-key", "work"]);
+        resetRouteWorld(h);
+        const guessed = await answerOf(await routes.testGuess.POST(routeRequest("/current/test-guess", { name: "Luna", text: "merhaba" })));
+        assert.deepEqual([guessed.status, guessed.body], [200, { result: "closed" }]);
+        assert.deepEqual(routeWorld.calls, ["auth", "mode", "limit:streamer-test-guess", "work"]);
+        // Ending is never gated by the mode switch or a quota.
+        resetRouteWorld(h, { modeOn: false, limited: true });
+        const ended = await answerOf(await routes.end.POST(routeRequest("/current/end")));
+        assert.equal(ended.status, 200);
+        assert.deepEqual(routeWorld.calls, ["auth", "work"]);
+    });
+
+    await test("routes: view-key and test-guess need an active account, as create does; end takes any signed-in owner", async () => {
+        const h = harness();
+        h.connections.seed(connection(1, "twitch"));
+        resetRouteWorld(h);
+        assert.equal((await routes.collection.POST(routeRequest("", INPUT))).status, 201);
+        const pending = { id: 1, role: "user", accountStatus: "pending_email_verification" };
+        const gated: Array<[string, () => Promise<Response>]> = [
+            ["create", () => routes.collection.POST(routeRequest("", INPUT))],
+            ["view-key", () => routes.viewKey.POST(routeRequest("/current/view-key"))],
+            ["test-guess", () => routes.testGuess.POST(routeRequest("/current/test-guess", { name: "Luna", text: "merhaba" }))],
+        ];
+        for (const [label, attempt] of gated) {
+            for (const user of [null, pending]) {
+                resetRouteWorld(h, { user });
+                const answer = await answerOf(await attempt());
+                assert.deepEqual([answer.status, answer.body?.code], [401, "AUTH_REQUIRED"], `${label}: ${user ? user.accountStatus : "signed out"}`);
+                assert.deepEqual(routeWorld.calls, ["auth"], `${label}: refused before the mode, the quota or the work`);
+            }
+        }
+        resetRouteWorld(h, { user: null });
+        const anonymous = await answerOf(await routes.end.POST(routeRequest("/current/end")));
+        assert.deepEqual([anonymous.status, anonymous.body?.code], [401, "AUTH_REQUIRED"]);
+        assert.ok(h.runtime.forUser(1), "a signed-out request ends nothing");
+        resetRouteWorld(h, { user: pending });
+        const ended = await answerOf(await routes.end.POST(routeRequest("/current/end")));
+        assert.equal(ended.status, 200, "a signed-in owner whose account is no longer active can still end");
+        assert.equal((ended.body?.session as { status: string }).status, "ended");
+        assert.equal(h.runtime.forUser(1), null);
+    });
+
+    await test("routes: end answers with the ended view from the end call, never a read-back; nothing live is a typed 404", async () => {
+        const holding = holdingStore();
+        const h = harness({ sessions: holding.store, drainTimeoutMs: 1 });
+        const { session } = await opened(h);
+        await h.runtime.flush();
+        h.advance(5_000);
+        // The end write hangs: the row still reads `active` when the answer is sent.
+        holding.hold();
+        resetRouteWorld(h);
+        const ended = await answerOf(await routes.end.POST(routeRequest("/current/end")));
+        assert.equal(ended.status, 200);
+        assert.deepEqual(ended.body, {
+            ok: true,
+            session: {
+                ...session,
+                status: "ended",
+                interrupted: false,
+                endedAt: new Date(h.clock.now).toISOString(),
+                roundCount: 0,
+                summary: { scores: [], participants: 0, rounds: 0 },
+            },
+        });
+        assert.equal((await h.sessions.findById(session.id))?.status, "active", "the row had not caught up when the answer left");
+        holding.release();
+        await h.runtime.flush();
+        assert.equal((await h.sessions.findById(session.id))?.status, "ended");
+        resetRouteWorld(h);
+        const again = await answerOf(await routes.end.POST(routeRequest("/current/end")));
+        assert.deepEqual([again.status, again.body?.code], [404, "STREAMER_SESSION_NOT_FOUND"]);
+    });
+
+    if (fakePlatform === undefined) delete process.env.STREAMER_FAKE_PLATFORM;
+    else process.env.STREAMER_FAKE_PLATFORM = fakePlatform;
 
     for (const runtime of runtimes) await runtime.stop();
     console.log(`${count} checks passed.`);

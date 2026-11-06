@@ -260,4 +260,75 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.match(read("apps/web/src/lib/socket/streamer-socket.ts"), /invalid_settings: PlayerErrorCode\.INVALID_REQUEST,/);
 }
 
+// --- Gap batch 1b: the order of the checks on every state-changing session route ----
+
+{
+    const routeBase = "apps/web/src/app/api/streamer/sessions";
+    // Comments are dropped first: only real calls count, a comment naming a check proves nothing.
+    const codeOf = (path: string) =>
+        read(path)
+            .replace(/\/\*[\s\S]*?\*\//g, "")
+            .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+    const postOf = (path: string) => {
+        const post = codeOf(path).split("export async function POST")[1];
+        assert.ok(post, `${path} must export POST`);
+        return post;
+    };
+    const ORIGIN = "isTrustedStateChangeRequest(request)";
+    const AUTH = "await getSessionUser()";
+    const ACTIVE = 'sessionUser.accountStatus !== "active"';
+    const MODE = "(await getSystemSettings()).features.streamerModeEnabled";
+    const MODE_REFUSED = "PlayerErrorCode.STREAMER_MODE_DISABLED";
+    const LIMIT = "consumeDistributedRequestRateLimit(";
+    // Each step's first appearance comes after the previous step's: nothing runs out of order.
+    const inOrder = (label: string, post: string, steps: Array<[string, string]>) => {
+        let previous = -1;
+        let previousName = "the start of POST";
+        for (const [name, needle] of steps) {
+            const at = post.indexOf(needle);
+            assert.ok(at >= 0, `${label}: ${name} (${needle}) must be called`);
+            assert.ok(at > previous, `${label}: ${name} must come after ${previousName}`);
+            previous = at;
+            previousName = name;
+        }
+    };
+    const gated: Array<[string, string, string]> = [
+        ["POST /sessions", `${routeBase}/route.ts`, "createSession("],
+        ["POST /sessions/current/view-key", `${routeBase}/current/view-key/route.ts`, "rotateViewKey("],
+        ["POST /sessions/current/test-guess", `${routeBase}/current/test-guess/route.ts`, "runtime.guess("],
+    ];
+    for (const [label, path, work] of gated) {
+        inOrder(label, postOf(path), [
+            ["the origin check", ORIGIN],
+            ["the session user", AUTH],
+            ["the active-account check", ACTIVE],
+            ["the streamer-mode check", MODE],
+            ["the streamer-mode refusal", MODE_REFUSED],
+            ["the rate limit", LIMIT],
+            ["the work", work],
+        ]);
+    }
+    // test-guess answers a bare 404 before anything else while the fake platform is off, so a
+    // production server never reveals the route.
+    const testGuess = postOf(`${routeBase}/current/test-guess/route.ts`);
+    assert.match(
+        testGuess,
+        /^\([^)]*\)\s*\{\s*if \(!isFakeStreamerPlatformEnabled\(\)\) \{\s*return new NextResponse\(null, \{ status: 404 \}\);\s*\}/,
+        "test-guess: the fake-platform gate is the first statement and answers a bare 404",
+    );
+    assert.ok(testGuess.indexOf("isFakeStreamerPlatformEnabled()") < testGuess.indexOf(ORIGIN), "test-guess: the fake gate before the origin check");
+    // Ending: origin, a signed-in owner, the work; no account-status, mode or quota gate (any
+    // signed-in owner may always stop their own stream), and the answer is the end call's own.
+    const end = postOf(`${routeBase}/current/end/route.ts`);
+    inOrder("POST /sessions/current/end", end, [
+        ["the origin check", ORIGIN],
+        ["the session user", AUTH],
+        ["the work", "endCurrent("],
+    ]);
+    for (const [name, needle] of [["an active-account check", "accountStatus"], ["a streamer-mode check", "getSystemSettings"], ["a rate limit", LIMIT], ["a read-back of the row", "findById("]]) {
+        assert.ok(!end.includes(needle), `POST /sessions/current/end must not have ${name}`);
+    }
+    assert.match(read(`${routeBase}/current/end/route.ts`), /always\s+(?:\/\/\s*)?safe/, "end explains in a comment why it has no account gate");
+}
+
 console.log("PASS streamer session foundation contract");

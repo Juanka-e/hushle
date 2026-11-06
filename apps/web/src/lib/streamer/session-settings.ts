@@ -14,6 +14,8 @@ import {
 
 export const STREAM_ROUND_DURATION = { min: 30, max: 120, default: 60 } as const;
 export const MAX_STREAM_CATEGORIES = 20;
+/** The most entries a raw category or difficulty list may have, before the dedupe. */
+export const MAX_RAW_LIST_ENTRIES = 100;
 
 // The stream-screen fields, shared by session creation and live changes (streamer:host:settings).
 const screenFields = {
@@ -33,14 +35,19 @@ function distinct<T>(values: T[]): T[] {
 const categoryId = z.number().int().positive();
 const difficulty = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 
-// Lists are stored deduplicated. Repeated categories collapse before the cap, so the cap counts
-// distinct ones; difficulties have three values, so more than three entries is never a choice.
+// Lists are stored deduplicated, both the same way: the raw list is capped first (so a huge one
+// is refused before any work), then repeats collapse, then the cap counts distinct entries.
 export const createSessionInputSchema = z
     .object({
         platform: z.enum(["twitch", "kick"]),
         language: z.enum(["tr", "en"]),
-        categoryIds: z.array(categoryId).min(1).transform(distinct).pipe(z.array(categoryId).max(MAX_STREAM_CATEGORIES)),
-        difficulties: z.array(difficulty).min(1).max(3).transform(distinct),
+        categoryIds: z
+            .array(categoryId)
+            .min(1)
+            .max(MAX_RAW_LIST_ENTRIES)
+            .transform(distinct)
+            .pipe(z.array(categoryId).max(MAX_STREAM_CATEGORIES)),
+        difficulties: z.array(difficulty).min(1).max(MAX_RAW_LIST_ENTRIES).transform(distinct).pipe(z.array(difficulty).max(3)),
         duration: z.number().int().min(STREAM_ROUND_DURATION.min).max(STREAM_ROUND_DURATION.max),
         tolerance: z.enum(["strict", "normal"]),
         ...screenFields,

@@ -34,10 +34,10 @@ export interface RotateViewKeyResponse {
     urls: StreamUrls;
 }
 
-/** POST /api/streamer/sessions/current/end */
+/** POST /api/streamer/sessions/current/end: the ended session, as the end call produced it. */
 export interface EndStreamSessionResponse {
     ok: true;
-    session: StreamSessionView | null;
+    session: StreamSessionView;
 }
 
 /** An active channel link the host may open a session on. */
