@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import type { RedisLikeClient } from "@hushle/platform-cache";
+import { getRedisKey, type RedisLikeClient } from "@hushle/platform-cache";
 import {
     CONNECT_STATE_COOKIE,
     CONNECT_STATE_COOKIE_PATH,
@@ -179,7 +179,11 @@ async function storeTests(): Promise<void> {
         const hash = hashConnectState(state);
         assert.equal(await store.record(hash, CONNECT_STATE_TTL_MS), true);
         assert.equal(await store.record(hash, CONNECT_STATE_TTL_MS), false, "NX: a second record of the same state fails");
-        assert.match(redis.calls[0], new RegExp(`^SET [a-z0-9_-]+:streamer:connect-state:${hash} 1 \\{"NX":true,"PX":600000\\}$`));
+        // The key comes from the same helper the store uses, so any REDIS_KEY_PREFIX (CI's
+        // "hushle:ci-…" has a colon) gives the same answer; the segments are pinned here.
+        const key = getRedisKey("streamer", "connect-state", hash);
+        assert.ok(key.endsWith(`:streamer:connect-state:${hash}`), key);
+        assert.equal(redis.calls[0], `SET ${key} 1 {"NX":true,"PX":600000}`);
         assert.equal(await store.consume(hash), true);
         assert.equal(await store.consume(hash), false, "a replay finds nothing");
         assert.ok(redis.calls.every((call) => !call.includes(state)), "the raw state never reaches Redis");
