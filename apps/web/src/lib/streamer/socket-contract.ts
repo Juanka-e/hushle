@@ -18,6 +18,8 @@ export const STREAMER_SOCKET_EVENTS = {
     publicJoin: "streamer:public:join",
     // server -> client
     hostState: "streamer:host:state",
+    /** Host room only: something the streamer should act on that is not part of the game state. */
+    hostNotice: "streamer:host:notice",
     publicState: "streamer:public:state",
     ended: "streamer:ended",
 } as const;
@@ -32,6 +34,17 @@ export type StreamerEndedReason = "ended" | "idle" | "view-key-rotated" | "inter
 
 export interface StreamerEndedPayload {
     reason: StreamerEndedReason;
+}
+
+/**
+ * Host-only notices. `connection-needs-reconnect`: the hourly check found the linked channel's
+ * grant no longer valid; the running session keeps going, but a new one needs a reconnect.
+ */
+export type StreamerHostNoticeKind = "connection-needs-reconnect";
+
+export interface StreamerHostNoticePayload {
+    kind: StreamerHostNoticeKind;
+    platform: "twitch" | "kick";
 }
 
 export type StreamerAckFailure = { ok: false } & PlayerErrorBody;
