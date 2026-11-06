@@ -116,15 +116,19 @@ previous one. Unexpected failures answer `UNKNOWN_ERROR`. Handlers live in
 
 | Event Name | Payload | Ack | Error codes |
 | :--- | :--- | :--- | :--- |
-| `streamer:host:join` | `{ sessionId: uuid }` | `{ ok: true, state: HostStreamSnapshot }` | `AUTH_REQUIRED` (no signed-in user, or a suspended one), `STREAMER_SESSION_NOT_FOUND` (no live session), `STREAMER_SESSION_NOT_OWNED`, `INVALID_REQUEST`, `RATE_LIMITED` (10 joins / 10 s per socket) |
-| `streamer:host:start`, `streamer:host:pause`, `streamer:host:resume`, `streamer:host:pass`, `streamer:host:next` | none | `{ ok: true }` | `STREAMER_ACTION_INVALID_PHASE`, `STREAMER_WORD_POOL_EMPTY` (start, pass, next), `STREAMER_SESSION_NOT_FOUND` (no host room joined, or the session ended), `RATE_LIMITED`, `INVALID_REQUEST` |
-| `streamer:host:end` | none or `{ reason?: "ended" }` | `{ ok: true }` | `STREAMER_SESSION_NOT_FOUND`, `RATE_LIMITED`, `INVALID_REQUEST` |
-| `streamer:host:settings` | `{ theme?, camera?, cameraSize?, clock?, cardBack?: { itemId } \| null, showCardName? }`, at least one key | `{ ok: true }` | `INVALID_REQUEST`, `STREAMER_CARD_NOT_ALLOWED` (not owned and not in the showcase), `STREAMER_CARD_CATALOGUE_UNAVAILABLE`, `STREAMER_SESSION_NOT_FOUND`, `RATE_LIMITED` |
-| `streamer:host:rotate-key` | none | `{ ok: true, viewKey }`: the only place the new key is sent | `STREAMER_SESSION_NOT_FOUND`, `RATE_LIMITED` |
-| `streamer:public:join` | `{ viewKey: string(43) }` | `{ ok: true, state: PublicStreamSnapshot }` | `STREAMER_VIEW_KEY_INVALID` (unknown, rotated or ended key, or an interrupted session), `RATE_LIMITED` (`streamer-public-join`, 30 / 60 s per IP), `INVALID_REQUEST` |
+| `streamer:host:join` | `{ sessionId: uuid }` | `{ ok: true, state: HostStreamSnapshot }` | `AUTH_REQUIRED` (no signed-in user, or a suspended one), `STREAMER_MODE_DISABLED` (streamer mode is off), `STREAMER_SESSION_NOT_FOUND` (no live session), `STREAMER_SESSION_NOT_OWNED`, `INVALID_REQUEST`, `RATE_LIMITED` (10 joins / 10 s per socket) |
+| `streamer:host:start`, `streamer:host:pause`, `streamer:host:resume`, `streamer:host:pass`, `streamer:host:next` | none | `{ ok: true }` | `STREAMER_ACTION_INVALID_PHASE`, `STREAMER_WORD_POOL_EMPTY` (start, pass, next), `STREAMER_SESSION_NOT_FOUND` (no host room joined, or the session ended), `STREAMER_MODE_DISABLED`, `RATE_LIMITED`, `INVALID_REQUEST` |
+| `streamer:host:end` | none or `{ reason?: "ended" }` | `{ ok: true }` | `STREAMER_SESSION_NOT_FOUND`, `RATE_LIMITED`, `INVALID_REQUEST`; never refused for streamer mode: the owner can always take the stream off the air |
+| `streamer:host:settings` | `{ theme?, camera?, cameraSize?, clock?, cardBack?: { itemId } \| null, showCardName? }`, at least one key | `{ ok: true }` | `INVALID_REQUEST`, `STREAMER_CARD_NOT_ALLOWED` (not owned and not in the showcase), `STREAMER_CARD_CATALOGUE_UNAVAILABLE`, `STREAMER_SESSION_NOT_FOUND`, `STREAMER_MODE_DISABLED`, `RATE_LIMITED` |
+| `streamer:host:rotate-key` | none | `{ ok: true, viewKey }`: the only place the new key is sent | `STREAMER_SESSION_NOT_FOUND` (also when the session ended while the new key was stored), `RATE_LIMITED` (the host-action burst, then the `streamer-view-key` bucket: 10 / 15 min per user, shared with `POST /api/streamer/sessions/current/view-key`), `SERVER_BUSY` (the database did not store the key within 10 s; the old key stays valid, try again), `STREAMER_MODE_DISABLED` |
+| `streamer:public:join` | `{ viewKey: string(43) }` | `{ ok: true, state: PublicStreamSnapshot }` | `STREAMER_VIEW_KEY_INVALID` (unknown, rotated or ended key, an interrupted session, or streamer mode off), `RATE_LIMITED` (`streamer-public-join`, 30 / 60 s per IP), `INVALID_REQUEST` |
 
-Host actions (every `streamer:host:*` event but the join) share a burst limit of 10 per 10 s per
-socket and act only on the host room this socket joined; ownership is checked again on each one.
+Host actions (every `streamer:host:*` event but the join) share a burst limit of
+10 per 10 s per socket and, once the socket joined a host room, 10 per 10 s per user (a second
+tab of the owner shares it); they act only on the host room this socket joined, and ownership is
+checked again on each one. While an admin has streamer mode off, host joins and every host action
+but `streamer:host:end` answer `STREAMER_MODE_DISABLED`, and public joins the same
+opaque `STREAMER_VIEW_KEY_INVALID` as a wrong key.
 A successful host join also puts the socket in its user's session room (`private:user-session:<userId>`),
 so a password reset or an email change disconnects it, as it does game sockets.
 
@@ -133,10 +137,11 @@ so a password reset or an email change disconnects it, as it does game sockets.
 | Event Name | Room | Payload | Description |
 | :--- | :--- | :--- | :--- |
 | `streamer:host:state` | host | `HostStreamSnapshot` | Every state change, with the card (`card: { wordId, target, taboos }`), the tolerance and the full ranking. |
-| `streamer:public:state` | public | `PublicStreamSnapshot` (schema 4) | Every state change without the card; `reveal` carries the word only once the round is finished. A server guard drops any public state that has a host-only field, an early reveal, or a value equal to the live word or one of its taboos once normalized (names and fixed values such as the theme are not compared; the passed card's word is compared with the live word only). |
-| `streamer:ended` | host and public | `{ reason: "ended" \| "idle" }` | The session ended (the host, the end route, or 6 h idle); both rooms are emptied after it. |
+| `streamer:public:state` | public | `PublicStreamSnapshot` (schema 4) | Every state change without the card; `reveal` carries the word only once the round is finished. A server guard checks the JSON actually sent and drops any public state that has a host-only field, an early reveal, or a value equal to the live word or one of its taboos once folded (normal tolerance); fields are matched by path segment, and names, fixed values such as the theme and card-back hex colours are not compared; the passed card's word is compared with the live word only. A blocked state is reported once per session, round and rule. |
+| `streamer:ended` | host and public | `{ reason: "ended" \| "idle" \| "interrupted" \| "stopped" }` | The session ended: `ended` by the host or the end route, `idle` after 6 h without activity, `interrupted` when the server shuts down (sent before the sockets close; the row is interrupted), `stopped` when an admin switches streamer mode off (checked every 15 s) or suspends the owner (the row is ended with its summary). Both rooms are emptied after it. |
 | `streamer:ended` | public | `{ reason: "view-key-rotated" }` | The view key was rotated: the old stream screens leave the room; the host room stays. |
+| `streamer:host:notice` | host | `{ kind: "connection-needs-reconnect", platform: "twitch" \| "kick" }` | The hourly check of the session's channel link found it no longer valid (the link is now `needs_reconnect`): the session keeps running, a new one needs a reconnect. Sent once until the link is valid again; transient platform errors send nothing. |
 | `hata` | caller | `(message, { code })` | A failed streamer event sent without an ack, or `ORIGIN_REJECTED` just before the disconnect. |
 
-The `interrupted` reason is reserved for a session the server lost (a restart); the server does
-not send it yet. `npm run test:streamer-socket-integration` covers these rules.
+Every `streamer:ended` reason means the view key is dead. `npm run test:streamer-socket-integration`
+covers these rules.

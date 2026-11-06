@@ -379,6 +379,20 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.ok(endAt >= 0, "a suspension ends the user's live stream session");
     assert.ok(endAt < suspend.indexOf("await revokeStreamerConnectionsForUser(targetUserId, request);"), "before the links are revoked");
     assert.match(moderation, /import \{ endStreamerSessionsForUser \} from "@\/lib\/streamer\/session-deps";/);
+
+    // docs/socket-events.md names every reason, the notice, the limits and the mode-off answers.
+    const docs = read("docs/socket-events.md");
+    const row = (event: string, room: string) => docs.split(/\r?\n/).find((line) => line.startsWith(`| \`${event}\` | ${room} |`)) ?? "";
+    const ended = row("streamer:ended", "host and public");
+    for (const reason of ['"ended"', '"idle"', '"interrupted"', '"stopped"']) assert.ok(ended.includes(reason), `the streamer:ended row lists ${reason}`);
+    assert.ok(row("streamer:ended", "public").includes('"view-key-rotated"'));
+    const notice = row("streamer:host:notice", "host");
+    assert.ok(notice.includes('"connection-needs-reconnect"') && notice.includes("hourly"), "the host notice has its row");
+    const rotate = docs.split(/\r?\n/).find((line) => line.startsWith("| `streamer:host:rotate-key` |")) ?? "";
+    assert.ok(rotate.includes("`streamer-view-key`") && rotate.includes("10 / 15 min") && rotate.includes("per user") && rotate.includes("SERVER_BUSY"), "rotate-key names the shared per-user bucket and the busy answer");
+    assert.ok(docs.includes("10 per 10 s per socket and, once the socket joined a host room, 10 per 10 s per user"), "host actions are limited per socket and per user");
+    assert.ok(docs.includes("`STREAMER_MODE_DISABLED`") && docs.includes("opaque `STREAMER_VIEW_KEY_INVALID`"), "the mode-off refusals are documented");
+    assert.ok(!docs.includes("does\r\nnot send it yet") && !docs.includes("not send it yet"), "the old interrupted note is gone");
 }
 
 console.log("PASS streamer session foundation contract");
