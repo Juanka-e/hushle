@@ -22,7 +22,11 @@ import {
 import { SOCKET_CLIENT_AUTH } from "../apps/web/src/lib/socket/protocol-version";
 import { assertNoSecret } from "../apps/web/src/lib/socket/streamer-leak-guard";
 import {
+    createBurstLimiter,
+    MAX_BURST_WINDOWS,
     setupStreamerSocket,
+    STREAMER_HOST_ACTION_BURST,
+    STREAMER_HOST_JOIN_BURST,
     streamerHostRoom,
     streamerPublicRoom,
     type StreamerSocketOptions,
@@ -764,6 +768,91 @@ async function main(): Promise<void> {
             socketClock.now += 10_001;
             assertError(await ask(tab, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "after the window");
             assertError(await ask(owner, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "after the window, the first tab too");
+        });
+
+        await test("Z7 the burst limiter sweeps expired windows at most once per window length, however many keys it holds", () => {
+            const at = { now: 1_000_000 };
+            let sweeps = 0;
+            const burst = createBurstLimiter(() => at.now, { onSweep: () => (sweeps += 1) });
+            let consumes = 0;
+            const consume = (key: string) => {
+                consumes += 1;
+                return burst.consume(key, STREAMER_HOST_ACTION_BURST);
+            };
+            for (let key = 0; key < 5_000; key++) assert.equal(consume(`s${key}:host-action`), true, `key ${key}`);
+            assert.equal(sweeps, 1, "one sweep when the map reached the threshold, none on each later consume");
+            for (let key = 0; key < 5_000; key++) consume(`s${key}:host-action`);
+            assert.equal(sweeps, 1, "the same keys again within the window: no sweep");
+            at.now += STREAMER_HOST_ACTION_BURST.windowMs - 1;
+            consume("late:host-action");
+            assert.equal(sweeps, 1, "not before a window length has passed since the last sweep");
+            assert.equal(burst.size(), 5_001);
+            at.now += 1;
+            consume("later:host-action");
+            assert.equal(sweeps, 2, "a window length later: one more sweep");
+            assert.equal(burst.size(), 2, "it removed every expired window and kept the two still open");
+            for (let key = 0; key < 3_000; key++) consume(`t${key}:host-action`);
+            assert.equal(sweeps, 2, "the map refilled within the window: still no sweep per consume");
+            assert.ok(consumes / sweeps > 5_000, `amortised: ${consumes} consumes, ${sweeps} sweeps`);
+            assert.equal(MAX_BURST_WINDOWS, 10_000);
+        });
+
+        await test("Z7 a full burst map refuses a new window to a socket that joined no host room; the owner's windows still open; a sweep makes room", () => {
+            const at = { now: 2_000_000 };
+            const burst = createBurstLimiter(() => at.now, { maxWindows: 3 });
+            for (const key of ["a:host-join", "b:host-join", "c:host-join"]) assert.equal(burst.consume(key, STREAMER_HOST_JOIN_BURST), true, key);
+            assert.equal(burst.consume("d:host-join", STREAMER_HOST_JOIN_BURST), false, "full: a new unauthenticated window is refused");
+            assert.equal(burst.consume("d:host-action", STREAMER_HOST_ACTION_BURST), false, "for any event");
+            assert.equal(burst.size(), 3, "a refused key takes no room");
+            assert.equal(burst.consume("a:host-join", STREAMER_HOST_JOIN_BURST), true, "an open window keeps counting");
+            assert.equal(burst.consume("e:host-action", STREAMER_HOST_ACTION_BURST, true), true, "a socket in a host room still gets one");
+            assert.equal(burst.consume("user:1:host-action", STREAMER_HOST_ACTION_BURST, true), true, "and so does its user");
+            assert.equal(burst.size(), 5);
+            at.now += STREAMER_HOST_JOIN_BURST.windowMs - 1;
+            assert.equal(burst.consume("d:host-join", STREAMER_HOST_JOIN_BURST), false, "still full before the windows end");
+            at.now += 1;
+            assert.equal(burst.consume("d:host-join", STREAMER_HOST_JOIN_BURST), true, "the windows ended: the sweep made room");
+            assert.equal(burst.size(), 1);
+            // A key whose own window ended reuses its slot, even while the map is full.
+            const full = createBurstLimiter(() => at.now, { maxWindows: 2 });
+            full.consume("x:host-join", STREAMER_HOST_JOIN_BURST);
+            full.consume("y:host-join", STREAMER_HOST_JOIN_BURST);
+            at.now += 1;
+            full.consume("user:9:host-action", STREAMER_HOST_ACTION_BURST, true);
+            at.now += STREAMER_HOST_JOIN_BURST.windowMs - 1;
+            assert.equal(full.consume("x:host-join", STREAMER_HOST_JOIN_BURST), true, "x's window ended: it opens a new one in its own slot");
+            assert.equal(full.consume("z:host-join", STREAMER_HOST_JOIN_BURST), false, "a new key is still refused");
+        });
+
+        await test("Z7 the socket layer: with the burst map full, a socket outside any host room is RATE_LIMITED; the joined owner keeps acting", async () => {
+            const quietRuntime: StreamerSessionRuntime = {
+                ...wiredRuntime,
+                setEmitter() {},
+                setOnEnded() {},
+                setOnHostNotice() {},
+                setOnViewKeyRotated() {},
+            };
+            const smallServer: HttpServer = createServer();
+            const smallIo = new Server(smallServer, { path: SOCKET_PATH });
+            setupStreamerSocket(smallIo, quietRuntime, lookup, { ...options, maxBurstWindows: 3 });
+            await within(new Promise<void>((resolve) => smallServer.listen(0, "127.0.0.1", () => resolve())), "listen (small map)");
+            const smallUrl = `http://127.0.0.1:${(smallServer.address() as AddressInfo).port}`;
+            try {
+                const host = await connect(smallUrl, "owner");
+                // Three windows: the host join's, then the joined socket's and its user's host-action ones.
+                assertOk(await ask(host, "streamer:host:join", { sessionId }), "the owner joins");
+                assertError(await ask(host, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "the owner acts");
+                const flood = await connect(smallUrl);
+                assertError(await ask(flood, "streamer:host:join", { sessionId }), "RATE_LIMITED", "a new socket's host join, map full");
+                assertError(await ask(flood, "streamer:host:start"), "RATE_LIMITED", "and its host action");
+                assertError(await ask(host, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "the joined owner keeps acting");
+                assert.equal(runtime.get(sessionId)?.phase, "running");
+                socketClock.now += STREAMER_HOST_JOIN_BURST.windowMs;
+                assertError(await ask(flood, "streamer:host:join", { sessionId }), "AUTH_REQUIRED", "the windows ended: the sweep made room, the join is checked again");
+            } finally {
+                await within(new Promise<void>((resolve) => smallIo.close(() => resolve())), "io.close (small map)");
+                if (smallServer.listening) await new Promise<void>((resolve) => smallServer.close(() => resolve()));
+            }
         });
 
         await test("public joins are limited per IP in the streamer-public-join bucket (30 / 60 s)", async () => {

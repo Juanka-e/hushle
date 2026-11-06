@@ -64,6 +64,8 @@ export interface StreamerSocketOptions {
     resolveCardBack?: (userId: number, itemId: number, features: CardBackFeatures) => Promise<StreamCardBack>;
     /** Clock of the per-socket host burst windows. */
     now?: () => number;
+    /** Burst windows held at most (default MAX_BURST_WINDOWS). */
+    maxBurstWindows?: number;
     onError?: (event: string, error: unknown) => void;
 }
 
@@ -113,19 +115,45 @@ function dataOf(socket: Socket): StreamerSocketData {
     return socket.data as StreamerSocketData;
 }
 
-/** Burst windows kept before the expired ones are swept (per socket and per user). */
-const MAX_BURST_WINDOWS = 1_000;
+/** Burst windows held before the expired ones are swept (per socket and per user). */
+const BURST_SWEEP_FROM = 1_000;
+/**
+ * Burst windows held at most. A full map gives no new window to a socket that joined no host room
+ * (its events answer RATE_LIMITED); an owner's windows (a socket in a host room, `user:<id>`) still
+ * open, and a key whose own window ended reuses its slot.
+ */
+export const MAX_BURST_WINDOWS = 10_000;
 
-function createBurstLimiter(now: () => number) {
+export interface BurstLimiterOptions {
+    /** Default MAX_BURST_WINDOWS. */
+    maxWindows?: number;
+    /** Called on each sweep (tests count them). */
+    onSweep?: () => void;
+}
+
+/**
+ * Fixed windows per key. Expired windows are swept once the map holds BURST_SWEEP_FROM of them
+ * (or is full), at most once per window length, so a consume stays O(1) amortised however many
+ * keys there are.
+ */
+export function createBurstLimiter(now: () => number, options: BurstLimiterOptions = {}) {
+    const maxWindows = options.maxWindows ?? MAX_BURST_WINDOWS;
+    const sweepFrom = Math.min(BURST_SWEEP_FROM, maxWindows);
     const windows = new Map<string, { startedAt: number; count: number; windowMs: number }>();
+    let sweptAt = Number.NEGATIVE_INFINITY;
     return {
-        consume(key: string, limit: { windowMs: number; maxRequests: number }): boolean {
+        /** `trusted`: the key belongs to a signed-in owner, so a full map still opens it. */
+        consume(key: string, limit: { windowMs: number; maxRequests: number }, trusted = false): boolean {
             const at = now();
-            if (windows.size >= MAX_BURST_WINDOWS) {
+            // A clock that went back sweeps too, rather than never again.
+            if (windows.size >= sweepFrom && (at - sweptAt >= limit.windowMs || at < sweptAt)) {
+                sweptAt = at;
+                options.onSweep?.();
                 for (const [stale, window] of windows) if (at - window.startedAt >= window.windowMs) windows.delete(stale);
             }
             const current = windows.get(key);
             if (!current || at - current.startedAt >= limit.windowMs) {
+                if (!current && !trusted && windows.size >= maxWindows) return false;
                 windows.set(key, { startedAt: at, count: 1, windowMs: limit.windowMs });
                 return true;
             }
@@ -137,6 +165,8 @@ function createBurstLimiter(now: () => number) {
             windows.delete(`${socketId}:host-action`);
             windows.delete(`${socketId}:host-join`);
         },
+        /** Windows held now. */
+        size: () => windows.size,
     };
 }
 
@@ -174,7 +204,7 @@ export function setupStreamerSocket(
     const resolveCardBack: NonNullable<StreamerSocketOptions["resolveCardBack"]> =
         options.resolveCardBack ?? ((userId, itemId, flags) => resolveCardBackSelection(userId, itemId, flags));
     const reporter = options.onError ?? reportStreamerSocketError;
-    const burst = createBurstLimiter(options.now ?? Date.now);
+    const burst = createBurstLimiter(options.now ?? Date.now, { maxWindows: options.maxBurstWindows });
     const EVENTS = STREAMER_SOCKET_EVENTS;
 
     // A reporter that throws never costs a caller its answer, nor the runtime its emit.
@@ -342,10 +372,11 @@ export function setupStreamerSocket(
 
         // Per socket, and once the socket joined a host room per user as well (`user:<id>`, the
         // same 10 / 10 s): a second tab of the owner shares the user's window instead of doubling it.
+        // A socket that joined a host room is its owner's: a full burst map still opens its windows.
         function hostBurstAllowed(): boolean {
-            if (!burst.consume(`${socket.id}:host-action`, STREAMER_HOST_ACTION_BURST)) return false;
             const userId = dataOf(socket).streamerHostUserId;
-            return userId === undefined || burst.consume(`user:${userId}:host-action`, STREAMER_HOST_ACTION_BURST);
+            if (!burst.consume(`${socket.id}:host-action`, STREAMER_HOST_ACTION_BURST, userId !== undefined)) return false;
+            return userId === undefined || burst.consume(`user:${userId}:host-action`, STREAMER_HOST_ACTION_BURST, true);
         }
 
         function hostAction<T>(
