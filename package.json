@@ -204,6 +204,7 @@
     "test:request-security": "tsx scripts/test-request-security.ts",
     "test:request-origin-integration": "tsx scripts/test-state-change-origin-integration.ts",
     "test:client-ip-security": "tsx scripts/test-client-ip-security.ts",
+    "test:nginx-proxy-headers": "tsx scripts/test-nginx-proxy-headers.ts",
     "test:room-membership": "tsx scripts/test-room-membership.ts",
     "test:active-room-presence": "tsx scripts/test-active-room-presence.ts",
     "test:gameplay-ui-http-smoke": "tsx scripts/test-gameplay-ui-http-smoke.ts",
