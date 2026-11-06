@@ -41,6 +41,7 @@ import {
     StreamerSessionError,
     STREAM_CONNECTION_CHECK_MS,
     STREAM_DRAW_TIMEOUT_MS,
+    STREAM_PERSIST_DRAIN_TIMEOUT_MS,
     STREAM_SESSION_IDLE_TIMEOUT_MS,
     STREAMER_MODE_CHECK_MS,
     type ConnectionCheck,
@@ -2393,7 +2394,7 @@ async function main(): Promise<void> {
     }
 
     await test("E11 a word draw that never returns: start, pass and next answer busy at the draw bound, change nothing, and the end then completes", async () => {
-        assert.equal(STREAM_DRAW_TIMEOUT_MS, 10_000);
+        assert.equal(STREAM_DRAW_TIMEOUT_MS, 9_500);
         const { clock, h, session, hang, hung } = await hangingDraws();
         const id = session.id;
         const refusedAtTheBound = async (label: string, action: Promise<unknown>) => {
@@ -2464,6 +2465,129 @@ async function main(): Promise<void> {
         assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.draw_timeout"], "the end's own turn bound never fired");
         assert.equal((await h.sessions.findById(session.id))?.status, "ended");
         assert.equal(clock.timeouts.size, 0);
+    });
+
+    await test("Z15 an end asked in the same tick as a stuck start gets its turn: the draw bound fires before the turn bound", async () => {
+        const { clock, h, session, hang } = await hangingDraws();
+        hang(true);
+        const asked = clock.requested.length;
+        const starting = h.runtime.start(session.id);
+        starting.catch(() => undefined);
+        const ending = h.runtime.end(session.id, "ended");
+        ending.catch(() => undefined);
+        await turn();
+        assert.deepEqual(clock.requested.slice(asked).sort((a, b) => a - b), [STREAM_DRAW_TIMEOUT_MS, STREAM_PERSIST_DRAIN_TIMEOUT_MS], "the draw's bound and the end's turn bound");
+        clock.elapse(STREAM_DRAW_TIMEOUT_MS - 1);
+        assert.equal(await settlesNow(ending), false, "both wait 1 ms before the draw bound");
+        clock.elapse(1);
+        await rejectsWith(() => starting, "busy");
+        const summary = await ending;
+        assert.equal(summary.rounds, 0, "the end got its turn and answered with the summary, not busy");
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }]);
+        assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.draw_timeout"], "the end's turn bound never fired");
+        assert.equal(clock.timeouts.size, 0, "the end's turn bound was cleared");
+        assert.equal(STREAM_DRAW_TIMEOUT_MS, 9_500);
+        assert.ok(STREAM_DRAW_TIMEOUT_MS < STREAM_PERSIST_DRAIN_TIMEOUT_MS, "the draw bound stays below the turn bound");
+    });
+
+    /**
+     * A word source that tracks its pools the way the real one does: a draw (re)builds the
+     * session's pool, clear() drops it. While `hang` is on, draws wait until a test settles them.
+     */
+    function poolTrackingSource() {
+        const base = cyclingSource();
+        const pools = new Set<string>();
+        const late: Array<{ card: (card: StreamCard) => void; fail: (error: Error) => void }> = [];
+        let hang = false;
+        const source: FakeSource = {
+            calls: base.calls,
+            cleared: base.cleared,
+            next(poolKey, filters) {
+                if (!hang) {
+                    pools.add(poolKey);
+                    return base.next(poolKey, filters);
+                }
+                return new Promise<StreamCard | null>((resolve, reject) => {
+                    late.push({
+                        card: (card) => {
+                            pools.add(poolKey);
+                            resolve(card);
+                        },
+                        fail: (error) => {
+                            pools.add(poolKey);
+                            reject(error);
+                        },
+                    });
+                });
+            },
+            clear(poolKey) {
+                base.clear(poolKey);
+                pools.delete(poolKey);
+            },
+        };
+        return { source, pools, late, hang: (on: boolean) => (hang = on) };
+    }
+
+    await test("Z14 a draw that comes back after its bound once its session is over clears that pool again; while it is live it does not", async () => {
+        const LATE: StreamCard = { wordId: 998, target: "GECİKEN", taboos: ["Geç"] };
+        const cases: Array<[string, "end" | "stop", (late: { card: (card: StreamCard) => void; fail: (error: Error) => void }) => void]> = [
+            ["a late card after the end", "end", (late) => late.card(LATE)],
+            ["a late failure after the end", "end", (late) => late.fail(new Error("pool read failed late"))],
+            ["a late card after stop()", "stop", (late) => late.card(LATE)],
+        ];
+        for (const [label, how, settle] of cases) {
+            const clock = manualTimers();
+            const words = poolTrackingSource();
+            const h = harness({ source: words.source, timers: clock.timers, drainTimeoutMs: 10_000 });
+            const { session } = await opened(h);
+            const poolKey = `streamer:${session.id}`;
+            words.hang(true);
+            const starting = h.runtime.start(session.id);
+            starting.catch(() => undefined);
+            await turn();
+            if (how === "end") {
+                clock.elapse(STREAM_DRAW_TIMEOUT_MS);
+                await rejectsWith(() => starting, "busy");
+                await h.runtime.end(session.id, "ended");
+            } else {
+                const stopping = h.runtime.stop();
+                await turn();
+                clock.elapse(STREAM_DRAW_TIMEOUT_MS);
+                await rejectsWith(() => starting, "busy");
+                await stopping;
+            }
+            await h.runtime.flush();
+            assert.equal(h.runtime.get(session.id), null, `${label}: the session is over`);
+            assert.equal(words.pools.size, 0, `${label}: the end cleared the pool`);
+            const clearsBefore = words.source.cleared.length;
+            settle(words.late.shift()!);
+            await turn();
+            await turn();
+            assert.deepEqual([...words.pools], [], `${label}: no pool outlives its session`);
+            assert.deepEqual(words.source.cleared.slice(clearsBefore), [poolKey], `${label}: the late draw's pool was cleared once more`);
+        }
+
+        // Still live: the late draw's pool is the session's own; it is cleared when the session ends.
+        const clock = manualTimers();
+        const words = poolTrackingSource();
+        const h = harness({ source: words.source, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const { session } = await opened(h);
+        const poolKey = `streamer:${session.id}`;
+        words.hang(true);
+        const starting = h.runtime.start(session.id);
+        starting.catch(() => undefined);
+        await turn();
+        clock.elapse(STREAM_DRAW_TIMEOUT_MS);
+        await rejectsWith(() => starting, "busy");
+        words.late.shift()!.card(LATE);
+        await turn();
+        await turn();
+        assert.ok(h.runtime.get(session.id), "still live");
+        assert.deepEqual(words.source.cleared, [], "a live session's pool is not touched");
+        assert.deepEqual([...words.pools], [poolKey]);
+        words.hang(false);
+        await h.runtime.end(session.id, "ended");
+        assert.deepEqual([...words.pools], [], "the end clears it");
     });
 
     await test("E11 a draw that comes back after its bound is dropped: nothing changes, and the next start draws again", async () => {

@@ -286,7 +286,7 @@ yeniden bağlanmaz, çevrimdışı sahnesinde kalır.
   bağlandıysa da aynı uyarı çıkar (oturum eski kanal için açılmıştı). Geçici platform hataları
   bir şey değiştirmez. `/streamer` açılırken canlı oturumun platformunda etkin bağlantı yoksa
   panel yine açılır, aynı uyarıyı gösterir ve başlığı "Kanal bağlantını yenile" olur.
-- **Kelime çekimi:** kelime havuzu 10 saniyede cevap vermezse "Turu başlat", "Sonraki kart" ve
+- **Kelime çekimi:** kelime havuzu 9,5 saniyede cevap vermezse "Turu başlat", "Sonraki kart" ve
   "Pas geç" `SERVER_BUSY` alır; oturum olduğu gibi kalır, tekrar denenebilir.
 - **Sürüm yenilemesi:** deploy sunucunun soket protokolünü değiştirdiyse açık OBS sayfası el
   değmeden kendini yeniler: 30 sn, 60 sn, 120 sn, sonra her 300 sn'de bir, bir bağlantı kabul

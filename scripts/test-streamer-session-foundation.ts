@@ -311,7 +311,7 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         "bekleyen işlemler en çok 10 saniye beklenir",
         "açıldığı kanal bağlantısı saatte bir doğrulanır",
         "30 sn, 60 sn, 120 sn, sonra her 300 sn'de bir",
-        "kelime havuzu 10 saniyede cevap vermezse",
+        "kelime havuzu 9,5 saniyede cevap vermezse",
         "Çıkış cihaz başınadır",
         "Anahtar canlı oturumlara geriye dönük uygulanmaz",
         "`/stream/••••••`",
@@ -525,8 +525,9 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.ok(docs.includes("10 per 10 s per socket and, once the socket joined a host room, 10 per 10 s per user"), "host actions are limited per socket and per user");
     // A word draw is bounded (STREAM_DRAW_TIMEOUT_MS): start, pass and next can answer SERVER_BUSY.
     const actions = docs.split(/\r?\n/).find((line) => line.startsWith("| `streamer:host:start`, ")) ?? "";
-    assert.ok(actions.includes("`SERVER_BUSY` (start, pass, next: the word draw did not answer within 10 s; nothing changed, try again)"), "the host actions row names the bounded draw");
-    assert.match(read("apps/web/src/lib/streamer/session-draw.ts"), /export const STREAM_DRAW_TIMEOUT_MS = 10_000;/);
+    assert.ok(actions.includes("`SERVER_BUSY` (start, pass, next: the word draw did not answer within 9.5 s; nothing changed, try again)"), "the host actions row names the bounded draw");
+    // Just below the 10 s turn bound, so an end asked in the same tick as a stuck start gets its turn.
+    assert.match(read("apps/web/src/lib/streamer/session-draw.ts"), /export const STREAM_DRAW_TIMEOUT_MS = 9_500;/);
     assert.ok(docs.includes("`STREAMER_MODE_DISABLED`") && docs.includes("opaque `STREAMER_VIEW_KEY_INVALID`"), "the mode-off refusals are documented");
     assert.ok(!docs.includes("does\r\nnot send it yet") && !docs.includes("not send it yet"), "the old interrupted note is gone");
 }

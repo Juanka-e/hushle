@@ -101,7 +101,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     // How long an outside caller (an end, the shutdown) waits for a session's pending action.
     const turnTimeoutMs = deps.drainTimeoutMs ?? STREAM_PERSIST_DRAIN_TIMEOUT_MS;
     const writes = createStreamerSessionPersistence({ store: deps.store, report: onError, drainTimeoutMs: deps.drainTimeoutMs, timers });
-    const draw = createCardDraw({ wordSource: deps.wordSource, timers, timeoutMs: deps.drawTimeoutMs, report: onError });
+    const draw = createCardDraw({ wordSource: deps.wordSource, timers, timeoutMs: deps.drawTimeoutMs, report: onError, isLive: (id) => entries.get(id)?.closed === false });
     const watches = createStreamerWatches({
         timers,
         checkConnection: deps.checkConnection,
