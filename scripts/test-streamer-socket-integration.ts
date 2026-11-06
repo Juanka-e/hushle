@@ -41,6 +41,7 @@ import {
     type WordSource,
 } from "../apps/web/src/lib/streamer/session-runtime";
 import { realStreamerTimers } from "../apps/web/src/lib/streamer/session-timers";
+import type { StreamerModeState } from "../apps/web/src/lib/streamer/streamer-mode";
 import { createSession, type StreamerSessionServiceDeps } from "../apps/web/src/lib/streamer/session-service";
 import { hashViewKey } from "../apps/web/src/lib/streamer/view-key";
 import { disconnectUserSockets, registerSocketServer, userSessionRoom } from "../apps/web/src/lib/socket/user-session-control";
@@ -338,7 +339,9 @@ async function main(): Promise<void> {
     connections.seed(connection(1));
     connections.seed(connection(3));
     const source = deckSource();
-    const features = { streamerShowcaseAllCosmetics: false, streamerModeEnabled: true };
+    const features = { streamerShowcaseAllCosmetics: false };
+    // What the authoritative streamer-mode read answers (the database row, or unknown when it is away).
+    const mode: { state: StreamerModeState } = { state: "on" };
     // The hourly link check runs every 25 ms here; each user's link answers valid unless set.
     const linkAnswers = new Map<number, ConnectionCheck>();
     const runtimeErrors: Array<{ event: string; error: unknown }> = [];
@@ -401,6 +404,7 @@ async function main(): Promise<void> {
             return limiter.consume(limit);
         },
         features: async () => ({ ...features }),
+        streamerMode: async () => mode.state,
         resolveCardBack: (userId, itemId, flags) => resolveCardBackSelection(userId, itemId, flags, CARD_BACK_LOADERS),
         now: () => socketClock.now,
         onError: (event, error) => {
@@ -1382,7 +1386,18 @@ async function main(): Promise<void> {
             const screen = await connect(url);
             assertOk(await ask(host, "streamer:host:join", { sessionId: fifthId }), "joined while the mode is on");
             assertOk(await ask(screen, "streamer:public:join", { viewKey: fifth.viewKey }), "the stream screen joined while on");
-            features.streamerModeEnabled = false;
+            // Unknown (the database does not answer) is no "off": everything keeps working.
+            mode.state = "unknown";
+            try {
+                const unsure = await connect(url, "second");
+                assertOk(await ask(unsure, "streamer:host:join", { sessionId: fifthId }), "a host join while the mode is unknown");
+                assertError(await ask(unsure, "streamer:host:resume"), "STREAMER_ACTION_INVALID_PHASE", "a host action reaches the session");
+                const unsureScreen = await connect(url);
+                assertOk(await ask(unsureScreen, "streamer:public:join", { viewKey: fifth.viewKey }), "a public join while the mode is unknown");
+            } finally {
+                mode.state = "on";
+            }
+            mode.state = "off";
             try {
                 const late = await connect(url, "second");
                 assertError(await ask(late, "streamer:host:join", { sessionId: fifthId }), "STREAMER_MODE_DISABLED", "a host join");
@@ -1412,7 +1427,7 @@ async function main(): Promise<void> {
                 assertOk(await ask(host, "streamer:host:end"), "end while the mode is off");
                 assert.deepEqual((await endedScreen)[0], { reason: "ended" });
             } finally {
-                features.streamerModeEnabled = true;
+                mode.state = "on";
             }
             assert.equal(runtime.get(fifthId), null);
         });
@@ -1428,14 +1443,25 @@ async function main(): Promise<void> {
             assertOk(await ask(host, "streamer:host:start"), "a round runs");
             const endedHost = nextEvent<{ reason: string }>(host, "streamer:ended");
             const endedScreen = nextEvent<{ reason: string }>(screen, "streamer:ended");
-            const unwatch = runtime.watchMode(async () => features.streamerModeEnabled, 20);
-            features.streamerModeEnabled = false;
+            let checks = 0;
+            let thirdCheck = () => {};
+            const third = new Promise<void>((resolve) => (thirdCheck = resolve));
+            mode.state = "unknown";
+            const unwatch = runtime.watchMode(async () => {
+                checks += 1;
+                if (checks === 3) thirdCheck();
+                return mode.state;
+            }, 20);
             try {
+                // Unknown for several checks (the database away): nothing ends.
+                await within(third, "three mode checks while unknown");
+                assert.ok(runtime.get(sixthId), "an unknown mode ends nothing");
+                mode.state = "off";
                 assert.deepEqual((await endedHost)[0], { reason: "stopped" });
                 assert.deepEqual((await endedScreen)[0], { reason: "stopped" });
             } finally {
                 unwatch();
-                features.streamerModeEnabled = true;
+                mode.state = "on";
             }
             await runtime.flush();
             const row = await sessions.findById(sixthId);

@@ -22,6 +22,9 @@ export interface SessionConnection {
 
 export type ConnectionChecker = (connection: SessionConnection) => Promise<ConnectionCheck>;
 
+/** The admin's streamer-mode switch as read (streamer-mode.ts): unknown while the database does not answer. */
+export type StreamerModeState = "on" | "off" | "unknown";
+
 export interface StreamerWatchesDeps {
     timers: StreamerTimers;
     checkConnection?: ConnectionChecker;
@@ -37,8 +40,8 @@ export interface StreamerWatches {
     /** Checks a live session's link every hour until `forget`; nothing without a checker or a link. */
     watchConnection(sessionId: string, connection: SessionConnection | null): void;
     forget(sessionId: string): void;
-    /** Reads the switch every `intervalMs` (one watch at a time); returns its unwatch. */
-    watchMode(isEnabled: () => Promise<boolean>, intervalMs?: number): () => void;
+    /** Reads the switch every `intervalMs` (one watch at a time) and acts on "off" only; returns its unwatch. */
+    watchMode(readMode: () => Promise<StreamerModeState>, intervalMs?: number): () => void;
     stopAll(): void;
 }
 
@@ -86,11 +89,12 @@ export function createStreamerWatches(deps: StreamerWatchesDeps): StreamerWatche
         connections.delete(sessionId);
     }
 
-    async function checkMode(watch: { checking: boolean }, isEnabled: () => Promise<boolean>): Promise<void> {
+    async function checkMode(watch: { checking: boolean }, readMode: () => Promise<StreamerModeState>): Promise<void> {
         if (watch.checking) return;
         watch.checking = true;
         try {
-            if (!(await isEnabled())) await deps.onModeOff();
+            // Only an authoritative "off" ends the streams: "unknown" (the database away) changes nothing.
+            if ((await readMode()) === "off") await deps.onModeOff();
         } catch (error) {
             report("streamer_session.mode_check_failed", error);
         } finally {
@@ -111,10 +115,10 @@ export function createStreamerWatches(deps: StreamerWatchesDeps): StreamerWatche
             connections.set(sessionId, watched);
         },
         forget,
-        watchMode(isEnabled, intervalMs = STREAMER_MODE_CHECK_MS) {
+        watchMode(readMode, intervalMs = STREAMER_MODE_CHECK_MS) {
             unwatchMode();
             const watch = { handle: null as unknown, checking: false };
-            watch.handle = timers.setInterval(() => void checkMode(watch, isEnabled), intervalMs);
+            watch.handle = timers.setInterval(() => void checkMode(watch, readMode), intervalMs);
             mode = watch;
             return () => {
                 if (mode === watch) unwatchMode();

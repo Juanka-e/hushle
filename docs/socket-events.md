@@ -128,7 +128,9 @@ Host actions (every `streamer:host:*` event but the join) share a burst limit of
 tab of the owner shares it); they act only on the host room this socket joined, and ownership is
 checked again on each one. While an admin has streamer mode off, host joins and every host action
 but `streamer:host:end` answer `STREAMER_MODE_DISABLED`, and public joins the same
-opaque `STREAMER_VIEW_KEY_INVALID` as a wrong key.
+opaque `STREAMER_VIEW_KEY_INVALID` as a wrong key. The switch is read from its stored row
+(cached 5 s): while the database does not answer it is unknown, and unknown refuses nothing and
+stops nothing.
 A successful host join also puts the socket in its user's session room (`private:user-session:<userId>`),
 so a password reset or an email change disconnects it, as it does game sockets.
 

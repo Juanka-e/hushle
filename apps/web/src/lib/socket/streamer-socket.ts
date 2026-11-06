@@ -31,6 +31,7 @@ import {
 import { screenSettingsPatchSchema, type ResolvedScreenPatch } from "@/lib/streamer/session-settings";
 import type { StreamSessionStore } from "@/lib/streamer/session-store";
 import { STREAMER_SOCKET_EVENTS, type StreamerEndedPayload } from "@/lib/streamer/socket-contract";
+import { getStreamerModeState, type StreamerModeState } from "@/lib/streamer/streamer-mode";
 import { hashViewKey, STREAMER_VIEW_KEY_LIMIT, VIEW_KEY_BYTES } from "@/lib/streamer/view-key";
 import { getSystemSettings } from "@/lib/system-settings/service";
 import type { CosmeticMotionPreset, CosmeticPattern } from "@/types/economy";
@@ -67,16 +68,13 @@ export interface StreamerSocketUser {
     isSuspended: boolean;
 }
 
-/** The owner switches the socket layer reads: streamer mode itself and the card-back showcase. */
-export interface StreamerSocketFeatures extends CardBackFeatures {
-    streamerModeEnabled: boolean;
-}
-
 /** Seams for tests; production uses the cookie session, the shared limiter and the real catalogue. */
 export interface StreamerSocketOptions {
     resolveUser?: (socket: Socket) => Promise<StreamerSocketUser>;
     rateLimit?: typeof consumeDistributedRequestRateLimit;
-    features?: () => Promise<StreamerSocketFeatures>;
+    features?: () => Promise<CardBackFeatures>;
+    /** The authoritative streamer-mode switch (streamer-mode.ts); only "off" refuses. */
+    streamerMode?: () => Promise<StreamerModeState>;
     resolveCardBack?: (userId: number, itemId: number, features: CardBackFeatures) => Promise<StreamCardBack>;
     /** Clock of the per-socket host burst windows. */
     now?: () => number;
@@ -398,9 +396,9 @@ async function resolveSocketUser(socket: Socket): Promise<StreamerSocketUser> {
     return { userId: state.userId, isSuspended: state.isSuspended };
 }
 
-async function systemFeatures(): Promise<StreamerSocketFeatures> {
+async function showcaseFeatures(): Promise<CardBackFeatures> {
     const { features } = await getSystemSettings();
-    return { streamerModeEnabled: features.streamerModeEnabled === true, streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics === true };
+    return { streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics === true };
 }
 
 function reportStreamerSocketError(event: string, error: unknown): void {
@@ -417,7 +415,8 @@ export function setupStreamerSocket(
 ): void {
     const resolveUser = options.resolveUser ?? resolveSocketUser;
     const rateLimit = options.rateLimit ?? consumeDistributedRequestRateLimit;
-    const features = options.features ?? systemFeatures;
+    const features = options.features ?? showcaseFeatures;
+    const readMode = options.streamerMode ?? getStreamerModeState;
     const resolveCardBack: NonNullable<StreamerSocketOptions["resolveCardBack"]> =
         options.resolveCardBack ?? ((userId, itemId, flags) => resolveCardBackSelection(userId, itemId, flags));
     const reporter = options.onError ?? reportStreamerSocketError;
@@ -554,9 +553,13 @@ export function setupStreamerSocket(
         return live;
     }
 
-    /** While the admin has streamer mode off, nothing but ending is served (the kill switch ends the rest). */
+    /**
+     * While the admin has streamer mode off, nothing but ending is served (the kill switch ends
+     * the rest). Only an authoritative "off" refuses: "unknown" (the database away) keeps the live
+     * sessions working.
+     */
     async function streamerModeOn(): Promise<boolean> {
-        return (await features()).streamerModeEnabled === true;
+        return (await readMode()) !== "off";
     }
 
     async function cardBackFor(userId: number, itemId: number): Promise<StreamCardBack> {

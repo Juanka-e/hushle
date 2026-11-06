@@ -52,7 +52,14 @@ import { createViewKey } from "./view-key";
 
 export { STREAM_PERSIST_DRAIN_TIMEOUT_MS, SUMMARY_SCORE_LIMIT, type StreamerErrorReporter } from "./session-persistence";
 export { isStreamerSessionError, STREAMER_SESSION_ERROR_CODES, StreamerSessionError, type StreamerSessionErrorCode } from "./session-errors";
-export { STREAM_CONNECTION_CHECK_MS, STREAMER_MODE_CHECK_MS, type ConnectionCheck, type ConnectionChecker, type SessionConnection } from "./session-watch";
+export {
+    STREAM_CONNECTION_CHECK_MS,
+    STREAMER_MODE_CHECK_MS,
+    type ConnectionCheck,
+    type ConnectionChecker,
+    type SessionConnection,
+    type StreamerModeState,
+} from "./session-watch";
 export type * from "./session-runtime-types";
 
 export const STREAM_TICK_MS = 1_000;
@@ -404,7 +411,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         setOnHostNotice(listener) {
             onHostNotice = listener;
         },
-        watchMode: (isEnabled, intervalMs) => watches.watchMode(isEnabled, intervalMs),
+        watchMode: (readMode, intervalMs) => watches.watchMode(readMode, intervalMs),
         async stop() {
             watches.stopAll();
             const open = [...entries.values()];

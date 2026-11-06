@@ -378,8 +378,15 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     // The kill switch starts with the runtime; the hourly link check is wired into it.
     const deps = code("apps/web/src/lib/streamer/session-deps.ts");
     const boot = deps.split("export async function startStreamerSessionRuntime")[1] ?? "";
-    assert.match(boot, /runtime\.watchMode\(streamerModeEnabled\);/, "boot starts the streamer-mode watch");
-    assert.match(deps, /async function streamerModeEnabled\(\): Promise<boolean> \{\s*return \(await getSystemSettings\(\)\)\.features\.streamerModeEnabled === true;/);
+    assert.match(boot, /runtime\.watchMode\(getStreamerModeState\);/, "boot starts the streamer-mode watch on the authoritative read");
+    // The authoritative read asks the stored features row (normalized as the settings service does),
+    // never the cached settings service, which falls back to "off" while the database is away.
+    const modeSource = code("apps/web/src/lib/streamer/streamer-mode.ts");
+    assert.match(modeSource, /prisma\.systemSetting\.findUnique\(\{ where: \{ key: "features" \}/);
+    assert.match(modeSource, /normalizeSystemSettings\(/);
+    assert.ok(!modeSource.includes("getSystemSettings"), "streamer-mode.ts never reads the cached settings service");
+    assert.match(socketSource, /return \(await readMode\(\)\) !== "off";/, "the socket refuses on an authoritative off only");
+    assert.ok(!deps.includes("streamerModeEnabled"), "session-deps no longer reads the cached switch");
     assert.match(deps.split("export function getStreamerSessionRuntime")[1] ?? "", /checkConnection: checkLiveConnection,/, "the runtime checks each live link hourly");
     // An admin suspension revokes the links, then takes the owner's stream off the air (bounded),
     // then writes its audit: a stuck stream never holds the revoke, and the audit only the bound.

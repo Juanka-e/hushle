@@ -55,6 +55,7 @@ import {
 import { resolveCardBackSelection, type CardBackCatalogItem, type CardBackLoaders } from "../apps/web/src/lib/streamer/card-backs";
 import type { StreamerTimers } from "../apps/web/src/lib/streamer/session-timers";
 import { endStreamerSessionsForUser } from "../apps/web/src/lib/streamer/session-account";
+import { createStreamerModeReader, STREAMER_MODE_CACHE_MS, type StreamerModeState } from "../apps/web/src/lib/streamer/streamer-mode";
 import { createViewKey, hashViewKey } from "../apps/web/src/lib/streamer/view-key";
 import * as realRateLimit from "../apps/web/src/lib/security/request-rate-limit";
 
@@ -2106,7 +2107,7 @@ async function main(): Promise<void> {
         const done = await createSession(h.deps, { userId: 3, settings: INPUT });
         await h.runtime.start(session.id);
         await h.runtime.end(done.session.id, "ended");
-        h.runtime.watchMode(async () => true);
+        h.runtime.watchMode(async () => "on");
         assert.ok(clock.intervals.size > 0, "ticks, connection checks and the mode watch run on the injected timers");
         await h.runtime.stop();
         const byId = (a: { sessionId: string }, b: { sessionId: string }) => a.sessionId.localeCompare(b.sessionId);
@@ -2184,7 +2185,54 @@ async function main(): Promise<void> {
         assert.equal(h.runtime.get(session.id), null);
     });
 
-    await test("streamer mode switched off: the 15 s check ends every live session with reason stopped; a failed check changes nothing", async () => {
+    await test("streamer mode read: on and off come from the stored features row (cached 5 s), anything else is unknown and never cached", async () => {
+        assert.equal(STREAMER_MODE_CACHE_MS, 5_000);
+        const clock = manualTimers();
+        let row: unknown = { streamerModeEnabled: true };
+        let reads = 0;
+        let answer: "row" | "throw" | "hang" = "row";
+        const read = createStreamerModeReader({
+            timers: clock.timers,
+            timeoutMs: 2_000,
+            readFeatures: async () => {
+                reads += 1;
+                if (answer === "throw") throw new Error("Can't reach database server at 127.0.0.1:3306");
+                if (answer === "hang") return new Promise<never>(() => undefined);
+                return row;
+            },
+        });
+        assert.equal(await read(), "on");
+        row = { streamerModeEnabled: false };
+        clock.advance(4_999);
+        assert.equal(await read(), "on", "on is cached for 5 s");
+        assert.equal(reads, 1);
+        clock.advance(1);
+        assert.equal(await read(), "off", "then read again");
+        assert.equal(reads, 2);
+        answer = "throw";
+        clock.advance(4_999);
+        assert.equal(await read(), "off", "off is cached for 5 s too, even while the database is away");
+        clock.advance(1);
+        assert.equal(await read(), "unknown", "a database that does not answer is no answer");
+        assert.equal(await read(), "unknown");
+        assert.equal(reads, 4, "unknown is never cached: every read asks again");
+        answer = "hang";
+        const hanging = read();
+        await turn();
+        clock.fireTimeouts();
+        assert.equal(await hanging, "unknown", "a read that hangs past its timeout is unknown");
+        answer = "row";
+        row = null;
+        assert.equal(await read(), "off", "no stored row: the default, which is off");
+        clock.advance(5_000);
+        row = { streamerModeEnabled: "yes" };
+        assert.equal(await read(), "unknown", "a row the settings schema refuses is unknown");
+        row = { streamerModeEnabled: true, streamerShowcaseAllCosmetics: true };
+        assert.equal(await read(), "on");
+        assert.equal(clock.timeouts.size, 0, "no read timeout is left pending");
+    });
+
+    await test("streamer mode switched off: the 15 s check ends every live session with reason stopped; unknown or a failed check changes nothing", async () => {
         assert.equal(STREAMER_MODE_CHECK_MS, 15_000);
         const clock = manualTimers();
         const h = harness({ timers: clock.timers });
@@ -2193,7 +2241,7 @@ async function main(): Promise<void> {
         const other = await createSession(h.deps, { userId: 2, settings: INPUT });
         await h.runtime.start(session.id);
         assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct");
-        let mode: boolean | Error = true;
+        let mode: StreamerModeState | Error = "on";
         let checks = 0;
         const unwatch = h.runtime.watchMode(async () => {
             checks += 1;
@@ -2204,12 +2252,18 @@ async function main(): Promise<void> {
         await turn();
         assert.equal(checks, 1);
         assert.equal(h.ended.length, 0, "the mode is on: nothing ends");
+        mode = "unknown";
+        for (let check = 0; check < 3; check++) {
+            clock.fireIntervals(STREAMER_MODE_CHECK_MS);
+            await turn();
+        }
+        assert.equal(h.ended.length, 0, "an unknown mode (the database away) ends nothing, however long it lasts");
         mode = new Error("settings unreadable");
         clock.fireIntervals(STREAMER_MODE_CHECK_MS);
         await turn();
         assert.equal(h.ended.length, 0, "a check that fails ends nothing");
         assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.mode_check_failed"]);
-        mode = false;
+        mode = "off";
         clock.fireIntervals(STREAMER_MODE_CHECK_MS);
         await turn();
         await h.runtime.flush();
@@ -2225,11 +2279,11 @@ async function main(): Promise<void> {
         // Unwatched, or stopped with the runtime: the check never runs again.
         unwatch();
         assert.ok(![...clock.intervals.values()].some((interval) => interval.ms === STREAMER_MODE_CHECK_MS));
-        const watchAgain = h.runtime.watchMode(async () => false);
+        const watchAgain = h.runtime.watchMode(async () => "off");
         void watchAgain;
         await h.runtime.stop();
         assert.equal(clock.intervals.size, 0, "stop() clears the mode watch");
-        assert.equal(checks, 3);
+        assert.equal(checks, 6);
     });
 
     await test("hourly connection check: needs_reconnect tells the host once and the session goes on; nothing is checked after the end", async () => {

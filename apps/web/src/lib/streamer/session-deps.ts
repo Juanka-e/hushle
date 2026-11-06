@@ -17,6 +17,7 @@ import {
 } from "./session-runtime";
 import { reportStreamerSessionError, type StreamerSessionServiceDeps } from "./session-service";
 import { prismaStreamSessionStore } from "./session-store";
+import { getStreamerModeState } from "./streamer-mode";
 
 // Real wiring for stream sessions: Prisma stores, the shared word pool and one runtime per
 // process. The custom server and the Next route bundles evaluate this module separately, so the
@@ -68,9 +69,6 @@ export function getStreamerSessionRuntime(): StreamerSessionRuntime {
     return globalForStreamerSessions.__hushleStreamerSessionRuntime;
 }
 
-async function streamerModeEnabled(): Promise<boolean> {
-    return (await getSystemSettings()).features.streamerModeEnabled === true;
-}
 
 // An account action (an admin suspension) ends the user's live session: see session-account.ts.
 export { endStreamerSessionsForUser } from "./session-account";
@@ -95,9 +93,10 @@ export async function startStreamerSessionRuntime(): Promise<StreamerSessionRunt
         (error) => reportStreamerSessionError("streamer_session.boot.reconcile_failed", error),
     );
     await globalForStreamerSessions.__hushleStreamerSessionBoot;
-    // The admin kill switch: while streamer mode reads off (cached settings, every 15 s), every
-    // live session ends `stopped`. Cleared by runtime.stop(); a second boot call replaces it.
-    runtime.watchMode(streamerModeEnabled);
+    // The admin kill switch: when the stored switch reads "off" (checked every 15 s), every live
+    // session ends `stopped`; "unknown" (the database away) ends nothing. Cleared by
+    // runtime.stop(); a second boot call replaces it.
+    runtime.watchMode(getStreamerModeState);
     return runtime;
 }
 

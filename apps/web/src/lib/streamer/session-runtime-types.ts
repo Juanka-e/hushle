@@ -12,7 +12,7 @@ import type { StreamerErrorReporter } from "./session-persistence";
 import type { CreateSessionInput, ResolvedScreenPatch, WordFilters } from "./session-settings";
 import type { StreamSessionRecord, StreamSessionStore, StreamSessionSummary } from "./session-store";
 import type { StreamerTimers } from "./session-timers";
-import type { ConnectionChecker } from "./session-watch";
+import type { ConnectionChecker, StreamerModeState } from "./session-watch";
 import type { StreamerHostNoticePayload } from "./socket-contract";
 
 // The shape of the stream session runtime (session-runtime.ts builds it): what it is given, what
@@ -93,8 +93,8 @@ export interface StreamerSessionRuntime {
     setOnEnded(listener: StreamerEndedListener): void;
     setOnViewKeyRotated(listener: (sessionId: string) => void): void;
     setOnHostNotice(listener: StreamerHostNoticeListener): void;
-    /** While it reads off (every STREAMER_MODE_CHECK_MS), every live session ends `stopped`; returns the unwatch. */
-    watchMode(isEnabled: () => Promise<boolean>, intervalMs?: number): () => void;
+    /** When it reads "off" (every STREAMER_MODE_CHECK_MS; "unknown" changes nothing), every live session ends `stopped`; returns the unwatch. */
+    watchMode(readMode: () => Promise<StreamerModeState>, intervalMs?: number): () => void;
     /** Clears every timer and ends the sessions still open as interrupted (rows and listener). */
     stop(): Promise<void>;
 }
