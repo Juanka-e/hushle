@@ -436,6 +436,26 @@ test("P3 X4 the page reads the session before choosing the gate and hands the pa
     assert.ok(/needsReconnect:/.test(page), "the panel is told the channel needs a reconnect");
 });
 
+test("E10 the page reads the session and the panel's own data together; the gate decision is unchanged", () => {
+    const page = source("apps/web/src/app/streamer/page.tsx");
+    // With an active link the gate opens the panel whatever the session says, so its reads start
+    // beside the session read; without one (only a live session can open it then) they wait.
+    assert.match(
+        page,
+        /await Promise\.all\(\[\s*currentSession\(createSessionServiceDeps\(\), sessionUser\.id\),\s*activePlatforms\.length > 0 \? loadPanelData\(sessionUser\.id\) : null,\s*\]\)/,
+        "one Promise.all for the session and the panel data",
+    );
+    assert.doesNotMatch(page, /await currentSession\(/, "no session read on its own before the panel reads");
+    const loader = page.slice(page.indexOf("async function loadPanelData("), page.indexOf("export default async function StreamerPage"));
+    assert.ok(loader.length > 0 && !loader.includes("currentSession("), "the panel data never reads the session itself");
+    assert.match(page, /const data = preloaded \?\? \(await loadPanelData\(sessionUser\.id\)\);/, "a panel opened without an active link reads its data then");
+    assert.match(
+        page,
+        /streamerGateState\(\{\s*enabled: view\.enabled,\s*activePlatforms,\s*brokenChannel: Boolean\(broken\),\s*liveSession: known \?\? null,\s*\}\)/,
+        "the gate gets the same inputs as before",
+    );
+});
+
 test("P6 no English panel string reads as a wrong plural for one", () => {
     const en = dictionaries.en.streamer as Record<string, unknown>;
     const counted: string[] = [];

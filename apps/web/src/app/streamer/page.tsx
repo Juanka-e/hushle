@@ -30,21 +30,12 @@ function panelCategories(roots: VisibleCategory[]): StreamerPanelCategory[] {
     }));
 }
 
-// The same body GET /api/streamer/sessions answers, plus what the form needs: the first paint
-// has the session, the prefill, the card backs and both category packs (the session's word
-// language picks one), so the panel never starts on a spinner. `known` is the session the gate
-// already read, if it did.
-async function loadPanel(
-    userId: number,
-    locale: AppLocale,
-    channels: StreamerPanelChannel[],
-    needsReconnect: boolean,
-    known?: StreamSessionView | null
-): Promise<StreamerPanelInitial> {
+// What the panel reads beside the session: the prefill, the card backs and both category packs
+// (the session's word language picks one), so the panel never starts on a spinner.
+async function loadPanelData(userId: number) {
     const { features } = await getSystemSettings();
     const deps = createSessionServiceDeps();
-    const [session, last, cardBacks, tr, en] = await Promise.all([
-        known === undefined ? currentSession(deps, userId) : known,
+    const [last, cardBacks, tr, en] = await Promise.all([
         lastSettings(deps, userId),
         // An unreachable catalogue leaves the theme's card as the only choice.
         listCardBacksForUser(userId, { streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics }).catch((error: unknown) => {
@@ -54,10 +45,21 @@ async function loadPanel(
         getVisibleCategories("tr"),
         getVisibleCategories("en"),
     ]);
+    return { last, cardBacks, tr, en };
+}
+
+// The same body GET /api/streamer/sessions answers, plus what the form needs.
+function panelInitial(
+    data: Awaited<ReturnType<typeof loadPanelData>>,
+    session: StreamSessionView | null,
+    locale: AppLocale,
+    channels: StreamerPanelChannel[],
+    needsReconnect: boolean
+): StreamerPanelInitial {
     return {
-        data: { enabled: true, session, lastSettings: last, cardBacks },
+        data: { enabled: true, session, lastSettings: data.last, cardBacks: data.cardBacks },
         channels,
-        categories: { tr: panelCategories(tr), en: panelCategories(en) },
+        categories: { tr: panelCategories(data.tr), en: panelCategories(data.en) },
         locale,
         needsReconnect,
     };
@@ -83,9 +85,15 @@ export default async function StreamerPage() {
     }
     const activePlatforms = view.platforms.filter((entry) => entry.connection?.status === "active").map((entry) => entry.platform);
     const broken = view.platforms.find((entry) => entry.connection?.status === "needs_reconnect");
-    // Read whenever streamer mode is on: a live session opens the panel, and whether its own
-    // platform's link is active decides the warning. loadPanel reuses it.
-    const known = view.enabled ? await currentSession(createSessionServiceDeps(), sessionUser.id) : undefined;
+    // The session is read whenever streamer mode is on: a live session opens the panel, and whether
+    // its own platform's link is active decides the warning. With an active link the panel opens
+    // whatever the session says, so its own reads start beside the session read, not after it.
+    const [known, preloaded] = view.enabled
+        ? await Promise.all([
+              currentSession(createSessionServiceDeps(), sessionUser.id),
+              activePlatforms.length > 0 ? loadPanelData(sessionUser.id) : null,
+          ])
+        : [undefined, null];
 
     const state = streamerGateState({
         enabled: view.enabled,
@@ -99,7 +107,9 @@ export default async function StreamerPage() {
                 ? [{ platform: entry.platform, label: entry.label, displayName: entry.connection.displayName }]
                 : []
         );
-        const initial = await loadPanel(sessionUser.id, locale, channels, state === "live-reconnect", known);
+        // Without an active link only a live session opens the panel: its data is read now.
+        const data = preloaded ?? (await loadPanelData(sessionUser.id));
+        const initial = panelInitial(data, known ?? null, locale, channels, state === "live-reconnect");
         return (
             <main className="min-h-screen bg-slate-100 px-4 py-10 dark:bg-slate-950">
                 <StreamerPanel initial={initial} />
