@@ -427,6 +427,69 @@ async function main(): Promise<void> {
         assert.match(page, /demoAllowed=\{isFakePlatformEnabled\(process\.env\)\}/);
     });
 
+    await test("the demo scenes load only through a dynamic import of their own module", () => {
+        const screen = streamSource("stream-screen.tsx");
+        assert.doesNotMatch(screen, /^import [^;]*["']\.\/stream-demo["']/m, "no static import of the demo");
+        assert.doesNotMatch(screen, /^export [^;]*["']\.\/stream-demo["']/m, "no re-export of the demo");
+        assert.equal(screen.match(/import\(\s*["']\.\/stream-demo["']\s*\)/g)?.length, 1, "one dynamic import");
+        // The import sits behind the fake-platform switch and ?demo=.
+        assert.match(screen, /const demo = demoAllowed && params\.has\("demo"\);/);
+        const branch = screen.indexOf("if (demo) {");
+        const lazy = screen.search(/import\(\s*["']\.\/stream-demo["']\s*\)/);
+        assert.ok(branch !== -1 && lazy > branch && lazy < screen.indexOf("connectStreamTransport("), "inside the demo branch");
+        // No other screen module reaches the demo or its sample data.
+        const demo = streamSource("stream-demo.ts");
+        assert.match(demo, /^export function startDemo\(/m);
+        for (const file of ["stream-renderer.ts", "stream-transport.ts", "stream-fonts.ts", "camera-rects.ts"]) {
+            const text = streamSource(file);
+            assert.doesNotMatch(text, /stream-demo|startDemo|denizoynuyor|MANDALİNA|xXx_KaraSavasci/, file);
+        }
+    });
+
+    await test("every named demo scene draws one readable state; play stops when told", async () => {
+        const { startDemo } = await import("@/components/stream/stream-demo");
+        const drawn: StreamState[] = [];
+        const renderer = {
+            render: (state: StreamState) => void drawn.push(state),
+            current: () => drawn[drawn.length - 1] ?? null,
+            destroy: () => undefined,
+        };
+        const phases: Record<string, string> = {
+            empty: "ready",
+            ready: "ready",
+            running: "running",
+            low: "running",
+            paused: "paused",
+            offline: "paused",
+            solved: "finished",
+            timeout: "finished",
+            passed: "running",
+            ended: "ended",
+            longnames: "running",
+            bogus: "running",
+        };
+        for (const [name, phase] of Object.entries(phases)) {
+            drawn.length = 0;
+            const stop = startDemo(renderer, name, new URLSearchParams("theme=sakura&camera=tl&size=l"));
+            stop();
+            assert.equal(drawn.length, 1, name);
+            assert.equal(drawn[0].phase, phase, name);
+            assert.equal(drawn[0].theme, "sakura", name);
+            assert.equal(drawn[0].camera, "tl", name);
+            assert.equal(drawn[0].cameraSize, "l", name);
+            // The word shows only once a round is over, as with a session.
+            assert.equal(drawn[0].reveal !== null, phase === "finished", name);
+        }
+        drawn.length = 0;
+        const stop = startDemo(renderer, "play", new URLSearchParams(""));
+        assert.equal(drawn.length, 1);
+        assert.equal(drawn[0].phase, "ready");
+        // The loop's first step is due at 1.2 s; the e2e test runs the whole loop on a fake clock.
+        stop();
+        await new Promise((resolve) => setTimeout(resolve, 1_300));
+        assert.equal(drawn.length, 1, "nothing after stop");
+    });
+
     await test("the revision guard takes only newer states; a reset starts it again", () => {
         const guard = createRevisionGuard();
         assert.equal(guard.accept(0), true);

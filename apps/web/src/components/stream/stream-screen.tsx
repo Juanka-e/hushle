@@ -3,14 +3,15 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { streamFontClassName } from "./stream-fonts";
-import { createStreamRenderer, offlineState, startDemo, urlLookSnapshot, viewFromParams } from "./stream-renderer";
+import { createStreamRenderer, offlineState, urlLookSnapshot, viewFromParams } from "./stream-renderer";
 import { connectStreamTransport, createStreamSocket } from "./stream-transport";
 import "./stream-screen.css";
 
 // The public stream screen (OBS browser source): the V4 prototype's public.html. React draws
 // this markup once; stream-renderer.ts drives it from the snapshots, as public.js did, and
 // stream-transport.ts brings them from the public room. Until the first state arrives the look
-// chosen in the URL shows; without one for a while, the offline scene does.
+// chosen in the URL shows; without one for a while, the offline scene does. The demo scenes
+// (stream-demo.ts) are a chunk of their own, fetched only for an allowed ?demo=.
 
 export function StreamScreen({ demoAllowed }: { demoAllowed: boolean }) {
     const rootRef = useRef<HTMLElement>(null);
@@ -23,9 +24,19 @@ export function StreamScreen({ demoAllowed }: { demoAllowed: boolean }) {
         const demo = demoAllowed && params.has("demo");
         const renderer = createStreamRenderer(root, viewFromParams(params, demo));
         if (demo) {
-            const stop = startDemo(renderer, params.get("demo") ?? "", params);
+            let stop: (() => void) | null = null;
+            let unmounted = false;
+            import("./stream-demo")
+                .then(({ startDemo }) => {
+                    if (!unmounted) stop = startDemo(renderer, params.get("demo") ?? "", params);
+                })
+                .catch(() => {
+                    // The demo chunk did not load: the URL look's offline scene, as for a dead link.
+                    if (!unmounted) renderer.render(offlineState(urlLookSnapshot(params)));
+                });
             return () => {
-                stop();
+                unmounted = true;
+                stop?.();
                 renderer.destroy();
             };
         }
