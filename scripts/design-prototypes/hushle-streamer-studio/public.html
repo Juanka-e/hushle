@@ -1,12 +1,131 @@
 <!doctype html>
-<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hushle / Sohbet yarışı</title><link rel="stylesheet" href="public.css"><script src="public.js" defer></script></head>
-<body class="dark" data-phase="ready">
-  <main class="stage">
-    <header class="stage-header"><div class="brand-block"><strong class="brand">HUSHLE</strong><span>SOHBET YARIŞI <b>DEMO</b></span></div><div class="time"><div class="round-meta"><span id="phase">HAZIR</span><span>TUR <b id="round">01</b></span></div><strong id="timer">60</strong><small>sn</small><div class="time-track"><i id="timer-progress"></i></div></div></header>
-    <div class="stage-grid">
-      <section class="challenge"><div class="card-scene" aria-hidden="true"><div class="ghost-card"></div><div id="visual-back" class="visual-back"><span>H</span></div></div><div class="invitation"><span class="game-label" id="pack-label">TR KELİME PAKETİ</span><h1 id="headline">Tahmin et!</h1><p id="instruction">Yayıncı anlatıyor.<br>Cevabını sohbete yaz.</p></div></section>
-      <section class="leaderboard" aria-label="Bu oturumun ilk üç oyuncusu"><div class="board-heading"><div><span>BU OTURUM</span><h2>Top 3</h2></div><span class="board-symbol" aria-hidden="true">#</span></div><ol id="scores"></ol><p id="leader-note">İlk doğru tahminle yarış başlar.</p></section>
-    </div>
-    <footer class="stage-footer"><div id="last-correct" class="last-correct"><span class="winner-mark" aria-hidden="true">✓</span><div class="last-copy"><span class="label">SON BİLEN</span><strong id="winner">İlk bilen sen ol.</strong><small id="winner-round"></small></div><span id="earned" class="earned" hidden>+1 <small>PUAN</small></span></div><div class="participation"><strong id="participant-count">0</strong><span>kişi katıldı</span></div></footer>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hushle / Yayın ekranı</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500;1,700&family=Inter:wght@500;600;700;800&family=Kalam:wght@400;700&family=Shippori+Mincho:wght@500;700;800&display=swap">
+  <link rel="stylesheet" href="public.css"><script src="public.js" defer></script>
+</head>
+<body data-theme="oyun-gecesi" data-phase="ready" data-layout="full" data-scores="wide" data-last="wide" data-timer="tall" data-clock="hourglass">
+  <main class="stage" id="stage">
+    <div class="scene" aria-hidden="true"><div class="scene-art" id="scene-art"></div></div>
+    <div class="camera" id="camera" aria-hidden="true"><span class="camera-hint">Kameran burada</span><div class="camera-frame"></div></div>
+
+    <header class="masthead slot"><strong class="brand">Hushle</strong><span class="channel" id="channel"></span></header>
+
+    <section class="hero slot" aria-label="Kart">
+      <div class="deck" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="card" id="card">
+        <div class="card-inner">
+          <div class="card-face card-back" id="card-back"></div>
+          <div class="card-face card-front" id="card-front">
+            <div class="front-art" id="front-art"></div>
+            <span class="front-round" id="front-round"></span>
+            <div class="front-text">
+              <strong class="front-target" id="reveal-target"></strong>
+              <span class="front-label">Yasak kelimeler</span>
+              <ul class="front-taboos" id="reveal-taboos"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="card-name" id="card-name" hidden></p>
+      <p class="pause-sign" id="pause-sign">Kısa bir ara</p>
+      <div class="winner" id="winner" hidden>
+        <span class="winner-label" id="winner-label">Gecenin kazananı</span>
+        <strong class="winner-name" id="winner-name"></strong>
+        <span class="winner-points" id="winner-points"></span>
+      </div>
+    </section>
+
+    <section class="timer slot" role="timer" aria-live="off">
+      <span class="round" id="round">1. tur</span>
+      <svg class="clock hourglass" data-kind="hourglass" id="hourglass" viewBox="0 0 200 340" aria-hidden="true">
+        <defs>
+          <clipPath id="glass-top"><path d="M40 30H160C160 95 112 140 104 170H96C88 140 40 95 40 30Z"/></clipPath>
+          <clipPath id="glass-bottom"><path d="M96 170H104C112 200 160 245 160 310H40C40 245 88 200 96 170Z"/></clipPath>
+        </defs>
+        <path class="glass" d="M40 30H160C160 95 112 140 104 170C112 200 160 245 160 310H40C40 245 88 200 96 170C88 140 40 95 40 30Z"/>
+        <g clip-path="url(#glass-top)"><rect class="sand sand-top" x="30" y="40" width="140" height="130"/></g>
+        <g clip-path="url(#glass-bottom)"><rect class="sand sand-bottom" x="30" y="180" width="140" height="130"/></g>
+        <line class="sand-stream" x1="100" y1="168" x2="100" y2="308"/>
+        <path class="glass-shine" d="M54 42C58 84 80 116 92 140M54 298C58 256 80 224 92 200"/>
+        <rect class="frame" x="8" y="6" width="184" height="24" rx="7"/>
+        <rect class="frame" x="8" y="310" width="184" height="24" rx="7"/>
+        <rect class="frame post" x="18" y="30" width="9" height="280" rx="4"/>
+        <rect class="frame post" x="173" y="30" width="9" height="280" rx="4"/>
+      </svg>
+      <!-- Candle: the wax burns down with the round; the flame rides on top. -->
+      <svg class="clock taper" data-kind="candle" viewBox="0 0 200 340" aria-hidden="true">
+        <g class="candle-top">
+          <ellipse class="candle-glow" cx="100" cy="50" rx="90" ry="64"/>
+          <path class="smoke" d="M100 60C112 44 88 34 100 18C112 2 90 -8 100 -24"/>
+          <path class="flame-outer" d="M100 6C113 26 122 40 122 54C122 67 112 76 100 76C88 76 78 67 78 54C78 40 87 26 100 6Z"/>
+          <path class="flame-inner" d="M100 34C106 44 111 51 111 58C111 65 106 70 100 70C94 70 89 65 89 58C89 51 94 44 100 34Z"/>
+          <rect class="wick" x="98" y="58" width="4" height="14" rx="2"/>
+          <path class="drip" d="M70 74V110C70 117 80 117 80 110V74Z"/>
+          <path class="drip" d="M118 74V98C118 104 127 104 127 98V74Z"/>
+          <ellipse class="wax-top" cx="100" cy="74" rx="30" ry="7"/>
+        </g>
+        <rect class="wax" x="70" y="74" width="60" height="206"/>
+        <path class="holder" d="M58 280H142L152 298H48Z"/>
+        <rect class="holder" x="88" y="298" width="24" height="16"/>
+        <path class="holder" d="M38 314H162C170 320 170 330 162 336H38C30 330 30 320 38 314Z"/>
+      </svg>
+      <!-- Studio board: a ring of marquee bulbs that go out one by one. -->
+      <svg class="clock board" data-kind="bulbs" viewBox="0 0 300 300" aria-hidden="true">
+        <circle class="plate" cx="150" cy="150" r="148"/>
+        <circle class="plate-rim" cx="150" cy="150" r="112"/>
+        <g id="bulb-ring"></g>
+      </svg>
+      <!-- Incense: a stick that shortens; the ember and the smoke follow its tip. -->
+      <svg class="clock incense" data-kind="incense" viewBox="0 0 200 340" aria-hidden="true">
+        <g class="incense-top">
+          <path class="smoke s1" d="M100 40C112 24 88 12 100 -4C112 -20 90 -30 100 -46"/>
+          <path class="smoke s2" d="M100 40C92 26 110 14 100 0C92 -14 108 -26 100 -42"/>
+          <circle class="ember-glow" cx="100" cy="42" r="16"/>
+          <circle class="ember" cx="100" cy="42" r="5"/>
+        </g>
+        <rect class="stick" x="96" y="40" width="8" height="226" rx="2"/>
+        <path class="bowl" d="M44 262H156C154 300 134 318 100 318C66 318 46 300 44 262Z"/>
+        <ellipse class="bowl-sand" cx="100" cy="262" rx="56" ry="10"/>
+        <ellipse class="ash" cx="100" cy="259" rx="6" ry="3"/>
+        <path class="bowl-foot" d="M72 318H128L124 328H76Z"/>
+      </svg>
+      <!-- Counter: a plain digital display; the bar under the digits empties from the right. -->
+      <svg class="clock counter" data-kind="counter" viewBox="0 0 260 200" aria-hidden="true">
+        <rect class="bezel" x="2" y="2" width="256" height="196" rx="22"/>
+        <rect class="screen" x="14" y="14" width="232" height="128" rx="14"/>
+        <g id="segment-bar"></g>
+      </svg>
+      <!-- Ring: a plain arc that empties clockwise. -->
+      <svg class="clock ring" data-kind="ring" viewBox="0 0 300 300" aria-hidden="true">
+        <circle class="track" cx="150" cy="150" r="128"/>
+        <circle class="arc" cx="150" cy="150" r="128" pathLength="100"/>
+      </svg>
+      <strong class="seconds" id="seconds">60</strong>
+      <span class="seconds-note" id="seconds-note"></span>
+      <div class="verdict" id="verdict" aria-live="polite"><strong class="verdict-word" id="verdict-word"></strong><span class="verdict-detail" id="verdict-detail"></span></div>
+    </section>
+
+    <p class="prompt slot" id="prompt"></p>
+
+    <section class="scores slot" aria-labelledby="scores-title">
+      <h2 class="scores-title" id="scores-title">Skor</h2>
+      <ol class="score-list" id="scores"></ol>
+      <p class="participants" id="participants"></p>
+    </section>
+
+    <section class="last slot" id="last" aria-live="polite">
+      <span class="last-label">Son bilen</span>
+      <strong class="last-name" id="last-name"></strong>
+      <span class="last-empty" id="last-empty">Henüz kimse bilmedi</span>
+      <span class="last-detail" id="last-detail"></span>
+      <span class="last-points" id="last-points" hidden>+1</span>
+    </section>
+
+    <div class="strip-chip" id="strip-chip" aria-hidden="true"></div>
   </main>
-</body></html>
+</body>
+</html>

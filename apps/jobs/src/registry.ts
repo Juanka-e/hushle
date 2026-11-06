@@ -10,6 +10,8 @@ import { runEmailDelivery } from "./email-delivery";
 import { runEmailRetention } from "./email-retention";
 import { getPaymentWebhookConfig } from "./config";
 import { runPaymentWebhook } from "./payment-webhook";
+import { getStreamerHygieneConfig } from "./config";
+import { runStreamerConnectionHygiene } from "./streamer-connection-hygiene";
 import { getPaymentReconciliationConfig } from "./config";
 import { runPaymentReconciliationJob } from "./payment-reconciliation";
 
@@ -20,6 +22,7 @@ export const JOB_NAMES = [
     "email-retention",
     "payment-webhook",
     "payment-reconciliation",
+    "streamer-connection-hygiene",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -39,6 +42,14 @@ export function getJobDefinition(job: JobName): JobDefinition {
             return {
                 leaseTtlMs: config.leaseTtlMs,
                 run: ({ dryRun }) => runAuditRetention({ config, dryRun }),
+            };
+        }
+        case "streamer-connection-hygiene": {
+            const config = getStreamerHygieneConfig();
+            return {
+                leaseTtlMs: config.leaseTtlMs,
+                run: ({ dryRun }) =>
+                    runStreamerConnectionHygiene({ config, dryRun }),
             };
         }
         case "mobile-auth-retention": {

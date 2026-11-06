@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT_DIR="${APP_DIR:-/srv/hushle/app}"
 SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
 ENABLE=false
+# The streamer hygiene timer is opt-in: it needs STREAMER_HYGIENE_SCHEDULE_CONFIGURED=true
+# and the streamer platform variables in .env.production (docs/stream/platform-connections-guide.md).
+ENABLE_STREAMER_HYGIENE="${ENABLE_STREAMER_HYGIENE:-false}"
 
 if [[ "${1:-}" == "--enable" ]]; then
   ENABLE=true
@@ -33,6 +36,8 @@ units=(
   hushle-payment-webhook.timer
   hushle-payment-reconciliation.service
   hushle-payment-reconciliation.timer
+  hushle-streamer-hygiene.service
+  hushle-streamer-hygiene.timer
 )
 for unit in "${units[@]}"; do
   source_file="$ROOT_DIR/infra/systemd/$unit"
@@ -48,6 +53,11 @@ if [[ "$ENABLE" == "true" ]]; then
   systemctl enable --now \
     hushle-payment-webhook.timer \
     hushle-payment-reconciliation.timer
+  if [[ "$ENABLE_STREAMER_HYGIENE" == "true" ]]; then
+    systemctl enable --now hushle-streamer-hygiene.timer
+  else
+    echo "hushle-streamer-hygiene.timer installed but not enabled; re-run with ENABLE_STREAMER_HYGIENE=true once streamer mode is configured."
+  fi
 else
   echo "Units installed but not enabled. Re-run with --enable after production preflight."
 fi

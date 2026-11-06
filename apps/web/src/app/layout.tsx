@@ -37,10 +37,21 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const requestHeaders = await headers();
+  const pathname = requestHeaders.get("x-pathname") ?? "/";
+  // The OBS stream screen (app/(stream)) is a bare, see-through page: no providers, banners,
+  // toasts or cookie reads, since a browser source runs without a session. <html> and <body>
+  // are transparent themselves, so OBS does not depend on the screen stylesheet's
+  // html:has(.hushle-stream) rule (which stays as a backup).
+  if (pathname.startsWith("/stream/")) {
+    return (
+      <html lang="tr" style={{ background: "transparent" }}>
+        <body style={{ background: "transparent" }}>{children}</body>
+      </html>
+    );
+  }
   const cookieStore = await cookies();
   const locale = normalizeAppLocale(cookieStore.get(LOCALE_COOKIE_NAME)?.value);
   const nonce = requestHeaders.get("x-nonce") ?? undefined;
-  const pathname = requestHeaders.get("x-pathname") ?? "/";
   const settings = await getSystemSettings();
   const isAdminPath = pathname.startsWith("/admin");
   const showMaintenanceBanner =

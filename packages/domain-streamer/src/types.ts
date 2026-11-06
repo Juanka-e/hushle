@@ -1,0 +1,160 @@
+export const BROADCAST_THEMES = ["oyun-gecesi", "studyo", "gece-altini", "sakura", "sade"] as const;
+// Where the streamer webcam shows through the stream screen, and how big a corner hole is.
+export const CAMERA_SLOTS = ["none", "tl", "tr", "bl", "br", "left", "right"] as const;
+export const CAMERA_SIZES = ["s", "m", "l"] as const;
+// Timer looks the stream screen knows. `null` means: use the theme template.
+export const TIMER_STYLES = ["hourglass", "candle", "bulbs", "incense", "ring", "counter"] as const;
+export const CHANNEL_PLATFORMS = ["twitch", "kick", "youtube"] as const;
+
+export type BroadcastTheme = (typeof BROADCAST_THEMES)[number];
+export type CameraSlot = (typeof CAMERA_SLOTS)[number];
+export type CameraSize = (typeof CAMERA_SIZES)[number];
+export type ClockStyle = (typeof TIMER_STYLES)[number];
+export type ChannelPlatform = (typeof CHANNEL_PLATFORMS)[number];
+
+export type StreamPhase = "ready" | "running" | "paused" | "finished" | "ended";
+export type GuessTolerance = "strict" | "normal";
+export type GuessResult = "closed" | "stale" | "duplicate" | "invalid" | "wrong" | "correct";
+
+export interface StreamCard {
+    wordId: number;
+    target: string;
+    taboos: string[];
+}
+
+export interface ChatGuess {
+    platform: "twitch" | "kick" | "fake";
+    platformUserId: string;
+    name: string;
+    text: string;
+    messageId: string;
+    /** Epoch milliseconds at which the platform says the message was sent. */
+    sentAt: number;
+}
+
+/** Public-safe card back look: a structural copy of the web app's ResolvedCardBackTheme. */
+export interface ResolvedCardThemeLike {
+    renderSpecVersion: number;
+    requestedRenderSpecVersion: number;
+    usedRenderSpecFallback: boolean;
+    surfaceColor: string;
+    borderColor: string;
+    accentColor: string;
+    secondaryColor: string;
+    titleColor: string;
+    detailColor: string;
+    pattern: string;
+    patternOpacity: number;
+    patternScale: number;
+    motionPreset: string;
+    motionSpeedMs: number;
+    glowColor: string;
+    glowBlur: number;
+    glowOpacity: number;
+    overlayImageUrl: string | null;
+    overlayOpacity: number;
+}
+
+/** A real cosmetic card back, resolved server-side for the stream screen. */
+export interface StreamCardBack {
+    itemId: number;
+    name: string;
+    theme: ResolvedCardThemeLike;
+    imageUrl: string | null;
+}
+
+export interface StreamScreenSettings {
+    theme: BroadcastTheme;
+    camera: CameraSlot;
+    cameraSize: CameraSize;
+    clock: ClockStyle | null;
+    cardBack: StreamCardBack | null;
+    showCardName: boolean;
+    /** Round length in seconds. */
+    duration: number;
+    language: "tr" | "en";
+    /** Missing or invalid values fall back to "normal". */
+    tolerance: GuessTolerance;
+    channel: { platform: ChannelPlatform; name: string } | null;
+}
+
+export interface StreamPlayer {
+    id: string;
+    name: string;
+    points: number;
+}
+
+export interface RankedPlayer extends StreamPlayer {
+    rank: number;
+    tied: boolean;
+}
+
+export interface LastCorrect {
+    eventId: string;
+    name: string;
+    round: number;
+    pointsGranted: number;
+    solveMs: number;
+}
+
+export interface PassedCard {
+    round: number;
+    target: string;
+}
+
+export interface StreamSessionState {
+    phase: StreamPhase;
+    duration: number;
+    remaining: number;
+    round: number;
+    /** Epoch ms at which the current round was started (guesses sent earlier are stale). */
+    roundStartedAt: number;
+    deadline: number;
+    winner: { id: string; name: string } | null;
+    lastCorrect: LastCorrect | null;
+    passedRound: number | null;
+    passedCard: PassedCard | null;
+    card: StreamCard | null;
+    tolerance: GuessTolerance;
+    settings: StreamScreenSettings;
+    /** Tracked chatters, least recently active first; at most MAX_STREAM_PLAYERS. */
+    players: Map<string, StreamPlayer>;
+    /** How many players were taken into `players` this session (an evicted one who returns counts again). */
+    participants: number;
+    /** Most recent message ids, oldest first, capped at 256. */
+    seenMessages: string[];
+    eventCounter: number;
+}
+
+export interface PublicStreamSnapshot {
+    type: "public-state";
+    schemaVersion: 4;
+    revision: number;
+    phase: StreamPhase;
+    remaining: number;
+    duration: number;
+    round: number;
+    passedRound: number | null;
+    theme: BroadcastTheme;
+    camera: CameraSlot;
+    cameraSize: CameraSize;
+    clock: ClockStyle | null;
+    showCardName: boolean;
+    channel: { platform: ChannelPlatform; name: string } | null;
+    passed: PassedCard | null;
+    participants: number;
+    pack: "TR" | "EN";
+    scores: Array<{ name: string; points: number; rank: number; tied: boolean }>;
+    lastCorrect: LastCorrect | null;
+    cardBack: StreamCardBack | null;
+    connected: boolean;
+    reveal: { target: string; taboos: string[]; solved: boolean } | null;
+}
+
+export interface HostStreamSnapshot extends Omit<PublicStreamSnapshot, "type"> {
+    type: "host-state";
+    card: StreamCard | null;
+    tolerance: GuessTolerance;
+    pool?: { drawn: number; eligible: number };
+    players: RankedPlayer[];
+}

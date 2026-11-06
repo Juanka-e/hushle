@@ -29,6 +29,10 @@ export {
     PromotionDiscountType,
     PromotionTargetType,
     ShopItemType,
+    StreamerConnectionStatus,
+    StreamerPlatform,
+    StreamRoundOutcome,
+    StreamSessionStatus,
     UserAccountStatus,
     WalletLedgerSource,
 } from "./generated/prisma/client";
@@ -44,6 +48,9 @@ export type {
     PaymentReversal,
     PaymentReversalRequest,
     PaymentWebhookEvent,
+    StreamerConnection,
+    StreamRoundResult,
+    StreamSession,
 } from "./generated/prisma/client";
 export {
     DEFAULT_DATABASE_CONNECTION_LIMIT,

@@ -94,6 +94,8 @@ export async function PUT(req: NextRequest) {
                 faviconUrl: updatedSettings.branding.faviconUrl,
                 ogImageUrlConfigured: updatedSettings.branding.ogImageUrl.length > 0,
                 storeEnabled: updatedSettings.features.storeEnabled,
+                streamerModeEnabled: updatedSettings.features.streamerModeEnabled,
+                streamerShowcaseAllCosmetics: updatedSettings.features.streamerShowcaseAllCosmetics,
                 registrationsEnabled: updatedSettings.features.registrationsEnabled,
                 bundlesEnabled: updatedSettings.economy.bundlesEnabled,
                 couponsEnabled: updatedSettings.economy.couponsEnabled,

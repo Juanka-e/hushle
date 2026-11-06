@@ -1,3 +1,94 @@
+# V4.1 zamanlayıcı şablonları doğrulaması
+
+5 Kasım 2026. Aynı yerel sunucu ve Chromium/Playwright.
+
+- Beş şablon (kum saati, mum, ışıklı pano, tütsü, halka) dört temada; hazır / tur /
+  son 10 sn / ara / bildi / pas / süre doldu / oyun sonu anları yuva kırpımlarıyla
+  (430×620) tek tek kontrol edildi. İlk turda iki sınıf adı çakışması çıktı: Stüdyo'nun
+  kenar ampulleri `.bulbs` ve Gece Altını'nın dekoratif mumu `.candle` zamanlayıcı
+  SVG'leriyle aynı adı taşıyordu (pano kare çıktı, mum hiç görünmedi); zamanlayıcılar
+  `.board` / `.taper` oldu. Ampul "yanık" kuralı özgüllük yüzünden eziliyordu; ampuller
+  `.bulb` sınıfı aldı.
+- Sakura'nın yuvarlak damgasında "Deniz · 8,4 sn" kesiliyordu; damga 224 px, ayrıntı
+  iki satıra sarılıyor.
+- Sol yarı (kompakt) ve üst şerit düzenlerinde beş şablon da yuvaya sığıyor; skor
+  başlığına değmiyor.
+- Beşinci tema "Sade" ve altıncı şablon "sayaç" eklendi (5 Kasım, ikinci tur): Sade'nin
+  on anı tam ekranda, sayaç dört diğer temada, diğer beş şablon Sade'de, sol yarı ve
+  üst şerit kırpımlarıyla kontrol edildi. Şeritte başlık yuvası 64 px olduğu için kanal
+  satırı her temada kırpılıyordu; yuva şeritte 84 px oldu.
+- `node test-session.mjs`: 16/16 (`clock` alanı: boş = temanın şablonu, bilinmeyen
+  değer boşa düşer). `node test-server.mjs`, panel smoke, uzun kelime ve canlı akış
+  kontrolleri geçti; konsol hatası yok.
+
+Yapılmadı: şablonlar panelden seçilemiyor (bilinçli: önce hazır şablon), düşük güçlü
+cihazda beş animasyonun maliyeti ölçülmedi, azaltılmış hareket tercihinde yalnız
+geçişler kapatıldı (görsel olarak doğrulanmadı).
+
+# V4 yayın ekranı taslağı doğrulaması
+
+4 Kasım 2026. Yerel sunucu (4318) ve Chromium/Playwright. Gerçek OBS, fiziksel
+cihaz veya production backend testi değildir.
+
+- Üç bağımsız eleştiri (düzen/kamera, yayıncı ihtiyaçları, oyun atmosferi/metin,
+  toplam 58 bulgu) V3'e uygulandı; görsel tasarım, yayın grafiği, erişilebilirlik ve
+  mühendislik bakışları kota nedeniyle tamamlanamadı, bu yüzden V4'te o alanlar
+  yalnız kendi gözle incelendi.
+- `node test-session.mjs`: 15/15. Kamera yuvaları ve boyları, kanal adı (25
+  karakter, kontrol karakterleri temizlenir), pas geçilen kartın açılması ve yeni
+  turun kartının kapalı kalması, bilinmeyen değerlerin güvenli varsayılana düşmesi.
+- `node test-server.mjs`: geçti.
+- Panelden sürülen Playwright kontrolü (betik repoya eklenmedi): kanal adı yayına
+  geçiyor; OBS ölçüleri seçilen moda göre değişiyor (br/m 1290,695 560×315; tl/l
+  70,70 640×360); sol yarı seçilince skor yığın varyantına geçiyor; tur sürerken
+  kelime sayfada yok; doğru cevapta damga ve kart; sonraki turda kelime siliniyor;
+  dört tur boyunca sızıntı yok; pasta damga "Pas" ve pas geçilen kelime görünüyor,
+  yeni kelime görünmüyor; kamera ve kart adı kapatılabiliyor; sayfa hatası yok.
+- Uzun kelime kontrolü dört temada geçti (bkz. V3 notu; aynı betik).
+- 1920×1080 ekran görüntüleri: dört tema × tur / bildi / süre doldu / son 10 sn /
+  ara / ilk açılış / oyun sonu / uzun adlar; kamera yok, dört köşe (orta ve büyük),
+  sol ve sağ yarı, 960×1080 yarım kaynak, alt şerit. Hiçbir yuva kamera deliğine
+  ya da birbirine binmiyor.
+- Galerinin canlı akışı 34 saniye dört temada oynatıldı: konsol hatası yok.
+
+Yapılmadı: gerçek OBS tarayıcı kaynağında saydamlık (OBS 30/31, Streamlabs), ekran
+okuyucu, renk körlüğü ve tema başına ölçülmüş kontrast, düşük güçlü cihazda
+animasyon performansı, gerçek sunucu bağlantısı (prototip BroadcastChannel kullanır).
+
+# V3 yayın ekranı taslağı doğrulaması
+
+3 Kasım 2026. Yerel sunucu (4318) ve Chromium/Playwright. Gerçek OBS, fiziksel
+cihaz veya production backend testi değildir.
+
+- `node test-session.mjs`: 15/15. Yeni kontroller:
+  - kelimenin yalnız tur bitince açılması (hazır, tur, ara, pas, yeni tur ve oturum
+    sonunda kapalı);
+  - açılan kartın sınırları (40 karakter, en çok 5 yasaklı kelime, 24 karakter);
+  - bilme süresinin aradaki duraklamayı saymaması;
+  - bilinmeyen tema ve kamera değerlerinin güvenli varsayılana düşmesi;
+  - pasın bir kez işaretlenmesi.
+- `node test-server.mjs`: geçti. `themes.html` sunuluyor; `public.js` panel
+  betiğini ya da kelime paketini içermiyor.
+- Panelden sürülen Playwright kontrolü (betik repoya eklenmedi):
+  - tema ve kart seçimi önizlemeye geçiyor;
+  - tur sürerken önizleme sayfasında kelime yok; doğru cevapta kart dönüyor,
+    kelime ve "Bildi!" görünüyor;
+  - sonraki turda kart kapanıyor ve eski kelime sayfadan siliniyor. Bu kontrol,
+    silme kodu kapatılınca düşüyor, açılınca geçiyor;
+  - deste dört tur dönerken canlı kelime sayfada hiç görünmüyor;
+  - kamera alanı ve kart adı kapatılabiliyor; pas animasyonu çalışıyor;
+  - sayfa hatası yok.
+- Uzun kelime kontrolü (dört tema ve açık renkli kart önü): "ELEKTROENSEFALOGRAFİ",
+  çok kelimeli 36 karakterlik bir ifade ve 35 harflik tek kelime kartın içinde
+  kalıyor. Tek kelime en küçük boyutta da sığmazsa satır sonunda bölünüyor.
+- 1920x1080 ekran görüntüleriyle dört tema; tur, son 10 saniye, bildi, süre doldu,
+  ara, ilk açılış, oturum sonu, kamerasız düzen ve alt şerit tek tek incelendi.
+- Galerinin canlı akışı 34 saniye dört temada oynatıldı: konsol hatası ya da
+  uyarısı yok.
+
+Yapılmadı: gerçek OBS tarayıcı kaynağında saydamlık, ekran okuyucu, renk körlüğü
+ve tema başına kontrast ölçümü, düşük güçlü cihazda animasyon performansı.
+
 # V2 prototip doğrulaması
 
 4 Ekim 2026. V2 UI testleri önce repo dışındaki kopyada yapıldı; prototip sonradan bağımsız tasarım arşivi olarak repoya alındı. Codex in-app browser / Chromium üzerinde Playwright locator, DOM ölçümleri ve ekran görüntüleri. Fiziksel cihaz veya production backend testi değildir. Repo kopyasının ek doğrulamaları aşağıda ayrı belirtilir.

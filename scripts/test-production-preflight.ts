@@ -151,6 +151,42 @@ function validEnvironment(): Record<string, string> {
 }
 
 const valid = validateProductionEnvironment(validEnvironment());
+
+// Streamer platform connections: off by default, strict when configured, never fake in production.
+const streamerOff = validateProductionEnvironment(validEnvironment());
+assert.ok(streamerOff.warnings.some((warning) => /streamer/i.test(warning)), "unconfigured streamer platforms produce a warning");
+const streamerFake = validEnvironment();
+streamerFake.STREAMER_FAKE_PLATFORM = "1";
+assert.ok(validateProductionEnvironment(streamerFake).errors.some((error) => /STREAMER_FAKE_PLATFORM/.test(error)));
+const streamerSmoke = validEnvironment();
+streamerSmoke.HUSHLE_E2E_SMOKE = "1";
+assert.ok(validateProductionEnvironment(streamerSmoke).errors.some((error) => /HUSHLE_E2E_SMOKE/.test(error)));
+const streamerShortKey = validEnvironment();
+streamerShortKey.STREAMER_TWITCH_CLIENT_ID = "twitch_client_id_value";
+streamerShortKey.STREAMER_TWITCH_CLIENT_SECRET = "twitch_R8mQ2vN7xL4pT9sK5wD1cF6hJ3yA";
+streamerShortKey.STREAMER_TOKEN_KEY = Buffer.alloc(16, 7).toString("base64");
+assert.ok(validateProductionEnvironment(streamerShortKey).errors.some((error) => /STREAMER_TOKEN_KEY/.test(error)));
+const streamerHalf = validEnvironment();
+streamerHalf.STREAMER_KICK_CLIENT_ID = "kick_client_id_value";
+streamerHalf.STREAMER_TOKEN_KEY = Buffer.from("k4vN8pQ2xT7mL5sR1wD9cF3hJ6yA0zB!").toString("base64");
+assert.ok(validateProductionEnvironment(streamerHalf).errors.some((error) => /STREAMER_KICK_CLIENT_SECRET/.test(error)));
+const streamerSameKey = validEnvironment();
+streamerSameKey.STREAMER_KICK_CLIENT_ID = "kick_client_id_value";
+streamerSameKey.STREAMER_KICK_CLIENT_SECRET = "kick_R8mQ2vN7xL4pT9sK5wD1cF6hJ3yA";
+streamerSameKey.STREAMER_TOKEN_KEY = Buffer.from(streamerSameKey.AUTH_SECRET.slice(0, 32)).toString("base64");
+assert.ok(validateProductionEnvironment(streamerSameKey).errors.some((error) => /STREAMER_TOKEN_KEY/.test(error)), "the token key must not be derived from AUTH_SECRET");
+const streamerOk = validEnvironment();
+streamerOk.STREAMER_TWITCH_CLIENT_ID = "twitch_client_id_value";
+streamerOk.STREAMER_TWITCH_CLIENT_SECRET = "twitch_R8mQ2vN7xL4pT9sK5wD1cF6hJ3yA";
+streamerOk.STREAMER_KICK_CLIENT_ID = "kick_client_id_value";
+streamerOk.STREAMER_KICK_CLIENT_SECRET = "kick_R8mQ2vN7xL4pT9sK5wD1cF6hJ3yA";
+streamerOk.STREAMER_TOKEN_KEY = Buffer.from("k4vN8pQ2xT7mL5sR1wD9cF3hJ6yA0zB!").toString("base64");
+streamerOk.STREAMER_OAUTH_PUBLIC_ORIGIN = "https://play.example.test";
+const streamerOkResult = validateProductionEnvironment(streamerOk);
+assert.deepEqual(streamerOkResult.errors, []);
+assert.ok(streamerOkResult.checks.some((check) => /streamer/i.test(check)));
+const streamerBadOrigin = { ...streamerOk, STREAMER_OAUTH_PUBLIC_ORIGIN: "http://play.example.test" };
+assert.ok(validateProductionEnvironment(streamerBadOrigin).errors.some((error) => /STREAMER_OAUTH_PUBLIC_ORIGIN/.test(error)));
 assert.deepEqual(valid.errors, []);
 
 // The preflight refuses the DATABASE_URL parameters the driver adapter would refuse at runtime.
@@ -201,7 +237,8 @@ acceptedRisk.OBSERVABILITY_EXPORT_URL = "";
 acceptedRisk.OBSERVABILITY_EXPORT_TOKEN = "";
 const riskResult = validateProductionEnvironment(acceptedRisk);
 assert.deepEqual(riskResult.errors, []);
-assert.equal(riskResult.warnings.length, 4);
+// 4 accepted risks + the unconfigured streamer platforms notice.
+assert.equal(riskResult.warnings.length, 5);
 
 const missingSesTopics = validEnvironment();
 missingSesTopics.SES_SNS_TOPIC_ARNS = "";

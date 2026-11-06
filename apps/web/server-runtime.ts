@@ -16,6 +16,9 @@ import {
     startMatchSettlementWorker,
 } from "./src/lib/match-settlement/runtime";
 import { getMatchSettlementHealth } from "./src/lib/match-settlement/service";
+import { startStreamerSessionRuntime } from "./src/lib/streamer/session-deps";
+import { prismaStreamSessionStore } from "./src/lib/streamer/session-store";
+import { setupStreamerSocket } from "./src/lib/socket/streamer-socket";
 import { isHealthEndpointAllowed } from "./src/lib/security/health-check";
 import { getPaymentSchedulerHealth } from "./src/lib/payments/scheduler-health";
 import { getPaymentCheckoutControl } from "./src/lib/payments/checkout-control";
@@ -298,6 +301,10 @@ app.prepare().then(async () => {
     });
 
     setupGameSocket(io, roomOwnership, roomRouting);
+    // Stream sessions live in memory: rows a previous process left active become interrupted.
+    const streamerSessionRuntime = await startStreamerSessionRuntime();
+    // Host and public streamer rooms; the runtime pushes its state changes through them.
+    setupStreamerSocket(io, streamerSessionRuntime, prismaStreamSessionStore);
     const publishCurrentCapacity = () => {
         void publishCapacityHeartbeat(getLocalRoomCapacityMetrics()).catch(
             (error) => {
@@ -353,6 +360,7 @@ app.prepare().then(async () => {
         });
         clearInterval(capacityHeartbeat);
         if (ownershipHeartbeat) clearInterval(ownershipHeartbeat);
+        await streamerSessionRuntime.stop();
         await new Promise<void>((resolve) => {
             io.close(() => resolve());
         });

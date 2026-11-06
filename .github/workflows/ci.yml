@@ -54,6 +54,9 @@ jobs:
           npm run test:ses-feedback-webhook
           npm run test:ses-feedback-route
 
+      - name: Test nginx proxy headers
+        run: npm run test:nginx-proxy-headers
+
       - name: Test deploy, rollback and release gate
         run: |
           npm run test:deploy-rollback
@@ -63,6 +66,26 @@ jobs:
 
       - name: Test CI Playwright package cache
         run: npm run test:playwright-install-cache
+
+      - name: Test streamer platform connections
+        run: |
+          npm run test:streamer-token-crypto
+          npm run test:streamer-platform-clients
+          npm run test:streamer-token-service
+          npm run test:streamer-connect-state
+          npm run test:streamer-connect-flow
+          npm run test:streamer-hygiene-job
+          npm run test:streamer-connection-foundation
+          npm run test:domain-streamer
+          npm run test:streamer-session-service
+          npm run test:streamer-card-backs
+          npm run test:streamer-session-foundation
+          npm run test:streamer-socket-integration
+          npm run test:stream-screen
+          npm run test:streamer-panel
+          npm run typecheck:packages
+          npm run test:package-boundaries
+          npm run test:socket-protocol-version
 
   # ─── 2. Build Check ───────────────────────────────────────────────
   build:
@@ -197,6 +220,16 @@ jobs:
         run: npm run test:guest-claim-analytics-integration
         env:
           GUEST_CLAIM_ANALYTICS_INTEGRATION_TEST: "true"
+
+      - name: Test streamer connection store against MySQL
+        run: npm run test:streamer-connection-store-integration
+        env:
+          STREAMER_INTEGRATION_DATABASE_URL: "mysql://root:root@localhost:3306/tabu_test"
+
+      - name: Test streamer session store against MySQL
+        run: npm run test:streamer-session-store-integration
+        env:
+          STREAMER_INTEGRATION_DATABASE_URL: "mysql://root:root@localhost:3306/tabu_test"
 
       - name: Test payment fulfillment concurrency
         run: |
@@ -343,6 +376,33 @@ jobs:
           ROOM_JOIN_MAX_ATTEMPTS: "100"
           PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
           REDIS_KEY_PREFIX: "hushle:ci-room-join-handoff"
+
+      - name: Test streamer channel linking UI
+        run: npm run test:streamer-connect-e2e
+        env:
+          STREAMER_FAKE_PLATFORM: "1"
+          HUSHLE_E2E_SMOKE: "1"
+          STREAMER_TOKEN_KEY: "Y2ktc3RyZWFtZXItdG9rZW4ta2V5LTMyLWJ5dGVzISE="
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-streamer-connect"
+
+      - name: Test streamer stream screen UI
+        run: npm run test:streamer-stream-screen-e2e
+        env:
+          STREAMER_FAKE_PLATFORM: "1"
+          HUSHLE_E2E_SMOKE: "1"
+          STREAMER_TOKEN_KEY: "Y2ktc3RyZWFtZXItdG9rZW4ta2V5LTMyLWJ5dGVzISE="
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-streamer-screen"
+
+      - name: Test streamer session UI
+        run: npm run test:streamer-session-e2e
+        env:
+          STREAMER_FAKE_PLATFORM: "1"
+          HUSHLE_E2E_SMOKE: "1"
+          STREAMER_TOKEN_KEY: "Y2ktc3RyZWFtZXItdG9rZW4ta2V5LTMyLWJ5dGVzISE="
+          PLAYWRIGHT_REDIS_URL: "redis://localhost:6379"
+          REDIS_KEY_PREFIX: "hushle:ci-streamer-session"
 
       - name: Test notification list locale
         run: npm run test:notifications-locale-e2e

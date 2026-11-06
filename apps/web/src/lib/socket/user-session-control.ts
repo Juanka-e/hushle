@@ -4,7 +4,7 @@ type GlobalWithSocketServer = typeof globalThis & {
     __hushleSocketServer?: Server;
 };
 
-function userSessionRoom(userId: number): string {
+export function userSessionRoom(userId: number): string {
     return `private:user-session:${userId}`;
 }
 

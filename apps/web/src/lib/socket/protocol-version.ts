@@ -75,16 +75,22 @@ export function readSocketProtocolVersionFromAuth(auth: unknown): unknown {
   return (auth as Record<string, unknown>).clientProtocolVersion;
 }
 
+/**
+ * The handshake middleware refused this client's socket protocol (its `connect_error` carries
+ * SocketProtocolErrorData): the one check for the refresh prompt and the stream screen's reload.
+ */
+export function isSocketProtocolRefusal(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const data = (error as { data?: unknown }).data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  return (data as { code?: unknown }).code === SOCKET_PROTOCOL_ERROR_CODE;
+}
+
 /** Localized refresh prompt when the server rejected this client's protocol version, otherwise null. */
 export function getSocketProtocolErrorMessage(
   error: unknown,
   locale: AppLocale = DEFAULT_LOCALE,
 ): string | null {
-  if (!error || typeof error !== "object") return null;
-  const data = (error as { data?: unknown }).data;
-  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
-  if ((data as { code?: unknown }).code !== SOCKET_PROTOCOL_ERROR_CODE) {
-    return null;
-  }
+  if (!isSocketProtocolRefusal(error)) return null;
   return getPlayerErrorMessage(SOCKET_PROTOCOL_ERROR_CODE, undefined, locale);
 }

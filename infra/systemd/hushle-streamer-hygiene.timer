@@ -1,0 +1,12 @@
+[Unit]
+Description=Revoke dormant streamer platform connections once a day
+
+[Timer]
+OnCalendar=*-*-* 03:40:00
+AccuracySec=1min
+RandomizedDelaySec=10min
+Persistent=true
+Unit=hushle-streamer-hygiene.service
+
+[Install]
+WantedBy=timers.target

@@ -19,7 +19,7 @@ try {
       if (match) { cleanup(); resolve(match[0]); }
     });
   });
-  for (const [path, mime] of [['/', 'text/html'], ['/app.js', 'text/javascript'], ['/session.mjs', 'text/javascript'], ['/public.js', 'text/javascript'], ['/reference-cards.png', 'image/png']]) {
+  for (const [path, mime] of [['/', 'text/html'], ['/themes.html', 'text/html'], ['/app.js', 'text/javascript'], ['/session.mjs', 'text/javascript'], ['/public.js', 'text/javascript'], ['/reference-cards.png', 'image/png']]) {
     const response = await fetch(base + path);
     assert.equal(response.status, 200, path);
     assert.ok(response.headers.get('content-type').startsWith(mime), path);
@@ -35,6 +35,8 @@ try {
   }
   const html = await (await fetch(base + '/public.html')).text();
   assert.match(html, /public\.js/); assert.doesNotMatch(html, /app\.js|KUTUP IŞIKLARI/);
+  const publicScript = await (await fetch(base + '/public.js')).text();
+  assert.doesNotMatch(publicScript, /app\.js|session\.mjs|KUTUP IŞIKLARI|PUSULA|AYÇİÇEĞİ/, 'the stream screen carries no host word pack');
   assert.equal((await fetch(base + '/favicon.ico')).status, 204);
   assert.deepEqual(errors, []);
   console.log('PASS prototype HTTP assets, MIME, HEAD, method guard, allowlist and public page.');
