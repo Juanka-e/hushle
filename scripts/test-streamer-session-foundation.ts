@@ -237,9 +237,12 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     // commented out), after the job generated the Prisma client the package typecheck reads.
     const lintJob = ci.slice(ci.indexOf("\n  lint-typecheck:\n"), ci.indexOf("\n  build:\n"));
     assert.ok(lintJob.length > 0 && lintJob.includes(lintStep), "the streamer unit step belongs to the lint-typecheck job");
+    // Found first: a missing step would make the order check below pass on its own (-1 < anything).
+    const generateAt = lintJob.indexOf("run: npx prisma generate");
+    assert.ok(generateAt >= 0, "the lint-typecheck job generates the Prisma client");
     for (const script of ["typecheck:packages", "test:package-boundaries", "test:socket-protocol-version"]) {
         assert.match(lintStep, new RegExp(`^ +npm run ${script}$`, "m"), `CI streamer unit step must run ${script}`);
-        assert.ok(lintJob.indexOf("run: npx prisma generate") < lintJob.indexOf(`npm run ${script}`), `${script} runs after npx prisma generate`);
+        assert.ok(generateAt < lintJob.indexOf(`npm run ${script}`), `${script} runs after npx prisma generate`);
     }
     const storeStep = stepOf("Test streamer session store against MySQL");
     assert.match(storeStep, /npm run test:streamer-session-store-integration/);
