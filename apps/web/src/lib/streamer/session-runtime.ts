@@ -16,6 +16,7 @@ import type { StreamerPlatform } from "@hushle/platform-streamer";
 import { isStreamerSessionError, StreamerSessionError } from "./session-errors";
 import {
     createStreamerSessionPersistence,
+    STREAM_PERSIST_DRAIN_TIMEOUT_MS,
     markRound,
     roundResultOf,
     sessionSummary,
@@ -40,7 +41,7 @@ import {
     type CreateSessionInput,
 } from "./session-settings";
 import type { StreamSessionSummary } from "./session-store";
-import { realStreamerTimers } from "./session-timers";
+import { realStreamerTimers, withinTurn } from "./session-timers";
 import { createStreamerWatches } from "./session-watch";
 import { createViewKey } from "./view-key";
 
@@ -99,6 +100,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     let onHostNotice: StreamerHostNoticeListener = () => undefined;
     const entries = new Map<string, SessionEntry>();
     const timers = deps.timers ?? realStreamerTimers;
+    // How long an outside caller (an end, the shutdown) waits for a session's pending action.
+    const turnTimeoutMs = deps.drainTimeoutMs ?? STREAM_PERSIST_DRAIN_TIMEOUT_MS;
     const writes = createStreamerSessionPersistence({ store: deps.store, report: onError, drainTimeoutMs: deps.drainTimeoutMs, timers });
     const watches = createStreamerWatches({
         timers,
@@ -219,6 +222,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             hostAction(sessionId, async (entry) => {
                 if (entry.state.phase !== phase) throw invalidPhase();
                 const card = await drawCard(entry);
+                // A draw that comes back after the session closed (a stop, a kill) changes nothing.
+                if (entry.closed) throw new StreamerSessionError("not_found");
                 if (!beginRound(entry.state, card, clock())) throw invalidPhase();
                 align(entry);
                 emitState(entry);
@@ -231,6 +236,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         catchUp(entry, now);
         endSession(entry.state, now);
         entry.closed = true;
+        // Out of the live set at once: a stop that runs meanwhile leaves this end to finish it.
+        entries.delete(entry.id);
         clearTimer(entry);
         watches.forget(entry.id);
         emitState(entry);
@@ -242,13 +249,22 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             roundCount: entry.roundCount,
         }));
         guarded("streamer_session.pool_clear_failed", entry.id, () => deps.wordSource.clear(entry.poolKey));
-        entries.delete(entry.id);
         guarded("streamer_session.on_ended_failed", entry.id, () => onEnded(entry.id, reason));
         return sessionSummary(entry.state, entry.roundCount);
     }
 
-    const end = (sessionId: string, reason: Exclude<StreamSessionEndReason, "interrupted">) =>
-        run(sessionId, (entry, now) => finish(entry, reason, now));
+    // An end from outside waits for the session's pending action at most the bound (`busy`).
+    function end(sessionId: string, reason: Exclude<StreamSessionEndReason, "interrupted">): Promise<StreamSessionSummary> {
+        let started = false;
+        const ending = run(sessionId, (entry, now) => {
+            started = true;
+            return finish(entry, reason, now);
+        });
+        return withinTurn(timers, turnTimeoutMs, ending, () => started, () => {
+            onError("streamer_session.queue_wait_timeout", new Error(`a pending action held the session past ${turnTimeoutMs} ms`), { sessionId });
+            return new StreamerSessionError("busy");
+        });
+    }
 
     async function endAll(reason: "stopped"): Promise<number> {
         const live = [...entries.values()].filter((entry) => !entry.closed);
@@ -316,6 +332,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                 if (entry.state.phase !== "running" && entry.state.phase !== "paused") throw invalidPhase();
                 // No next card: refused before anything changed, the round keeps its card.
                 const card = await drawCard(entry);
+                if (entry.closed) throw new StreamerSessionError("not_found");
                 const before = markRound(entry.state);
                 // Judged at `now`, when the pass was handled: one in time keeps the card it drew even
                 // if the deadline went by while it was drawn. The new round starts once the card is here.
@@ -395,7 +412,13 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                 entry.closed = true;
                 clearTimer(entry);
             }
-            await Promise.all(open.map((entry) => entry.queue));
+            // Shutdown waits for pending actions at most the bound, then goes on: it must reach io.close.
+            const pending = new Set(open);
+            for (const entry of open) void entry.queue.then(() => pending.delete(entry));
+            const waited = Promise.all(open.map((entry) => entry.queue));
+            await withinTurn(timers, turnTimeoutMs, waited, () => false, () => {
+                for (const entry of pending) onError("streamer_session.stop_queue_timeout", new Error("a pending action outlived the stop bound"), { sessionId: entry.id });
+            }).catch(() => undefined);
             const endedAt = new Date(clock());
             await Promise.all(
                 open.map(async (entry) => {

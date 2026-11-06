@@ -22,3 +22,26 @@ export const realStreamerTimers: StreamerTimers = {
     },
     clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
 };
+
+/**
+ * `result`, or a rejection with `timedOut()` when the task behind it has not `started()` within
+ * `ms`: a caller waiting for its turn behind a stuck action gets an answer, while the task itself
+ * still runs in its turn. Once it started, its own bounds apply.
+ */
+export function withinTurn<T>(timers: StreamerTimers, ms: number, result: Promise<T>, started: () => boolean, timedOut: () => unknown): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const handle = timers.setTimeout(() => {
+            if (!started()) reject(timedOut());
+        }, ms);
+        result.then(
+            (value) => {
+                timers.clearTimeout(handle);
+                resolve(value);
+            },
+            (error: unknown) => {
+                timers.clearTimeout(handle);
+                reject(error);
+            },
+        );
+    });
+}

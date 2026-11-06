@@ -1592,13 +1592,14 @@ async function main(): Promise<void> {
         await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
         const ending = h.runtime.end(session.id, "ended");
         await turn();
-        assert.deepEqual(clock.requested, [10_000], "the drain waits at most the bound");
+        // The first bound is the end's wait for its turn on the queue (it started at once).
+        assert.deepEqual(clock.requested, [10_000, 10_000], "the drain waits at most the bound");
         // The pending write lands 6 s in; the end write then gets what is left of the bound.
         clock.advance(6_000);
         held.release();
         await turn();
         await turn();
-        assert.deepEqual(clock.requested, [10_000, 4_000], "one deadline: the end write waits only the 4 s left");
+        assert.deepEqual(clock.requested, [10_000, 10_000, 4_000], "one deadline: the end write waits only the 4 s left");
         assert.equal(await settlesNow(ending), false, "the end write still hangs");
         clock.fireTimeouts();
         await ending;
@@ -2057,6 +2058,62 @@ async function main(): Promise<void> {
         assert.equal(h.runtime.get(session.id), null);
         await h.runtime.stop();
         assert.equal(h.ended.length, 3, "a second stop reports nothing again");
+    });
+
+    /** A harness whose next draw waits until `release()`: a host action stuck on its card. */
+    async function stuckDraw() {
+        const clock = manualTimers();
+        const source = cyclingSource();
+        const draw = source.next.bind(source);
+        const h = harness({ source, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const { session } = await opened(h);
+        const gate = deferred();
+        source.next = async (poolKey, filters) => {
+            await gate.promise;
+            return draw(poolKey, filters);
+        };
+        const starting = h.runtime.start(session.id);
+        starting.catch(() => undefined);
+        await turn();
+        return { clock, h, session, starting, release: () => gate.resolve() };
+    }
+
+    await test("stop: a host action stuck on its draw holds shutdown at most the drain bound; the row is interrupted all the same", async () => {
+        const { clock, h, session, starting, release } = await stuckDraw();
+        const stopping = h.runtime.stop();
+        await turn();
+        assert.equal(await settlesNow(stopping), false, "stop waits for the pending action...");
+        assert.deepEqual(clock.requested, [10_000], "...at most the drain bound");
+        clock.fireTimeouts();
+        await stopping;
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "interrupted" }], "both rooms hear interrupted");
+        assert.equal((await h.sessions.findById(session.id))?.status, "interrupted");
+        assert.deepEqual(h.errors.map((error) => [error.event, error.context]), [["streamer_session.stop_queue_timeout", { sessionId: session.id }]]);
+        // The draw that comes back after the stop changes nothing.
+        const emitted = h.emitted.length;
+        release();
+        await rejectsWith(() => starting, "not_found");
+        assert.equal(h.emitted.length, emitted, "nothing is emitted for a stopped session");
+        assert.equal(clock.intervals.size, 0);
+    });
+
+    await test("end: behind a stuck host action an outside end answers busy after the drain bound; the session's queue still ends it", async () => {
+        const { clock, h, session, starting, release } = await stuckDraw();
+        const ending = h.runtime.end(session.id, "stopped");
+        ending.catch(() => undefined);
+        await turn();
+        assert.equal(await settlesNow(ending), false);
+        clock.fireTimeouts();
+        await rejectsWith(() => ending, "busy");
+        assert.ok(h.runtime.get(session.id), "still live: the end waits its turn");
+        assert.deepEqual(h.errors.map((error) => [error.event, error.context]), [["streamer_session.queue_wait_timeout", { sessionId: session.id }]]);
+        release();
+        await starting;
+        await turn();
+        await h.runtime.flush();
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "stopped" }], "the queued end ran once the draw came back");
+        assert.equal((await h.sessions.findById(session.id))?.status, "ended");
+        assert.equal(h.runtime.get(session.id), null);
     });
 
     await test("streamer mode switched off: the 15 s check ends every live session with reason stopped; a failed check changes nothing", async () => {
