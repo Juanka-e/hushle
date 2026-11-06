@@ -1,9 +1,9 @@
-import { emitObservabilityEvent, reportError } from "@hushle/platform-observability";
+import { emitObservabilityEvent } from "@hushle/platform-observability";
 import { prismaStreamerConnectionStore } from "@hushle/platform-streamer";
 import { getSystemSettings } from "@/lib/system-settings/service";
 import { clearWordPool, getNextWord } from "@/lib/socket/word-service";
 import { createStreamerSessionRuntime, type StreamerSessionRuntime, type WordSource } from "./session-runtime";
-import type { StreamerSessionServiceDeps } from "./session-service";
+import { reportStreamerSessionError, type StreamerSessionServiceDeps } from "./session-service";
 import { prismaStreamSessionStore } from "./session-store";
 
 // Real wiring for stream sessions: Prisma stores, the shared word pool and one runtime per
@@ -26,15 +26,12 @@ const globalForStreamerSessions = globalThis as typeof globalThis & {
     __hushleStreamerSessionBoot?: Promise<void>;
 };
 
-function report(event: string, error: unknown): void {
-    void reportError({ service: "hushle-web", event, error }).catch(() => undefined);
-}
-
 export function getStreamerSessionRuntime(): StreamerSessionRuntime {
     globalForStreamerSessions.__hushleStreamerSessionRuntime ??= createStreamerSessionRuntime({
         store: prismaStreamSessionStore,
         wordSource: wordPoolSource,
-        onError: report,
+        // Failed writes and ticks reach observability with the session id.
+        onError: reportStreamerSessionError,
     });
     return globalForStreamerSessions.__hushleStreamerSessionRuntime;
 }
@@ -56,7 +53,7 @@ export async function startStreamerSessionRuntime(): Promise<StreamerSessionRunt
                 context: { interrupted },
             }).catch(() => undefined);
         },
-        (error) => report("streamer_session.boot.reconcile_failed", error),
+        (error) => reportStreamerSessionError("streamer_session.boot.reconcile_failed", error),
     );
     await globalForStreamerSessions.__hushleStreamerSessionBoot;
     return runtime;
@@ -67,6 +64,7 @@ export function createSessionServiceDeps(): StreamerSessionServiceDeps {
         sessions: prismaStreamSessionStore,
         connections: prismaStreamerConnectionStore,
         runtime: getStreamerSessionRuntime(),
+        onError: reportStreamerSessionError,
         async getFeatureFlags() {
             const { features } = await getSystemSettings();
             return { streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics === true };

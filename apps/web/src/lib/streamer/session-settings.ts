@@ -4,6 +4,7 @@ import {
     CAMERA_SIZES,
     CAMERA_SLOTS,
     TIMER_STYLES,
+    type ResolvedCardThemeLike,
     type StreamCardBack,
     type StreamScreenSettings,
 } from "@hushle/domain-streamer";
@@ -64,6 +65,41 @@ export function wordFiltersOf(input: CreateSessionInput): WordFilters {
 
 /** A live patch whose card back the caller already resolved (and checked) into what the screen shows. */
 export type ResolvedScreenPatch = Omit<ScreenSettingsPatch, "cardBack"> & { cardBack?: StreamCardBack | null };
+
+// The shape of a resolved card back (card-backs.ts builds it); unknown keys are dropped.
+const cardBackThemeSchema = z.object({
+    renderSpecVersion: z.number(),
+    requestedRenderSpecVersion: z.number(),
+    usedRenderSpecFallback: z.boolean(),
+    surfaceColor: z.string(),
+    borderColor: z.string(),
+    accentColor: z.string(),
+    secondaryColor: z.string(),
+    titleColor: z.string(),
+    detailColor: z.string(),
+    pattern: z.string(),
+    patternOpacity: z.number(),
+    patternScale: z.number(),
+    motionPreset: z.string(),
+    motionSpeedMs: z.number(),
+    glowColor: z.string(),
+    glowBlur: z.number(),
+    glowOpacity: z.number(),
+    overlayImageUrl: z.string().nullable(),
+    overlayOpacity: z.number(),
+}) satisfies z.ZodType<ResolvedCardThemeLike>;
+
+const resolvedCardBackSchema = z.object({
+    itemId: z.number().int().positive(),
+    name: z.string(),
+    theme: cardBackThemeSchema,
+    imageUrl: z.string().nullable(),
+}) satisfies z.ZodType<StreamCardBack>;
+
+/** What the runtime takes as a live patch: `screenSettingsPatchSchema`, with the card back already resolved. */
+export const resolvedScreenPatchSchema = screenSettingsPatchSchema.extend({
+    cardBack: resolvedCardBackSchema.nullable().optional(),
+}) satisfies z.ZodType<ResolvedScreenPatch>;
 
 export function toScreenSettings(
     input: CreateSessionInput,

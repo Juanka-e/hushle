@@ -1,10 +1,16 @@
-import { z } from "zod";
 import { createStreamSession } from "@hushle/domain-streamer";
+import { reportError } from "@hushle/platform-observability";
 import type { StreamerConnectionStore, StreamerPlatform } from "@hushle/platform-streamer";
 import { resolveCardBackSelection, type CardBackLoaders } from "./card-backs";
 import { createSessionInputSchema, toScreenSettings, type CreateSessionInput } from "./session-settings";
-import { StreamerSessionError, type StreamerSessionRuntime } from "./session-runtime";
-import type { StreamSessionRecord, StreamSessionStatusValue, StreamSessionStore, StreamSessionSummary } from "./session-store";
+import { StreamerSessionError, type StreamerErrorReporter, type StreamerSessionRuntime } from "./session-runtime";
+import {
+    streamSessionSummarySchema,
+    type StreamSessionRecord,
+    type StreamSessionStatusValue,
+    type StreamSessionStore,
+    type StreamSessionSummary,
+} from "./session-store";
 import { createViewKey } from "./view-key";
 
 // What the /streamer routes do with a session: open one on an active channel link, read the
@@ -29,15 +35,44 @@ export interface StreamSessionView {
     summary: StreamSessionSummary | null;
 }
 
-const summarySchema = z.object({
-    scores: z.array(z.object({ name: z.string(), points: z.number(), rank: z.number(), tied: z.boolean() })),
-    participants: z.number(),
-    rounds: z.number(),
-});
+/** An interrupted session stays on the panel this long after it ended; then the panel offers a new one. */
+export const INTERRUPTED_NOTICE_TTL_MS = 24 * 60 * 60 * 1000;
 
-export function toSessionView(record: StreamSessionRecord): StreamSessionView {
+/**
+ * The observability path for streamer session failures. The session id travels as `streamId`:
+ * the observability sanitizer drops context keys that name a session as sensitive.
+ */
+export const reportStreamerSessionError: StreamerErrorReporter = (event, error, context) => {
+    void reportError({ service: "hushle-web", event, error, ...(context ? { context: { streamId: context.sessionId } } : {}) }).catch(
+        () => undefined,
+    );
+};
+
+// Rows already reported as unreadable (once per row and process); the oldest are forgotten past
+// the bound. On globalThis, as the custom server and the route bundles each load this module.
+const MAX_REPORTED_ROWS = 1_000;
+const globalForReports = globalThis as typeof globalThis & { __hushleStreamerUnreadableRows?: Set<string> };
+const reportedRows = (globalForReports.__hushleStreamerUnreadableRows ??= new Set<string>());
+
+function reportUnreadable(record: StreamSessionRecord, fields: string[], onError: StreamerErrorReporter): void {
+    if (reportedRows.has(record.id)) return;
+    if (reportedRows.size >= MAX_REPORTED_ROWS) reportedRows.delete(reportedRows.values().next().value as string);
+    reportedRows.add(record.id);
+    try {
+        // The field names only: never the stored values.
+        onError("streamer_session.row_unreadable", new Error(`stream session row: unreadable ${fields.join(", ")}`), { sessionId: record.id });
+    } catch {
+        // Reading a row never fails because its report did.
+    }
+}
+
+/** The outside view of a row; a stored settings or summary that no longer parses reads as null and is reported once. */
+export function toSessionView(record: StreamSessionRecord, onError: StreamerErrorReporter = reportStreamerSessionError): StreamSessionView {
     const settings = createSessionInputSchema.safeParse(record.settings);
-    const summary = summarySchema.safeParse(record.summary);
+    // The summary is written when the session ends: none yet is nothing unreadable.
+    const summary = record.summary === null || record.summary === undefined ? null : streamSessionSummarySchema.safeParse(record.summary);
+    const unreadable = [...(settings.success ? [] : ["settings"]), ...(summary && !summary.success ? ["summary"] : [])];
+    if (unreadable.length > 0) reportUnreadable(record, unreadable, onError);
     return {
         id: record.id,
         status: record.status,
@@ -47,7 +82,7 @@ export function toSessionView(record: StreamSessionRecord): StreamSessionView {
         startedAt: record.startedAt.toISOString(),
         endedAt: record.endedAt ? record.endedAt.toISOString() : null,
         roundCount: record.roundCount,
-        summary: summary.success ? summary.data : null,
+        summary: summary?.success ? summary.data : null,
     };
 }
 
@@ -60,6 +95,8 @@ export interface StreamerSessionServiceDeps {
     /** Inventory and catalogue loaders for card backs; the real ones when absent (tests inject fakes). */
     cardBackLoaders?: CardBackLoaders;
     now?: () => number;
+    /** Where unreadable rows are reported; the observability path when absent. */
+    onError?: StreamerErrorReporter;
 }
 
 function clock(deps: StreamerSessionServiceDeps): number {
@@ -91,7 +128,35 @@ async function interruptStale(deps: StreamerSessionServiceDeps, row: StreamSessi
     return deps.sessions.markInterrupted(row.id, new Date(clock(deps)));
 }
 
-const MAX_STALE_ROWS = 10;
+/** Stale rows read per pass; passes repeat until none is left. */
+const STALE_ROW_BATCH = 10;
+
+/**
+ * Interrupts every `active` row of the user, batch by batch, until none is left: called when no
+ * live session of theirs runs here, so each is a leftover. A row that stops being active on its
+ * own (an end write landing) drops out of the next batch. One that comes back still active after
+ * its interrupt is refused rather than looped on or left beside a new session.
+ */
+async function interruptStaleRows(deps: StreamerSessionServiceDeps, userId: number): Promise<void> {
+    const tried = new Set<string>();
+    for (;;) {
+        const batch = await deps.sessions.listActiveByUser(userId, STALE_ROW_BATCH);
+        if (batch.length === 0) return;
+        for (const row of batch) {
+            if (deps.runtime.get(row.id)) throw new StreamerSessionError("session_active");
+            if (tried.has(row.id)) throw new Error("streamer session: a stale active row could not be interrupted");
+            tried.add(row.id);
+            await interruptStale(deps, row);
+        }
+    }
+}
+
+/** An interrupted row is shown on the panel for a while after it ended (its start, when no end was written). */
+function noticeExpired(deps: StreamerSessionServiceDeps, row: StreamSessionRecord): boolean {
+    if (row.status !== "interrupted") return false;
+    const at = (row.endedAt ?? row.startedAt).getTime();
+    return clock(deps) - at > INTERRUPTED_NOTICE_TTL_MS;
+}
 
 async function featureFlagsOf(deps: StreamerSessionServiceDeps): Promise<{ streamerShowcaseAllCosmetics: boolean }> {
     try {
@@ -109,12 +174,7 @@ export async function createSession(
     const { userId } = input;
     return withUserLock(userId, async () => {
         if (deps.runtime.forUser(userId)) throw new StreamerSessionError("session_active");
-        for (let attempt = 0; attempt < MAX_STALE_ROWS; attempt++) {
-            const active = await deps.sessions.findActiveByUser(userId);
-            if (!active) break;
-            if (deps.runtime.get(active.id)) throw new StreamerSessionError("session_active");
-            await interruptStale(deps, active);
-        }
+        await interruptStaleRows(deps, userId);
         const connection = await deps.connections.findByUserAndPlatform(userId, settings.platform);
         if (!connection || connection.status !== "active") throw new StreamerSessionError("connection_required");
 
@@ -140,24 +200,26 @@ export async function createSession(
             await interruptStale(deps, session);
             throw error;
         }
-        return { session: toSessionView(session), viewKey };
+        return { session: toSessionView(session, deps.onError), viewKey };
     });
 }
 
 /**
- * The user's newest session while it is live, or once it was interrupted (the panel offers a new
- * one then); null when there is none or the newest has ended.
+ * The user's newest session while it is live, or once it was interrupted, for
+ * INTERRUPTED_NOTICE_TTL_MS after it ended (the panel offers a new one then); null when there is
+ * none, the newest has ended, or its interruption is older than that.
  */
 export async function currentSession(deps: StreamerSessionServiceDeps, userId: number): Promise<StreamSessionView | null> {
     return withUserLock(userId, async () => {
+        const shown = (row: StreamSessionRecord | null) =>
+            row && row.status !== "ended" && !noticeExpired(deps, row) ? toSessionView(row, deps.onError) : null;
         const [latest] = await deps.sessions.listRecent(userId, 1);
         if (!latest || latest.status === "ended") return null;
-        if (latest.status !== "active" || deps.runtime.get(latest.id)) return toSessionView(latest);
+        if (latest.status !== "active" || deps.runtime.get(latest.id)) return shown(latest);
         const interrupted = await interruptStale(deps, latest);
-        if (interrupted) return toSessionView(interrupted);
+        if (interrupted) return shown(interrupted);
         // No longer active: an end landed in between (or another reconcile won); read what it is now.
-        const now = await deps.sessions.findById(latest.id);
-        return now && now.status !== "ended" ? toSessionView(now) : null;
+        return shown(await deps.sessions.findById(latest.id));
     });
 }
 

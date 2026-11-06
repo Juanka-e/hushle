@@ -178,6 +178,7 @@ const SESSION_ERROR_CODES: Record<StreamerSessionErrorCode, PlayerErrorCode> = {
     connection_required: PlayerErrorCode.STREAMER_CONNECTION_REQUIRED,
     not_found: PlayerErrorCode.STREAMER_SESSION_NOT_FOUND,
     invalid_phase: PlayerErrorCode.STREAMER_ACTION_INVALID_PHASE,
+    invalid_settings: PlayerErrorCode.INVALID_REQUEST,
     word_source_empty: PlayerErrorCode.STREAMER_WORD_POOL_EMPTY,
     card_not_allowed: PlayerErrorCode.STREAMER_CARD_NOT_ALLOWED,
     card_catalogue_unavailable: PlayerErrorCode.STREAMER_CARD_CATALOGUE_UNAVAILABLE,

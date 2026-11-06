@@ -243,4 +243,21 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.ok(socketDocs.includes("`streamer:ended`") && socketDocs.includes('"view-key-rotated"') && socketDocs.includes('"idle"'));
 }
 
+// --- Gap batch 1a: persistence off the action queue, invalid_settings ----------
+
+{
+    const runtimePath = "apps/web/src/lib/streamer/session-runtime.ts";
+    const persistencePath = "apps/web/src/lib/streamer/session-persistence.ts";
+    const runtimeSource = read(runtimePath);
+    assert.ok(existsSync(persistencePath), "the persistence chain has its own module");
+    const runtimeLines = runtimeSource.split(/\r?\n/).length;
+    assert.ok(runtimeLines < 450, `session-runtime.ts stays well below 500 lines (${runtimeLines})`);
+    // Every store write of the runtime goes through the per-session chain; none is awaited on the action queue.
+    assert.doesNotMatch(runtimeSource, /await\s+deps\.store\./, "the runtime never awaits a store write itself");
+    assert.match(read(persistencePath), /export const STREAM_PERSIST_DRAIN_TIMEOUT_MS = 10_000;/);
+    // A patch the runtime refuses is a plain invalid request on both paths.
+    assert.match(read("apps/web/src/lib/streamer/session-http.ts"), /invalid_settings: \{ code: PlayerErrorCode\.INVALID_REQUEST, status: 400 \}/);
+    assert.match(read("apps/web/src/lib/socket/streamer-socket.ts"), /invalid_settings: PlayerErrorCode\.INVALID_REQUEST,/);
+}
+
 console.log("PASS streamer session foundation contract");

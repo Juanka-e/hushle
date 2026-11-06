@@ -193,7 +193,16 @@ async function main(): Promise<void> {
             },
         };
         try {
+            // More stale active rows than one reconcile batch: every one is interrupted before the new session opens.
+            const stale = [];
+            for (let index = 0; index < 12; index++) {
+                stale.push(await store.create({ userId: first, connectionId: null, platform: "twitch", settings: INPUT, viewKeyHash: hash(`s${index.toString(36)}`), startedAt: new Date(NOW.getTime() - (index + 1) * 60_000) }));
+            }
+            assert.deepEqual((await store.listActiveByUser(first, 5)).map((row) => row.id), stale.slice(0, 5).map((row) => row.id), "listActiveByUser: newest first, at most the limit");
             const { session, viewKey } = await service.createSession(deps, { userId: first, settings: INPUT });
+            for (const row of stale) assert.equal((await store.findById(row.id))?.status, "interrupted", "every stale row is interrupted");
+            assert.deepEqual((await store.listActiveByUser(first, 50)).map((row) => row.id), [session.id], "the new session is the only active row");
+            pass("create interrupts every stale active row, past one batch, through Prisma");
             assert.equal((await store.findByViewKeyHash(hashViewKey(viewKey)))?.id, session.id);
             for (const view of [session, await service.currentSession(deps, first)]) {
                 const json = JSON.stringify(view);
@@ -206,6 +215,8 @@ async function main(): Promise<void> {
             );
             await runtime.next(session.id);
             await runtime.pass(session.id);
+            await runtime.flush();
+            assert.equal((await store.findById(session.id))?.roundCount, 2, "both results written before the end");
             const ended = await service.endCurrent(deps, first);
             const row = await store.findById(session.id);
             assert.equal(row?.status, "ended");

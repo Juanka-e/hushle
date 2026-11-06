@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 import { prisma, Prisma, StreamSessionStatus } from "@hushle/platform-db";
 import type { StreamerPlatform } from "@hushle/platform-streamer";
 
@@ -9,12 +10,15 @@ import type { StreamerPlatform } from "@hushle/platform-streamer";
 export type StreamSessionStatusValue = "active" | "ended" | "interrupted";
 export type StreamRoundOutcomeValue = "solved" | "timeout" | "passed";
 
-export interface StreamSessionSummary {
-    /** Top 10 of the final ranking. */
-    scores: Array<{ name: string; points: number; rank: number; tied: boolean }>;
-    participants: number;
-    rounds: number;
-}
+/** What an ended session row keeps: the top 10 of the final ranking, the participant count and the rounds written. */
+export const streamSessionSummarySchema = z.object({
+    scores: z.array(z.object({ name: z.string(), points: z.number(), rank: z.number(), tied: z.boolean() })),
+    participants: z.number(),
+    rounds: z.number(),
+});
+
+/** One source for the summary shape: the type is the schema's, so the two cannot drift apart. */
+export type StreamSessionSummary = z.infer<typeof streamSessionSummarySchema>;
 
 export interface StreamSessionRecord {
     id: string;
@@ -67,6 +71,8 @@ export interface StreamSessionStore {
     create(row: CreateStreamSessionRow): Promise<StreamSessionRecord>;
     /** The newest `active` row of the user, if any. */
     findActiveByUser(userId: number): Promise<StreamSessionRecord | null>;
+    /** The user's `active` rows, newest first, at most `limit`. */
+    listActiveByUser(userId: number, limit: number): Promise<StreamSessionRecord[]>;
     findById(id: string): Promise<StreamSessionRecord | null>;
     findByViewKeyHash(hash: string): Promise<StreamSessionRecord | null>;
     update(id: string, patch: StreamSessionPatch): Promise<StreamSessionRecord>;
@@ -127,6 +133,13 @@ export const prismaStreamSessionStore: StreamSessionStore = {
         return prisma.streamSession.findFirst({
             where: { userId, status: StreamSessionStatus.active },
             orderBy: [{ startedAt: "desc" }, { createdAt: "desc" }],
+        });
+    },
+    listActiveByUser(userId, limit) {
+        return prisma.streamSession.findMany({
+            where: { userId, status: StreamSessionStatus.active },
+            orderBy: [{ startedAt: "desc" }, { createdAt: "desc" }],
+            take: limit,
         });
     },
     findById(id) {
@@ -214,6 +227,9 @@ export function createMemoryStreamSessionStore(): MemoryStreamSessionStore {
         async findActiveByUser(userId) {
             const [record] = newestFirst(rows.filter((row) => row.userId === userId && row.status === "active"));
             return record ? clone(record) : null;
+        },
+        async listActiveByUser(userId, limit) {
+            return newestFirst(rows.filter((row) => row.userId === userId && row.status === "active")).slice(0, limit).map(clone);
         },
         async findById(id) {
             const record = rows.find((row) => row.id === id);

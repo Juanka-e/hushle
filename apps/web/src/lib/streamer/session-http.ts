@@ -10,6 +10,7 @@ const MAPPING: Record<StreamerSessionErrorCode, { code: PlayerErrorCode; status:
     connection_required: { code: PlayerErrorCode.STREAMER_CONNECTION_REQUIRED, status: 409 },
     not_found: { code: PlayerErrorCode.STREAMER_SESSION_NOT_FOUND, status: 404 },
     invalid_phase: { code: PlayerErrorCode.STREAMER_ACTION_INVALID_PHASE, status: 409 },
+    invalid_settings: { code: PlayerErrorCode.INVALID_REQUEST, status: 400 },
     word_source_empty: { code: PlayerErrorCode.STREAMER_WORD_POOL_EMPTY, status: 422 },
     card_not_allowed: { code: PlayerErrorCode.STREAMER_CARD_NOT_ALLOWED, status: 422 },
     card_catalogue_unavailable: { code: PlayerErrorCode.STREAMER_CARD_CATALOGUE_UNAVAILABLE, status: 503 },

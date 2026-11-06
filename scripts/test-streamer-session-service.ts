@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import type { z } from "zod";
 import type { ChatGuess, HostStreamSnapshot, PublicStreamSnapshot, StreamCard } from "@hushle/domain-streamer";
+import { resetObservabilityForTests } from "@hushle/platform-observability";
 import {
     createMemoryStreamerConnectionStore,
     type StreamerConnectionRecord,
@@ -7,7 +9,13 @@ import {
     type StreamerPlatform,
 } from "@hushle/platform-streamer";
 import { createSessionInputSchema, type CreateSessionInput } from "../apps/web/src/lib/streamer/session-settings";
-import { createMemoryStreamSessionStore, type MemoryStreamSessionStore } from "../apps/web/src/lib/streamer/session-store";
+import {
+    createMemoryStreamSessionStore,
+    streamSessionSummarySchema,
+    type MemoryStreamSessionStore,
+    type StreamSessionSummary,
+} from "../apps/web/src/lib/streamer/session-store";
+import { streamerSessionErrorResponse } from "../apps/web/src/lib/streamer/session-http";
 import {
     createStreamerSessionRuntime,
     isStreamerSessionError,
@@ -21,15 +29,24 @@ import {
     createSession,
     currentSession,
     endCurrent,
+    INTERRUPTED_NOTICE_TTL_MS,
     lastSettings,
+    reportStreamerSessionError,
     rotateViewKey,
+    toSessionView,
     type StreamerSessionServiceDeps,
 } from "../apps/web/src/lib/streamer/session-service";
-import type { CardBackCatalogItem, CardBackLoaders } from "../apps/web/src/lib/streamer/card-backs";
+import { resolveCardBackSelection, type CardBackCatalogItem, type CardBackLoaders } from "../apps/web/src/lib/streamer/card-backs";
 import { createViewKey, hashViewKey } from "../apps/web/src/lib/streamer/view-key";
 
 // Streamer session runtime and service (phase 2, Task 4): memory stores, a fake word source
-// and a fake clock. Ticks are driven by advancing the clock and calling `tickAll`.
+// and a fake clock. Ticks are driven by advancing the clock and calling `tickAll`; writes run off
+// the action queue, so a test reads the store after `runtime.flush()`.
+
+// The stored summary type is the schema's: they cannot drift apart (checked by tsc).
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+const summaryTypeIsTheSchema: Same<StreamSessionSummary, z.infer<typeof streamSessionSummarySchema>> = true;
+void summaryTypeIsTheSchema;
 
 let count = 0;
 async function test(name: string, run: () => Promise<void> | void): Promise<void> {
@@ -127,6 +144,75 @@ const CARD_BACK_LOADERS: CardBackLoaders = {
     catalog: async () => [cardBackItem(10, "Kor"), cardBackItem(11, "Buz"), cardBackItem(12, "Orman")],
 };
 
+interface Deferred<T = void> {
+    promise: Promise<T>;
+    resolve(value: T): void;
+}
+
+function deferred<T = void>(): Deferred<T> {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => (resolve = done));
+    return { promise, resolve };
+}
+
+/**
+ * Whether `promise` has settled by the next macrotask. Memory stores, the fake source and the
+ * runtime only ever wait on microtasks, so an action that does not wait on a held write has
+ * settled by then: no real time passes.
+ */
+async function settlesNow(promise: Promise<unknown>): Promise<boolean> {
+    let settled = false;
+    promise.then(
+        () => (settled = true),
+        () => (settled = true),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    return settled;
+}
+
+async function quick<T>(promise: Promise<T>, label: string): Promise<T> {
+    assert.equal(await settlesNow(promise), true, `${label} settles without waiting for a write`);
+    return promise;
+}
+
+/** A memory store whose writes log their start and, while held, wait until released. */
+function holdingStore(base: MemoryStreamSessionStore = createMemoryStreamSessionStore()) {
+    const log: string[] = [];
+    let gate: Deferred | null = null;
+    const wait = async (label: string) => {
+        log.push(label);
+        if (gate) await gate.promise;
+    };
+    const store: MemoryStreamSessionStore = {
+        ...base,
+        async addRoundResult(result) {
+            await wait(`result:${result.round}:${result.outcome}`);
+            return base.addRoundResult(result);
+        },
+        async update(id, patch) {
+            await wait(`update:${Object.keys(patch).sort().join(",")}`);
+            return base.update(id, patch);
+        },
+    };
+    return {
+        store,
+        log,
+        hold() {
+            gate = deferred();
+        },
+        release() {
+            gate?.resolve();
+            gate = null;
+        },
+    };
+}
+
+interface ReportedError {
+    event: string;
+    error: unknown;
+    context?: { sessionId: string };
+}
+
 interface Harness {
     clock: { now: number };
     advance(ms: number): void;
@@ -139,13 +225,14 @@ interface Harness {
     emitted: Array<{ sessionId: string; kind: "host" | "public"; payload: HostStreamSnapshot | PublicStreamSnapshot }>;
     ended: Array<{ sessionId: string; reason: string }>;
     rotated: string[];
+    errors: ReportedError[];
     lastHost(): HostStreamSnapshot;
     lastPublic(): PublicStreamSnapshot;
 }
 
 const runtimes: StreamerSessionRuntime[] = [];
 
-function harness(options: { source?: FakeSource; sessions?: MemoryStreamSessionStore; tickMs?: number } = {}): Harness {
+function harness(options: { source?: FakeSource; sessions?: MemoryStreamSessionStore; tickMs?: number; drainTimeoutMs?: number } = {}): Harness {
     const clock = { now: START };
     const sessions = options.sessions ?? createMemoryStreamSessionStore();
     const connections = createMemoryStreamerConnectionStore();
@@ -154,13 +241,17 @@ function harness(options: { source?: FakeSource; sessions?: MemoryStreamSessionS
     const emitted: Harness["emitted"] = [];
     const ended: Harness["ended"] = [];
     const rotated: string[] = [];
+    const errors: ReportedError[] = [];
+    const onError = (event: string, error: unknown, context?: { sessionId: string }) => errors.push({ event, error, context });
     const runtime = createStreamerSessionRuntime({
         store: sessions,
         wordSource: source,
         now: () => clock.now,
         emit: (sessionId, kind, payload) => emitted.push({ sessionId, kind, payload }),
         onEnded: (sessionId, reason) => ended.push({ sessionId, reason }),
+        onError,
         tickMs: options.tickMs ?? 5,
+        drainTimeoutMs: options.drainTimeoutMs,
     });
     runtime.setOnViewKeyRotated((sessionId) => rotated.push(sessionId));
     runtimes.push(runtime);
@@ -178,11 +269,12 @@ function harness(options: { source?: FakeSource; sessions?: MemoryStreamSessionS
         connections,
         source,
         runtime,
-        deps: { sessions, connections, runtime, now: () => clock.now, getFeatureFlags: async () => features, cardBackLoaders: CARD_BACK_LOADERS },
+        deps: { sessions, connections, runtime, now: () => clock.now, getFeatureFlags: async () => features, cardBackLoaders: CARD_BACK_LOADERS, onError },
         features,
         emitted,
         ended,
         rotated,
+        errors,
         lastHost: () => last("host") as HostStreamSnapshot,
         lastPublic: () => last("public") as PublicStreamSnapshot,
     };
@@ -458,6 +550,7 @@ async function main(): Promise<void> {
         assert.equal(h.sessions.results.length, 0);
         h.advance(58_500);
         await h.runtime.tickAll();
+        await h.runtime.flush();
         const pub = h.lastPublic();
         assert.equal(pub.phase, "finished");
         assert.equal(pub.remaining, 0);
@@ -485,6 +578,7 @@ async function main(): Promise<void> {
         h.advance(12_000);
         assert.equal(await h.runtime.guess(session.id, chat(h, "portakal", "mira")), "wrong");
         assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina!", "luna")), "correct");
+        await h.runtime.flush();
         const pub = h.lastPublic();
         assert.equal(pub.phase, "finished");
         assert.equal(pub.participants, 2);
@@ -510,9 +604,35 @@ async function main(): Promise<void> {
         await h.runtime.start(session.id);
         h.advance(61_000);
         assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "closed");
+        await h.runtime.flush();
         assert.equal(h.lastPublic().phase, "finished");
         assert.equal(h.sessions.results.length, 1);
         assert.equal(h.sessions.results[0].outcome, "timeout");
+        assert.equal(h.sessions.results[0].endedAt.getTime(), START + 60_000, "it ended at its deadline");
+        assert.equal(h.lastPublic().reveal?.solved, false);
+        await h.runtime.tickAll();
+        await h.runtime.flush();
+        assert.equal(h.sessions.results.length, 1, "the tick that follows records nothing more");
+    });
+
+    await test("a timed-out round ends at its deadline, however late the tick, guess, host action or end comes", async () => {
+        for (const late of ["tick", "guess", "pause", "end"] as const) {
+            const h = harness();
+            const { session } = await opened(h);
+            h.advance(2_000);
+            await h.runtime.start(session.id);
+            h.advance(60_000 + 7_500);
+            if (late === "tick") await h.runtime.tickAll();
+            if (late === "guess") assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "closed");
+            if (late === "pause") await rejectsWith(() => h.runtime.pause(session.id), "invalid_phase");
+            if (late === "end") await h.runtime.end(session.id, "ended");
+            await h.runtime.flush();
+            assert.equal(h.sessions.results.length, 1, late);
+            const [result] = h.sessions.results;
+            assert.equal(result.outcome, "timeout", late);
+            assert.equal(result.startedAt.getTime(), START + 2_000, late);
+            assert.equal(result.endedAt.getTime(), START + 62_000, `${late}: the round ended at its deadline, not when it was noticed`);
+        }
     });
 
     await test("pass → passed result and the passed word in the next public snapshot", async () => {
@@ -521,6 +641,7 @@ async function main(): Promise<void> {
         await h.runtime.start(session.id);
         h.advance(5_000);
         await h.runtime.pass(session.id);
+        await h.runtime.flush();
         assert.equal(h.sessions.results.length, 1);
         const result = h.sessions.results[0];
         assert.equal(result.outcome, "passed");
@@ -538,10 +659,54 @@ async function main(): Promise<void> {
         assert.equal((await h.sessions.findById(session.id))?.roundCount, 1);
         h.advance(60_000);
         await h.runtime.tickAll();
+        await h.runtime.flush();
         assert.equal(h.sessions.results[1].outcome, "timeout");
         assert.equal(h.sessions.results[1].round, 2);
         assert.equal(h.sessions.results[1].startedAt.getTime(), START + 5_000);
         await rejectsWith(() => h.runtime.pass(session.id), "invalid_phase");
+    });
+
+    await test("a pass after the deadline records the timeout and draws no card", async () => {
+        const h = harness();
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        assert.equal(h.source.calls.length, 1);
+        h.advance(60_000 + 3_000);
+        await rejectsWith(() => h.runtime.pass(session.id), "invalid_phase");
+        await h.runtime.flush();
+        assert.equal(h.source.calls.length, 1, "the late pass consumed no word of the pool");
+        assert.deepEqual(h.sessions.results.map((result) => [result.round, result.outcome]), [[1, "timeout"]]);
+        assert.equal(h.sessions.results[0].endedAt.getTime(), START + 60_000);
+        const pub = h.lastPublic();
+        assert.equal(pub.phase, "finished");
+        assert.equal(pub.round, 1);
+        assert.equal(pub.passed, null);
+        await h.runtime.next(session.id);
+        assert.deepEqual(h.lastHost().card, DECK[1], "the next round gets the word the late pass did not take");
+    });
+
+    await test("a pass in time keeps the card it drew, even when the draw outlasts the deadline", async () => {
+        const source = cyclingSource();
+        const h = harness({ source });
+        const draw = source.next.bind(source);
+        // The second draw (the pass) is slow: the round's deadline goes by while it runs.
+        source.next = async (poolKey, filters) => {
+            if (source.calls.length === 1) h.advance(10_000);
+            return draw(poolKey, filters);
+        };
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        h.advance(55_000);
+        await h.runtime.pass(session.id);
+        await h.runtime.flush();
+        assert.equal(source.calls.length, 2, "one draw for the pass");
+        assert.deepEqual(h.sessions.results.map((result) => [result.round, result.outcome]), [[1, "passed"]], "the pass came in time: no timeout");
+        assert.equal(h.sessions.results[0].endedAt.getTime(), START + 55_000, "the pass took effect when it was handled");
+        const host = h.lastHost();
+        assert.equal(host.phase, "running");
+        assert.equal(host.round, 2);
+        assert.deepEqual(host.card, DECK[1], "the drawn card is the new round's card, not lost");
+        assert.deepEqual(host.passed, { round: 1, target: DECK[0].target });
     });
 
     await test("next after finished → new round, reveal gone; next while running is refused", async () => {
@@ -582,6 +747,7 @@ async function main(): Promise<void> {
         assert.equal(h.lastPublic().phase, "running");
         h.advance(5_000);
         assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct");
+        await h.runtime.flush();
         assert.equal(h.sessions.results[0].solveMs, 15_000);
     });
 
@@ -628,8 +794,54 @@ async function main(): Promise<void> {
         assert.equal(pub.clock, "candle");
         assert.equal(pub.showCardName, false);
         assert.equal(pub.phase, "running");
+        await h.runtime.flush();
         const stored = await lastSettings(h.deps, 1);
         assert.deepEqual(stored, { ...INPUT, theme: "gece-altini", camera: "left", clock: "candle", showCardName: false });
+    });
+
+    await test("applySettings parses its patch: anything off the schema is invalid_settings and changes nothing", async () => {
+        const h = harness();
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        const theme = (await resolveCardBackSelection(1, 10, h.features, CARD_BACK_LOADERS)).theme;
+        const bad: Array<[string, unknown]> = [
+            ["unknown theme", { theme: "neon" }],
+            ["unknown camera", { camera: "center" }],
+            ["camera size xl", { cameraSize: "xl" }],
+            ["unknown clock", { clock: "sundial" }],
+            ["showCardName string", { showCardName: "yes" }],
+            ["unknown key", { theme: "sade", duration: 30 }],
+            ["an unresolved card back", { cardBack: { itemId: 10 } }],
+            ["card back item 0", { cardBack: { itemId: 0, name: "Kor", theme, imageUrl: null } }],
+            ["card back without a theme", { cardBack: { itemId: 10, name: "Kor", theme: null, imageUrl: null } }],
+            ["card back with a bad theme value", { cardBack: { itemId: 10, name: "Kor", theme: { ...theme, glowBlur: "x" }, imageUrl: null } }],
+            ["null", null],
+            ["a string", "sakura"],
+            ["an array", [{ theme: "sakura" }]],
+        ];
+        const revision = h.lastPublic().revision;
+        for (const [label, patch] of bad) {
+            await assert.rejects(
+                () => h.runtime.applySettings(session.id, patch as never),
+                (error: unknown) => isStreamerSessionError(error) && error.code === "invalid_settings",
+                label,
+            );
+        }
+        await h.runtime.flush();
+        assert.equal(h.lastPublic().revision, revision, "a refused patch emits nothing");
+        assert.equal(h.lastPublic().theme, "studyo");
+        assert.deepEqual(await lastSettings(h.deps, 1), INPUT, "nor is it stored");
+        // A resolved card back is what the socket passes on; it is accepted.
+        await h.runtime.applySettings(session.id, { theme: "sade", cardBack: { itemId: 10, name: "Kor", theme, imageUrl: "/cosmetics/10.svg" } });
+        assert.equal(h.lastPublic().theme, "sade");
+        assert.equal(h.lastPublic().cardBack?.itemId, 10);
+        await h.runtime.applySettings(session.id, { cardBack: null });
+        assert.equal(h.lastPublic().cardBack, null);
+        // The code maps to the generic invalid request answer.
+        const response = streamerSessionErrorResponse(new StreamerSessionError("invalid_settings"));
+        assert.equal(response?.status, 400);
+        assert.equal(((await response?.json()) as { code: string }).code, "INVALID_REQUEST");
+        assert.deepEqual(h.errors, []);
     });
 
     await test("end → summary (top 10, participants), pool cleared, status ended", async () => {
@@ -673,20 +885,17 @@ async function main(): Promise<void> {
         assert.notEqual(again.session.id, session.id, "a new session can be opened after the end");
     });
 
-    await test("idle for 6 h since the last host action or guess → auto end with reason idle", async () => {
+    await test("idle for 6 h since the last host action → auto end with reason idle; closed chat keeps nothing alive", async () => {
         const h = harness();
         const { session } = await opened(h);
         h.advance(5 * HOUR);
         assert.equal(await h.runtime.guess(session.id, chat(h, "merhaba")), "closed");
-        h.advance(2 * HOUR);
-        await h.runtime.tickAll();
-        assert.ok(h.runtime.get(session.id), "a guess counts as activity");
-        h.advance(STREAM_SESSION_IDLE_TIMEOUT_MS - 2 * HOUR - 1);
+        h.advance(HOUR - 1);
         await h.runtime.tickAll();
         assert.ok(h.runtime.get(session.id));
         h.advance(1);
         await h.runtime.tickAll();
-        assert.equal(h.runtime.get(session.id), null);
+        assert.equal(h.runtime.get(session.id), null, "a closed guess is no activity");
         assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "idle" }]);
         const row = await h.sessions.findById(session.id);
         assert.equal(row?.status, "ended");
@@ -694,6 +903,53 @@ async function main(): Promise<void> {
         assert.ok(h.source.cleared.includes(`streamer:${session.id}`));
         assert.equal(STREAM_SESSION_IDLE_TIMEOUT_MS, 6 * HOUR);
     });
+
+    await test("idle clock: stale, duplicate, invalid and closed guesses of a live round do not reset it", async () => {
+        const h = harness();
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        h.advance(30_000);
+        const counted = chat(h, "yanlis", "mira");
+        assert.equal(await h.runtime.guess(session.id, counted), "wrong", "the last activity: START + 30 s");
+        h.advance(1_000);
+        assert.equal(await h.runtime.guess(session.id, { ...counted, text: "portakal" }), "duplicate");
+        assert.equal(await h.runtime.guess(session.id, chat(h, "portakal", "eski", { sentAt: START - 1 })), "stale");
+        assert.equal(await h.runtime.guess(session.id, chat(h, "🎉🎉", "emoji")), "invalid");
+        h.advance(40_000);
+        assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina", "geç")), "closed");
+        for (let hour = 1; hour < 6; hour++) {
+            h.advance(HOUR);
+            assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina", `spam${hour}`)), "closed");
+        }
+        h.clock.now = START + 30_000 + STREAM_SESSION_IDLE_TIMEOUT_MS - 1;
+        await h.runtime.tickAll();
+        assert.ok(h.runtime.get(session.id), "6 h since the wrong guess are not over yet");
+        h.advance(1);
+        await h.runtime.tickAll();
+        assert.equal(h.runtime.get(session.id), null, "only the wrong guess counted");
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "idle" }]);
+    });
+
+    for (const kind of ["wrong", "correct"] as const) {
+        await test(`idle clock: a ${kind} guess resets it`, async () => {
+            const h = harness();
+            const { session } = await opened(h);
+            await h.runtime.start(session.id);
+            h.advance(HOUR);
+            await h.runtime.tickAll();
+            await h.runtime.next(session.id);
+            const hostAt = h.clock.now;
+            h.advance(10_000);
+            assert.equal(await h.runtime.guess(session.id, chat(h, kind === "correct" ? DECK[1].target : "yanlis")), kind);
+            h.clock.now = hostAt + STREAM_SESSION_IDLE_TIMEOUT_MS;
+            await h.runtime.tickAll();
+            assert.ok(h.runtime.get(session.id), `6 h after the host action, the ${kind} guess keeps it alive`);
+            h.clock.now = hostAt + 10_000 + STREAM_SESSION_IDLE_TIMEOUT_MS;
+            await h.runtime.tickAll();
+            assert.equal(h.runtime.get(session.id), null);
+            assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "idle" }]);
+        });
+    }
 
     await test("word pool exhaustion: the source cycles and rounds keep coming", async () => {
         const h = harness();
@@ -707,6 +963,7 @@ async function main(): Promise<void> {
             await h.runtime.tickAll();
             assert.equal(h.lastPublic().phase, "finished");
         }
+        await h.runtime.flush();
         assert.deepEqual(drawn, [101, 102, 101, 102, 101]);
         assert.deepEqual(h.sessions.results.map((result) => result.round), [1, 2, 3, 4, 5]);
         assert.equal(h.lastPublic().round, 5);
@@ -727,17 +984,225 @@ async function main(): Promise<void> {
         assert.equal(h.sessions.results.length, 0);
     });
 
-    await test("pass with an empty source keeps the current round untouched", async () => {
-        const h = harness({ source: cyclingSource([DECK[0], null]) });
+    await test("a pass that gets no next card is refused atomically: same card, nothing recorded or emitted (running and paused)", async () => {
+        for (const paused of [false, true]) {
+            const h = harness({ source: cyclingSource([DECK[0], null]) });
+            const { session } = await opened(h);
+            await h.runtime.start(session.id);
+            h.advance(4_000);
+            if (paused) await h.runtime.pause(session.id);
+            const revision = h.lastPublic().revision;
+            await rejectsWith(() => h.runtime.pass(session.id), "word_source_empty");
+            await h.runtime.flush();
+            const host = h.runtime.get(session.id)!.hostSnapshot();
+            assert.equal(host.phase, paused ? "paused" : "running");
+            assert.equal(host.round, 1);
+            assert.deepEqual(host.card, DECK[0], "a live round never goes on without its card");
+            assert.equal(host.passed, null);
+            assert.equal(host.passedRound, null);
+            assert.equal(h.lastPublic().revision, revision, "nothing emitted");
+            assert.equal(h.sessions.results.length, 0, "nothing recorded");
+            assert.equal((await h.sessions.findById(session.id))?.roundCount, 0);
+            if (paused) await h.runtime.resume(session.id);
+            assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct", "the round goes on");
+        }
+    });
+
+    // ------------------------------------------------------------ persistence off the action queue
+
+    await test("persistence: a store whose writes hang delays no tick, guess or host action", async () => {
+        const held = holdingStore();
+        const h = harness({ sessions: held.store });
         const { session } = await opened(h);
         await h.runtime.start(session.id);
-        h.advance(4_000);
-        await rejectsWith(() => h.runtime.pass(session.id), "word_source_empty");
-        const host = h.runtime.get(session.id)!.hostSnapshot();
-        assert.equal(host.phase, "running");
-        assert.equal(host.round, 1);
-        assert.deepEqual(host.card, DECK[0]);
-        assert.equal(h.sessions.results.length, 0);
+        held.hold();
+        try {
+            assert.equal(await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess"), "correct");
+            assert.deepEqual(held.log, ["result:1:solved"], "the round-1 write started and hangs");
+            const steps: Array<[string, () => Promise<unknown>]> = [
+                ["next", () => h.runtime.next(session.id)],
+                ["a wrong guess", () => h.runtime.guess(session.id, chat(h, "yanlis", "mira"))],
+                ["settings", () => h.runtime.applySettings(session.id, { theme: "sakura" })],
+                ["a tick", () => (h.advance(1_000), h.runtime.tickAll())],
+                ["pause", () => h.runtime.pause(session.id)],
+                ["resume", () => h.runtime.resume(session.id)],
+                ["pass", () => h.runtime.pass(session.id)],
+            ];
+            for (const [label, step] of steps) await quick(step(), label);
+            const pub = h.lastPublic();
+            assert.equal(pub.round, 3);
+            assert.equal(pub.phase, "running");
+            assert.equal(pub.theme, "sakura");
+            assert.equal(pub.remaining, 60);
+            assert.deepEqual(held.log, ["result:1:solved"], "later writes wait their turn");
+            assert.equal(h.sessions.results.length, 0);
+        } finally {
+            held.release();
+        }
+        await h.runtime.flush();
+        assert.deepEqual(h.sessions.results.map((result) => [result.round, result.outcome]), [[1, "solved"], [2, "passed"]]);
+        const row = await h.sessions.findById(session.id);
+        assert.equal(row?.roundCount, 2);
+        assert.equal((row?.settings as CreateSessionInput).theme, "sakura");
+        assert.deepEqual(h.errors, []);
+    });
+
+    await test("persistence: writes land one at a time, in the order they were queued", async () => {
+        const held = holdingStore();
+        const h = harness({ sessions: held.store });
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        held.hold();
+        try {
+            await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
+            await quick(h.runtime.applySettings(session.id, { camera: "left" }), "settings");
+            await quick(h.runtime.next(session.id), "next");
+            await quick(h.runtime.pass(session.id), "pass");
+            assert.deepEqual(held.log, ["result:1:solved"], "nothing overtakes the first write");
+        } finally {
+            held.release();
+        }
+        await h.runtime.flush();
+        assert.deepEqual(held.log, ["result:1:solved", "update:roundCount", "update:settings", "result:2:passed", "update:roundCount"]);
+        const row = await h.sessions.findById(session.id);
+        assert.equal(row?.roundCount, 2);
+        assert.equal((row?.settings as CreateSessionInput).camera, "left");
+    });
+
+    await test("persistence: end waits for the pending writes of its session; the summary counts them", async () => {
+        const held = holdingStore();
+        const h = harness({ sessions: held.store });
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        held.hold();
+        let ending: Promise<StreamSessionSummary> | null = null;
+        try {
+            await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
+            ending = h.runtime.end(session.id, "ended");
+            assert.equal(await settlesNow(ending), false, "end waits for the round-1 write");
+            assert.equal(h.runtime.get(session.id), null, "the session is closed meanwhile");
+            assert.deepEqual(h.ended, [], "and not reported ended yet");
+        } finally {
+            held.release();
+        }
+        const summary = await ending!;
+        assert.deepEqual(summary, { scores: [{ name: "Luna", points: 1, rank: 1, tied: false }], participants: 1, rounds: 1 });
+        assert.deepEqual(held.log, ["result:1:solved", "update:roundCount", "update:endedAt,roundCount,status,summary"]);
+        const row = await h.sessions.findById(session.id);
+        assert.equal(row?.status, "ended");
+        assert.equal(row?.roundCount, 1);
+        assert.deepEqual(row?.summary, summary);
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }]);
+    });
+
+    await test("persistence: idle end and stop wait for the pending writes too", async () => {
+        for (const how of ["idle", "stop"] as const) {
+            const held = holdingStore();
+            const h = harness({ sessions: held.store });
+            const { session } = await opened(h);
+            await h.runtime.start(session.id);
+            held.hold();
+            let closing: Promise<unknown> | null = null;
+            try {
+                await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
+                if (how === "idle") {
+                    h.advance(STREAM_SESSION_IDLE_TIMEOUT_MS);
+                    closing = h.runtime.tickAll();
+                } else {
+                    closing = h.runtime.stop();
+                }
+                assert.equal(await settlesNow(closing), false, `${how} waits for the round-1 write`);
+            } finally {
+                held.release();
+            }
+            await closing;
+            await h.runtime.flush();
+            const row = await h.sessions.findById(session.id);
+            assert.equal(row?.status, how === "idle" ? "ended" : "interrupted", how);
+            assert.equal(row?.roundCount, 1, how);
+            assert.deepEqual(held.log.slice(0, 2), ["result:1:solved", "update:roundCount"], how);
+            assert.equal(held.log.length, 3, how);
+            if (how === "idle") assert.equal((row?.summary as StreamSessionSummary).rounds, 1);
+        }
+    });
+
+    await test("persistence: a failing round write is reported once with the session id; it is not counted; the session goes on", async () => {
+        const base = createMemoryStreamSessionStore();
+        const sessions: MemoryStreamSessionStore = {
+            ...base,
+            async addRoundResult(result) {
+                if (result.round === 1) throw new Error("db down");
+                return base.addRoundResult(result);
+            },
+        };
+        const h = harness({ sessions });
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct");
+        await h.runtime.flush();
+        assert.equal((await h.sessions.findById(session.id))?.roundCount, 0, "a result that was not written is not counted");
+        assert.equal(h.errors.length, 1);
+        assert.equal(h.errors[0].event, "streamer_session.round_result_failed");
+        assert.deepEqual(h.errors[0].context, { sessionId: session.id });
+        await h.runtime.next(session.id);
+        assert.equal(await h.runtime.guess(session.id, chat(h, "buzdolabi", "mira")), "correct");
+        const summary = await h.runtime.end(session.id, "ended");
+        assert.equal(summary.rounds, 1, "the summary counts written rounds only");
+        const row = await h.sessions.findById(session.id);
+        assert.equal(row?.status, "ended");
+        assert.equal(row?.roundCount, 1);
+        assert.deepEqual(h.sessions.results.map((result) => [result.round, result.outcome]), [[2, "solved"]]);
+        assert.equal(h.errors.length, 1, "reported once");
+    });
+
+    await test("persistence: a failing settings or end write is reported with the session id and changes nothing else", async () => {
+        const base = createMemoryStreamSessionStore();
+        let failing = false;
+        const sessions: MemoryStreamSessionStore = {
+            ...base,
+            async update(id, patch) {
+                if (failing) throw new Error("db down");
+                return base.update(id, patch);
+            },
+        };
+        const h = harness({ sessions });
+        const { session } = await opened(h);
+        failing = true;
+        await h.runtime.applySettings(session.id, { theme: "sakura" });
+        assert.equal(h.lastPublic().theme, "sakura", "the stream screen has the change");
+        await h.runtime.start(session.id);
+        const summary = await h.runtime.end(session.id, "ended");
+        assert.deepEqual(summary, { scores: [], participants: 0, rounds: 0 });
+        assert.deepEqual(h.errors.map((error) => [error.event, error.context?.sessionId]), [
+            ["streamer_session.settings_failed", session.id],
+            ["streamer_session.end_failed", session.id],
+        ]);
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }], "the session still ends");
+    });
+
+    await test("persistence: end waits at most the drain bound for a hanging write, reports it once and finishes", async () => {
+        const held = holdingStore();
+        const h = harness({ sessions: held.store, drainTimeoutMs: 1 });
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        held.hold();
+        try {
+            await quick(h.runtime.guess(session.id, chat(h, "mandalina")), "the correct guess");
+            const summary = await h.runtime.end(session.id, "ended");
+            assert.equal(summary.rounds, 0, "the hanging result is not written yet");
+            assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }]);
+            assert.equal(h.runtime.get(session.id), null);
+            assert.deepEqual(h.errors.map((error) => [error.event, error.context]), [["streamer_session.persist_drain_timeout", { sessionId: session.id }]]);
+            assert.equal(h.sessions.rows[0].status, "active", "the end write waits behind the hanging one");
+        } finally {
+            held.release();
+        }
+        await h.runtime.flush();
+        const row = await h.sessions.findById(session.id);
+        assert.equal(row?.status, "ended", "the end write lands once the database answers");
+        assert.equal(row?.roundCount, 1);
+        assert.equal((row?.summary as StreamSessionSummary).rounds, 1, "the stored summary counts what was written");
+        assert.equal(h.errors.length, 1);
     });
 
     // ------------------------------------------------------------ view key, store, restarts
@@ -771,6 +1236,107 @@ async function main(): Promise<void> {
         assert.equal(ended?.endedAt?.getTime(), START + 1_000);
         assert.equal(await sessions.findActiveByUser(1), null);
         assert.equal(await sessions.markInterruptedAll(at), 0);
+    });
+
+    await test("create interrupts every stale active row of the user, more than one batch, before it opens", async () => {
+        const h = harness();
+        h.connections.seed(connection(1, "twitch"));
+        const stale = [];
+        for (let index = 0; index < 25; index++) {
+            stale.push(await h.sessions.create({ userId: 1, connectionId: null, platform: "twitch", settings: INPUT, viewKeyHash: index.toString(16).padStart(64, "a"), startedAt: new Date(START - (index + 1) * 60_000) }));
+        }
+        const other = await h.sessions.create({ userId: 2, connectionId: null, platform: "twitch", settings: INPUT, viewKeyHash: "b".repeat(64), startedAt: new Date(START) });
+        const { session } = await createSession(h.deps, { userId: 1, settings: INPUT });
+        for (const row of stale) assert.equal((await h.sessions.findById(row.id))?.status, "interrupted", "every stale row is interrupted");
+        const active = h.sessions.rows.filter((row) => row.userId === 1 && row.status === "active");
+        assert.deepEqual(active.map((row) => row.id), [session.id], "exactly one active row: the new one");
+        assert.equal((await h.sessions.findById(other.id))?.status, "active", "rows of other users are untouched");
+    });
+
+    await test("create refuses rather than opening a second active row when a stale row will not flip", async () => {
+        const base = createMemoryStreamSessionStore();
+        const sessions: MemoryStreamSessionStore = { ...base, markInterrupted: async () => null };
+        const h = harness({ sessions });
+        h.connections.seed(connection(1, "twitch"));
+        await sessions.create({ userId: 1, connectionId: null, platform: "twitch", settings: INPUT, viewKeyHash: "c".repeat(64), startedAt: new Date(START - HOUR) });
+        await assert.rejects(() => createSession(h.deps, { userId: 1, settings: INPUT }));
+        assert.equal(base.rows.filter((row) => row.status === "active").length, 1, "no second active row");
+        assert.equal(h.runtime.forUser(1), null);
+    });
+
+    await test("currentSession: an interrupted row is shown for 24 h after it ended, then no longer", async () => {
+        assert.equal(INTERRUPTED_NOTICE_TTL_MS, 24 * 60 * 60 * 1000);
+        const cases: Array<[string, number | null, number, boolean]> = [
+            ["ended exactly 24 h ago", START - INTERRUPTED_NOTICE_TTL_MS, START - 2 * INTERRUPTED_NOTICE_TTL_MS, true],
+            ["ended 24 h and 1 ms ago", START - INTERRUPTED_NOTICE_TTL_MS - 1, START - 2 * INTERRUPTED_NOTICE_TTL_MS, false],
+            ["no end time, started exactly 24 h ago", null, START - INTERRUPTED_NOTICE_TTL_MS, true],
+            ["no end time, started 24 h and 1 ms ago", null, START - INTERRUPTED_NOTICE_TTL_MS - 1, false],
+            ["ended 1 min ago after starting days ago", START - 60_000, START - 5 * INTERRUPTED_NOTICE_TTL_MS, true],
+        ];
+        for (const [label, endedAt, startedAt, shown] of cases) {
+            const h = harness();
+            const row = await h.sessions.create({ userId: 1, connectionId: null, platform: "twitch", settings: INPUT, viewKeyHash: "d".repeat(64), startedAt: new Date(startedAt) });
+            await h.sessions.update(row.id, { status: "interrupted", endedAt: endedAt === null ? null : new Date(endedAt) });
+            const current = await currentSession(h.deps, 1);
+            if (shown) {
+                assert.equal(current?.id, row.id, label);
+                assert.equal(current?.interrupted, true, label);
+            } else {
+                assert.equal(current, null, `${label}: the panel shows the setup form`);
+            }
+        }
+        // A row interrupted right now (a stale active one) is always shown.
+        const h = harness();
+        const old = await h.sessions.create({ userId: 1, connectionId: null, platform: "twitch", settings: INPUT, viewKeyHash: "e".repeat(64), startedAt: new Date(START - 3 * INTERRUPTED_NOTICE_TTL_MS) });
+        assert.equal((await currentSession(h.deps, 1))?.id, old.id);
+    });
+
+    await test("an unreadable stored settings or summary reads as null and is reported once per row (session id only)", async () => {
+        const h = harness();
+        const row = await h.sessions.create({ userId: 1, connectionId: null, platform: "twitch", settings: { theme: "GIZLI-AYAR" }, viewKeyHash: "f".repeat(64), startedAt: new Date(START - HOUR) });
+        await h.sessions.update(row.id, { status: "interrupted", endedAt: new Date(START - 60_000), summary: { scores: "GIZLI-ISIM" } as never });
+        for (let read = 0; read < 3; read++) {
+            const view = await currentSession(h.deps, 1);
+            assert.equal(view?.id, row.id);
+            assert.equal(view?.settings, null);
+            assert.equal(view?.summary, null);
+        }
+        assert.equal(h.errors.length, 1, "one report for the row, however often it is read");
+        const [report] = h.errors;
+        assert.equal(report.event, "streamer_session.row_unreadable");
+        assert.deepEqual(report.context, { sessionId: row.id });
+        const text = `${JSON.stringify(report)} ${(report.error as Error).message}`;
+        assert.ok(!text.includes("GIZLI"), "the report carries no stored content");
+        // A row whose summary is simply not written yet is no unreadable row.
+        const fresh = harness();
+        await opened(fresh);
+        assert.equal((await currentSession(fresh.deps, 1))?.summary, null);
+        assert.deepEqual(fresh.errors, []);
+    });
+
+    await test("session failures reach observability with the session id (as streamId) and no row content", async () => {
+        const lines: string[] = [];
+        resetObservabilityForTests({ sink: (_level, line) => lines.push(line) });
+        try {
+            const id = "00000000-0000-4000-8000-0000000000a1";
+            reportStreamerSessionError("streamer_session.round_result_failed", new Error("db down"), { sessionId: id });
+            const event = JSON.parse(lines[0]) as { event: string; level: string; context?: Record<string, unknown> };
+            assert.equal(event.event, "streamer_session.round_result_failed");
+            assert.equal(event.level, "error");
+            assert.deepEqual(event.context, { streamId: id }, "the session id survives the sanitizer");
+            // Without a reporter of its own, toSessionView reports an unreadable row on this path.
+            const store = createMemoryStreamSessionStore();
+            const row = await store.create({ userId: 7, connectionId: null, platform: "kick", settings: { theme: "GIZLI-AYAR" }, viewKeyHash: "9".repeat(64), startedAt: new Date(START) });
+            assert.equal(toSessionView(row).settings, null);
+            assert.equal(toSessionView(row).settings, null);
+            const reported = lines.slice(1).map((line) => JSON.parse(line) as { event: string; context?: Record<string, unknown> });
+            assert.equal(reported.length, 1, "once per row");
+            assert.equal(reported[0].event, "streamer_session.row_unreadable");
+            assert.deepEqual(reported[0].context, { streamId: row.id });
+            assert.ok(!lines.join("\n").includes("GIZLI"), "no stored content reaches observability");
+        } finally {
+            resetObservabilityForTests();
+        }
     });
 
     await test("session views never carry the view key hash", async () => {
@@ -960,8 +1526,24 @@ async function main(): Promise<void> {
         const h = harness({ tickMs: 5 });
         const { session } = await opened(h);
         await h.runtime.start(session.id);
+        // Resolved by the emit of the interval's tick: no fixed wait. The runtime's interval is
+        // unref'd, so a bound (that only fires on failure) keeps the process up meanwhile.
+        const finished = deferred();
+        h.runtime.setEmitter((sessionId, kind, payload) => {
+            h.emitted.push({ sessionId, kind, payload });
+            if (payload.phase === "finished") finished.resolve();
+        });
+        let watchdog: ReturnType<typeof setTimeout> | undefined;
+        const bound = new Promise<never>((_, reject) => {
+            watchdog = setTimeout(() => reject(new Error("the interval never ticked the round to its end")), 10_000);
+        });
         h.advance(60_000);
-        await new Promise((resolve) => setTimeout(resolve, 60));
+        try {
+            await Promise.race([finished.promise, bound]);
+        } finally {
+            clearTimeout(watchdog);
+        }
+        await h.runtime.flush();
         assert.equal(h.runtime.get(session.id)?.phase, "finished");
         assert.equal(h.sessions.results[0]?.outcome, "timeout");
     });

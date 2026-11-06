@@ -5,7 +5,6 @@ import {
     hostSnapshot,
     pause,
     publicSnapshot,
-    ranking,
     resume,
     skipRound,
     tick,
@@ -18,8 +17,18 @@ import {
     type StreamSessionState,
 } from "@hushle/domain-streamer";
 import type { StreamerPlatform } from "@hushle/platform-streamer";
+import { isStreamerSessionError, StreamerSessionError } from "./session-errors";
+import {
+    createStreamerSessionPersistence,
+    markRound,
+    roundResultOf,
+    sessionSummary,
+    type RoundMark,
+    type StreamerErrorReporter,
+} from "./session-persistence";
 import {
     createSessionInputSchema,
+    resolvedScreenPatchSchema,
     screenPatchFields,
     screenPatchInput,
     wordFiltersOf,
@@ -27,60 +36,21 @@ import {
     type ResolvedScreenPatch,
     type WordFilters,
 } from "./session-settings";
-import type {
-    StreamRoundOutcomeValue,
-    StreamSessionRecord,
-    StreamSessionStore,
-    StreamSessionSummary,
-} from "./session-store";
+import type { StreamSessionRecord, StreamSessionStore, StreamSessionSummary } from "./session-store";
 import { createViewKey } from "./view-key";
 
 // Live stream sessions of this process (single realtime replica, ADR-003). The runtime is the
 // only writer of a session's game state: every action runs on the session's own queue, ticks
-// once a second, persists each finished round and re-emits the host and public projections.
+// once a second and re-emits the host and public projections. Its writes (each finished round,
+// the session row) go to a per-session chain the queue never waits on (session-persistence.ts).
+
+export { STREAM_PERSIST_DRAIN_TIMEOUT_MS, SUMMARY_SCORE_LIMIT, type StreamerErrorReporter } from "./session-persistence";
+export { isStreamerSessionError, STREAMER_SESSION_ERROR_CODES, StreamerSessionError, type StreamerSessionErrorCode } from "./session-errors";
 
 export const STREAM_TICK_MS = 1_000;
 export const STREAM_SESSION_IDLE_TIMEOUT_MS = 6 * 3_600_000;
-export const SUMMARY_SCORE_LIMIT = 10;
 // Phase 2 has no chat adapters yet; the stream screen always reads as connected.
 const SNAPSHOT_OPTIONS = { connected: true } as const;
-
-export const STREAMER_SESSION_ERROR_CODES = [
-    "session_active",
-    "connection_required",
-    "not_found",
-    "invalid_phase",
-    "word_source_empty",
-    "card_not_allowed",
-    "card_catalogue_unavailable",
-] as const;
-
-export type StreamerSessionErrorCode = (typeof STREAMER_SESSION_ERROR_CODES)[number];
-
-// The custom server and the Next route bundles each load this module, so a route can catch an
-// error built from the other copy of this class: `instanceof` fails across copies, a
-// registry symbol does not. Check errors with `isStreamerSessionError`.
-const STREAMER_SESSION_ERROR_BRAND = Symbol.for("hushle.streamer-session-error");
-
-export class StreamerSessionError extends Error {
-    readonly code: StreamerSessionErrorCode;
-
-    constructor(code: StreamerSessionErrorCode, message?: string) {
-        super(message ?? `streamer session: ${code}`);
-        this.name = "StreamerSessionError";
-        this.code = code;
-        Object.defineProperty(this, STREAMER_SESSION_ERROR_BRAND, { value: true });
-    }
-}
-
-export function isStreamerSessionError(error: unknown): error is StreamerSessionError {
-    if (typeof error !== "object" || error === null) return false;
-    const code = Reflect.get(error, "code");
-    return (
-        Reflect.get(error, STREAMER_SESSION_ERROR_BRAND) === true &&
-        STREAMER_SESSION_ERROR_CODES.includes(code as StreamerSessionErrorCode)
-    );
-}
 
 export interface WordSource {
     /** The next card of the pool (it cycles once every word was drawn); null when no word matches at all. */
@@ -116,9 +86,12 @@ export interface StreamerSessionRuntimeDeps {
     now?: () => number;
     emit?: StreamerEmitter;
     onEnded?: StreamerEndedListener;
-    onError?: (event: string, error: unknown) => void;
+    /** Failures that reach no caller; `context` names the session when there is one. */
+    onError?: StreamerErrorReporter;
     tickMs?: number;
     idleTimeoutMs?: number;
+    /** How long end, idle and stop wait for a session's pending writes (STREAM_PERSIST_DRAIN_TIMEOUT_MS). */
+    drainTimeoutMs?: number;
 }
 
 export interface StreamerSessionRuntime {
@@ -136,6 +109,8 @@ export interface StreamerSessionRuntime {
     rotateViewKey(sessionId: string): Promise<{ viewKey: string }>;
     /** Ticks every live session now (the interval does this on its own; tests call it directly). */
     tickAll(now?: number): Promise<void>;
+    /** Waits until the writes queued so far landed or failed (bounded per session); tests read the store after it. */
+    flush(): Promise<void>;
     setEmitter(emit: StreamerEmitter): void;
     setOnEnded(listener: StreamerEndedListener): void;
     setOnViewKeyRotated(listener: (sessionId: string) => void): void;
@@ -152,44 +127,17 @@ interface SessionEntry {
     input: CreateSessionInput;
     state: StreamSessionState;
     revision: number;
+    /** Round results written so far: bumped only once a result row is stored. */
     roundCount: number;
+    /** The last host action or guess the round took; chat that was not taken never counts. */
     lastActivityAt: number;
     timer: ReturnType<typeof setInterval> | null;
     queue: Promise<unknown>;
     closed: boolean;
 }
 
-/** The round a mutation started from, to tell whether that round ended and how. */
-interface RoundMark {
-    phase: StreamPhase;
-    round: number;
-    startedAt: number;
-    card: StreamCard | null;
-}
-
 export function streamerPoolKey(sessionId: string): string {
     return `streamer:${sessionId}`;
-}
-
-function markRound(state: StreamSessionState): RoundMark {
-    return { phase: state.phase, round: state.round, startedAt: state.roundStartedAt, card: state.card };
-}
-
-function roundOutcome(before: RoundMark, state: StreamSessionState, passed: boolean): StreamRoundOutcomeValue | null {
-    if (before.phase !== "running" && before.phase !== "paused") return null;
-    if (passed) return "passed";
-    if (state.phase !== "finished" || state.round !== before.round) return null;
-    return state.lastCorrect?.round === before.round ? "solved" : "timeout";
-}
-
-function summarize(entry: SessionEntry): StreamSessionSummary {
-    return {
-        scores: ranking(entry.state)
-            .slice(0, SUMMARY_SCORE_LIMIT)
-            .map(({ name, points, rank, tied }) => ({ name, points, rank, tied })),
-        participants: entry.state.participants,
-        rounds: entry.roundCount,
-    };
 }
 
 function invalidPhase(): StreamerSessionError {
@@ -200,27 +148,21 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     const clock = deps.now ?? Date.now;
     const tickMs = deps.tickMs ?? STREAM_TICK_MS;
     const idleTimeoutMs = deps.idleTimeoutMs ?? STREAM_SESSION_IDLE_TIMEOUT_MS;
-    const onError = deps.onError ?? ((event: string, error: unknown) => console.error(event, error));
+    const onError: StreamerErrorReporter =
+        deps.onError ?? ((event, error, context) => console.error(event, context?.sessionId ?? "", error));
     let emit: StreamerEmitter = deps.emit ?? (() => undefined);
     let onEnded: StreamerEndedListener = deps.onEnded ?? (() => undefined);
     let onViewKeyRotated: (sessionId: string) => void = () => undefined;
     const entries = new Map<string, SessionEntry>();
+    const writes = createStreamerSessionPersistence({ store: deps.store, report: onError, drainTimeoutMs: deps.drainTimeoutMs });
 
     // ------------------------------------------------------------ plumbing
 
-    function guarded(event: string, run: () => void): void {
+    function guarded(event: string, sessionId: string, run: () => void): void {
         try {
             run();
         } catch (error) {
-            onError(event, error);
-        }
-    }
-
-    async function persist(event: string, run: () => Promise<unknown>): Promise<void> {
-        try {
-            await run();
-        } catch (error) {
-            onError(event, error);
+            onError(event, error, { sessionId });
         }
     }
 
@@ -241,11 +183,11 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         entry.revision += 1;
         const host = hostSnapshot(entry.state, entry.revision, undefined, SNAPSHOT_OPTIONS);
         const pub = publicSnapshot(entry.state, entry.revision, SNAPSHOT_OPTIONS);
-        guarded("streamer_session.emit_failed", () => emit(entry.id, "host", host));
-        guarded("streamer_session.emit_failed", () => emit(entry.id, "public", pub));
+        guarded("streamer_session.emit_failed", entry.id, () => emit(entry.id, "host", host));
+        guarded("streamer_session.emit_failed", entry.id, () => emit(entry.id, "public", pub));
     }
 
-    // One action at a time per session: draws and writes are async, the state machine is not.
+    // One action at a time per session: draws are async, the state machine is not.
     function run<T>(sessionId: string, task: (entry: SessionEntry, now: number) => Promise<T>): Promise<T> {
         const entry = entries.get(sessionId);
         if (!entry || entry.closed) return Promise.reject(new StreamerSessionError("not_found"));
@@ -260,7 +202,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     function hostAction<T>(sessionId: string, task: (entry: SessionEntry, now: number) => Promise<T>): Promise<T> {
         return run(sessionId, async (entry, now) => {
             entry.lastActivityAt = now;
-            await catchUp(entry, now);
+            catchUp(entry, now);
             return task(entry, now);
         });
     }
@@ -270,9 +212,9 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         entry.timer = null;
     }
 
-    function reportTick(error: unknown): void {
+    function reportTick(sessionId: string, error: unknown): void {
         if (isStreamerSessionError(error) && error.code === "not_found") return;
-        onError("streamer_session.tick_failed", error);
+        onError("streamer_session.tick_failed", error, { sessionId });
     }
 
     // (Re)starts the session's 1 s tick so it lines up with the round clock just set.
@@ -280,7 +222,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         clearTimer(entry);
         if (entry.closed) return;
         const timer = setInterval(() => {
-            run(entry.id, tickEntry).catch(reportTick);
+            run(entry.id, tickEntry).catch((error: unknown) => reportTick(entry.id, error));
         }, tickMs);
         timer.unref?.();
         entry.timer = timer;
@@ -288,43 +230,20 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
 
     // ------------------------------------------------------------ rounds
 
-    async function recordRound(entry: SessionEntry, before: RoundMark, now: number, passed: boolean): Promise<void> {
-        const outcome = roundOutcome(before, entry.state, passed);
-        if (!outcome) return;
-        entry.roundCount += 1;
-        const winner = outcome === "solved" ? entry.state.winner : null;
-        const result = {
-            sessionId: entry.id,
-            round: before.round,
-            wordId: before.card?.wordId ?? null,
-            outcome,
-            // Player ids are "<platform>:<platform user id>"; the column keeps the platform's id.
-            winnerPlatformUserId: winner ? winner.id.slice(winner.id.indexOf(":") + 1) : null,
-            winnerName: winner?.name ?? null,
-            solveMs: outcome === "solved" ? (entry.state.lastCorrect?.solveMs ?? null) : null,
-            startedAt: new Date(before.startedAt),
-            endedAt: new Date(now),
-        };
-        const roundCount = entry.roundCount;
-        await persist("streamer_session.round_result_failed", async () => {
-            await deps.store.addRoundResult(result);
-            await deps.store.update(entry.id, { roundCount });
-        });
-    }
-
-    /** Emits the new state, then records the round `before` belonged to if it just ended. */
-    async function settle(entry: SessionEntry, before: RoundMark, now: number, passed = false): Promise<void> {
+    /** Emits the new state, then queues the result of the round `before` belonged to if it just ended. */
+    function settle(entry: SessionEntry, before: RoundMark, now: number, passed = false): void {
         emitState(entry);
-        await recordRound(entry, before, now, passed);
+        const result = roundResultOf(entry.id, before, entry.state, now, passed);
+        if (result) void writes.roundResult(result, () => (entry.roundCount += 1));
     }
 
     /** Brings a running round up to `now`; a round that ran out of time is settled. True when only the clock moved. */
-    async function catchUp(entry: SessionEntry, now: number): Promise<boolean> {
+    function catchUp(entry: SessionEntry, now: number): boolean {
         if (entry.state.phase !== "running") return false;
         const before = markRound(entry.state);
         const changed = tick(entry.state, now);
         if (entry.state.phase === before.phase) return changed;
-        await settle(entry, before, now);
+        settle(entry, before, now);
         return false;
     }
 
@@ -333,7 +252,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             await finish(entry, "idle", now);
             return;
         }
-        if (await catchUp(entry, now)) emitState(entry);
+        if (catchUp(entry, now)) emitState(entry);
     }
 
     async function drawCard(entry: SessionEntry): Promise<StreamCard> {
@@ -356,19 +275,22 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     // ------------------------------------------------------------ session end
 
     async function finish(entry: SessionEntry, reason: StreamSessionEndReason, now: number): Promise<StreamSessionSummary> {
-        await catchUp(entry, now);
+        catchUp(entry, now);
         endSession(entry.state, now);
-        const summary = summarize(entry);
         entry.closed = true;
         clearTimer(entry);
         emitState(entry);
-        await persist("streamer_session.end_failed", () =>
-            deps.store.update(entry.id, { status: "ended", endedAt: new Date(now), summary, roundCount: entry.roundCount }),
-        );
-        guarded("streamer_session.pool_clear_failed", () => deps.wordSource.clear(entry.poolKey));
+        // The summary counts the rounds whose results were written: the queued writes land first.
+        await writes.finalWrite(entry.id, "streamer_session.end_failed", () => ({
+            status: "ended",
+            endedAt: new Date(now),
+            summary: sessionSummary(entry.state, entry.roundCount),
+            roundCount: entry.roundCount,
+        }));
+        guarded("streamer_session.pool_clear_failed", entry.id, () => deps.wordSource.clear(entry.poolKey));
         entries.delete(entry.id);
-        guarded("streamer_session.on_ended_failed", () => onEnded(entry.id, reason));
-        return summary;
+        guarded("streamer_session.on_ended_failed", entry.id, () => onEnded(entry.id, reason));
+        return sessionSummary(entry.state, entry.roundCount);
     }
 
     // ------------------------------------------------------------ API
@@ -423,55 +345,64 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                 emitState(entry);
             }),
         pass: (sessionId) =>
-            hostAction(sessionId, async (entry) => {
+            hostAction(sessionId, async (entry, now) => {
+                // The clock came first (hostAction): a pass after the deadline found the round timed
+                // out, already recorded, and is refused here without drawing a card.
                 if (entry.state.phase !== "running" && entry.state.phase !== "paused") throw invalidPhase();
+                // No next card: refused before anything changed, the round keeps its card.
                 const card = await drawCard(entry);
-                const at = clock();
                 const before = markRound(entry.state);
-                if (!skipRound(entry.state, at, card)) {
-                    // The clock ran out while the next card was drawn: that round timed out instead.
-                    if (entry.state.phase !== before.phase) await settle(entry, before, at);
-                    throw invalidPhase();
-                }
+                // Judged at `now`, when the pass was handled: one in time keeps the card it drew even
+                // if the deadline went by while the card was drawn.
+                if (!skipRound(entry.state, now, card)) throw invalidPhase();
                 align(entry);
-                await settle(entry, before, at, true);
+                settle(entry, before, now, true);
             }),
         end: (sessionId, reason) => run(sessionId, (entry, now) => finish(entry, reason, now)),
         applySettings: (sessionId, patch) =>
             hostAction(sessionId, async (entry) => {
-                const fields = screenPatchFields(patch);
-                entry.state.settings = { ...entry.state.settings, ...fields };
-                entry.input = { ...entry.input, ...screenPatchInput(patch) };
+                // The runtime is an API of its own: the patch is checked here, not only by the socket.
+                const parsed = resolvedScreenPatchSchema.safeParse(patch);
+                if (!parsed.success) throw new StreamerSessionError("invalid_settings");
+                entry.state.settings = { ...entry.state.settings, ...screenPatchFields(parsed.data) };
+                entry.input = { ...entry.input, ...screenPatchInput(parsed.data) };
                 emitState(entry);
                 const settings = entry.input;
-                await persist("streamer_session.settings_failed", () => deps.store.update(entry.id, { settings }));
+                void writes.write(entry.id, "streamer_session.settings_failed", () => deps.store.update(entry.id, { settings }));
             }),
         guess: (sessionId, guess) =>
             run(sessionId, async (entry, now) => {
-                entry.lastActivityAt = now;
                 // acceptGuess ticks first, so a round that just ran out settles as a timeout here.
                 const before = markRound(entry.state);
                 const participants = entry.state.participants;
                 const result = acceptGuess(entry.state, guess, now);
+                // Only a guess the round took is activity: closed, stale, duplicate or invalid chat
+                // never keeps a session open past the idle limit.
+                if (result === "wrong" || result === "correct") entry.lastActivityAt = now;
                 if (entry.state.phase !== before.phase || entry.state.participants !== participants) {
-                    await settle(entry, before, now);
+                    settle(entry, before, now);
                 }
                 return result;
             }),
-        rotateViewKey: (sessionId) =>
-            hostAction(sessionId, async (entry) => {
-                const { viewKey, hash } = createViewKey();
-                // A failed write leaves the old key valid, so the error reaches the caller.
-                await deps.store.update(entry.id, { viewKeyHash: hash });
-                entry.viewKeyHash = hash;
-                guarded("streamer_session.on_view_key_rotated_failed", () => onViewKeyRotated(entry.id));
-                emitState(entry);
-                return { viewKey };
-            }),
+        async rotateViewKey(sessionId) {
+            const entry = await hostAction(sessionId, async (live) => live);
+            const { viewKey, hash } = createViewKey();
+            // The key is handed out only once stored: a failed write leaves the old key valid and
+            // reaches the caller. The write takes its turn among the session's writes, off its queue.
+            await writes.request(entry.id, () => deps.store.update(entry.id, { viewKeyHash: hash }));
+            if (entry.closed) throw new StreamerSessionError("not_found");
+            entry.viewKeyHash = hash;
+            guarded("streamer_session.on_view_key_rotated_failed", entry.id, () => onViewKeyRotated(entry.id));
+            emitState(entry);
+            return { viewKey };
+        },
         async tickAll(at) {
             const ids = [...entries.keys()];
-            await Promise.all(ids.map((id) => run(id, (entry, now) => tickEntry(entry, at ?? now)).catch(reportTick)));
+            await Promise.all(
+                ids.map((id) => run(id, (entry, now) => tickEntry(entry, at ?? now)).catch((error: unknown) => reportTick(id, error))),
+            );
         },
+        flush: () => writes.drainAll(),
         setEmitter(next) {
             emit = next;
         },
@@ -489,16 +420,16 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             }
             await Promise.all(open.map((entry) => entry.queue));
             const endedAt = new Date(clock());
-            for (const entry of open) {
-                clearTimer(entry);
-                // An end that was already running has removed its entry and written `ended`.
-                if (entries.get(entry.id) !== entry) continue;
-                entries.delete(entry.id);
-                await persist("streamer_session.stop_failed", () =>
-                    deps.store.update(entry.id, { status: "interrupted", endedAt, roundCount: entry.roundCount }),
-                );
-                guarded("streamer_session.pool_clear_failed", () => deps.wordSource.clear(entry.poolKey));
-            }
+            await Promise.all(
+                open.map(async (entry) => {
+                    clearTimer(entry);
+                    // An end that was already running has removed its entry and written `ended`.
+                    if (entries.get(entry.id) !== entry) return;
+                    entries.delete(entry.id);
+                    await writes.finalWrite(entry.id, "streamer_session.stop_failed", () => ({ status: "interrupted", endedAt, roundCount: entry.roundCount }));
+                    guarded("streamer_session.pool_clear_failed", entry.id, () => deps.wordSource.clear(entry.poolKey));
+                }),
+            );
         },
     };
 }
