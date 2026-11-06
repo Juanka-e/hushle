@@ -240,14 +240,14 @@ function holdingStore(base: MemoryStreamSessionStore = createMemoryStreamSession
 function manualTimers(start = 0) {
     let now = start;
     let sequence = 0;
-    const timeouts = new Map<number, { run: () => void; ms: number }>();
+    const timeouts = new Map<number, { run: () => void; ms: number; at: number }>();
     const intervals = new Map<number, { run: () => void; ms: number }>();
     const requested: number[] = [];
     const timers: StreamerTimers = {
         now: () => now,
         setTimeout(run, ms) {
             requested.push(ms);
-            timeouts.set(++sequence, { run, ms });
+            timeouts.set(++sequence, { run, ms, at: now + ms });
             return sequence;
         },
         clearTimeout(handle) {
@@ -272,6 +272,15 @@ function manualTimers(start = 0) {
         /** Runs every pending timeout once (each is removed first). */
         fireTimeouts() {
             const due = [...timeouts.entries()];
+            for (const [handle, { run }] of due) {
+                timeouts.delete(handle);
+                run();
+            }
+        },
+        /** Moves the clock by `ms` and runs the timeouts now due, earliest first. */
+        elapse(ms: number) {
+            now += ms;
+            const due = [...timeouts.entries()].filter(([, timeout]) => timeout.at <= now).sort((a, b) => a[1].at - b[1].at);
             for (const [handle, { run }] of due) {
                 timeouts.delete(handle);
                 run();
@@ -2183,6 +2192,81 @@ async function main(): Promise<void> {
         await rejectsWith(() => starting, "not_found");
         assert.equal(h.emitted.length, emitted, "nothing is emitted for a stopped session");
         assert.equal(clock.intervals.size, 0);
+    });
+
+    /** A harness whose end write (status ended) waits for `releaseEnd()`; `reached` once it began. */
+    async function slowEndWrite() {
+        const clock = manualTimers();
+        const base = createMemoryStreamSessionStore();
+        const gate = deferred();
+        let reached = false;
+        const sessions: MemoryStreamSessionStore = {
+            ...base,
+            async update(id, patch) {
+                if (patch.status === "ended") {
+                    reached = true;
+                    await gate.promise;
+                }
+                return base.update(id, patch);
+            },
+        };
+        const h = harness({ sessions, timers: clock.timers, drainTimeoutMs: 10_000 });
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct");
+        await h.runtime.flush();
+        return { clock, h, session, reached: () => reached, releaseEnd: () => gate.resolve() };
+    }
+
+    await test("stop: an end already writing its final row finishes first: ended with its summary, the rooms hear ended, within the bound", async () => {
+        const { clock, h, session, reached, releaseEnd } = await slowEndWrite();
+        const ending = h.runtime.end(session.id, "ended");
+        await eventually(reached, "the end's final write began");
+        assert.equal(h.runtime.get(session.id), null, "a closing session is no live session");
+        assert.equal(h.runtime.forUser(1), null);
+        const stopping = h.runtime.stop();
+        await turn();
+        assert.equal(await settlesNow(stopping), false, "stop waits for the end that is writing");
+        clock.elapse(3_000);
+        releaseEnd();
+        await stopping;
+        const summary = await ending;
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }], "the rooms hear ended, never interrupted");
+        const row = await h.sessions.findById(session.id);
+        assert.equal(row?.status, "ended");
+        assert.deepEqual(row?.summary, summary);
+        assert.deepEqual(summary, { scores: [{ name: "Luna", points: 1, rank: 1, tied: false }], participants: 1, rounds: 1 });
+        assert.deepEqual(h.errors, []);
+    });
+
+    await test("stop: an end whose final write never lands still lets stop resolve within the bound", async () => {
+        const { clock, h, session, reached } = await slowEndWrite();
+        const ending = h.runtime.end(session.id, "ended");
+        await eventually(reached, "the end's final write began");
+        const stopping = h.runtime.stop();
+        await turn();
+        assert.equal(await settlesNow(stopping), false);
+        clock.elapse(10_000);
+        await stopping;
+        await ending;
+        assert.deepEqual(h.ended, [{ sessionId: session.id, reason: "ended" }], "the end told the rooms once its own bound passed");
+        assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.persist_drain_timeout"]);
+        assert.equal((await h.sessions.findById(session.id))?.status, "active", "the write never landed: boot reconciliation interrupts the row");
+    });
+
+    await test("a closing session keeps its id: it cannot be opened again while its final write runs; another session of the user can", async () => {
+        const { h, session, reached, releaseEnd } = await slowEndWrite();
+        const ending = h.runtime.end(session.id, "ended");
+        await eventually(reached, "the end's final write began");
+        const row = await h.sessions.findById(session.id);
+        assert.ok(row);
+        assert.throws(() => h.runtime.open(row, createStreamSession(toScreenSettings(INPUT, null), START)), (error: unknown) => isStreamerSessionError(error) && error.code === "session_active");
+        // As before the closing map: only live sessions count for the one-session-per-user rule.
+        const next = await h.sessions.create({ userId: 1, connectionId: null, platform: "twitch", settings: INPUT, viewKeyHash: "8".repeat(64), startedAt: new Date(START) });
+        assert.ok(h.runtime.open(next, createStreamSession(toScreenSettings(INPUT, null), START)));
+        releaseEnd();
+        await ending;
+        await h.runtime.end(next.id, "ended");
     });
 
     await test("end: behind a stuck host action an outside end answers busy after the drain bound; the session's queue still ends it", async () => {

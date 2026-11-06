@@ -52,21 +52,13 @@ import { createViewKey } from "./view-key";
 
 export { STREAM_PERSIST_DRAIN_TIMEOUT_MS, SUMMARY_SCORE_LIMIT, type StreamerErrorReporter } from "./session-persistence";
 export { isStreamerSessionError, STREAMER_SESSION_ERROR_CODES, StreamerSessionError, type StreamerSessionErrorCode } from "./session-errors";
-export {
-    STREAM_CONNECTION_CHECK_MS,
-    STREAMER_MODE_CHECK_MS,
-    type ConnectionCheck,
-    type ConnectionChecker,
-    type SessionConnection,
-    type StreamerModeState,
-} from "./session-watch";
+export { STREAM_CONNECTION_CHECK_MS, STREAMER_MODE_CHECK_MS, type ConnectionCheck, type ConnectionChecker, type SessionConnection, type StreamerModeState } from "./session-watch";
 export type * from "./session-runtime-types";
 
 export const STREAM_TICK_MS = 1_000;
 export const STREAM_SESSION_IDLE_TIMEOUT_MS = 6 * 3_600_000;
 // Phase 2 has no chat adapters yet; the stream screen always reads as connected.
 const SNAPSHOT_OPTIONS = { connected: true } as const;
-
 
 interface SessionEntry {
     id: string;
@@ -87,13 +79,8 @@ interface SessionEntry {
     closed: boolean;
 }
 
-export function streamerPoolKey(sessionId: string): string {
-    return `streamer:${sessionId}`;
-}
-
-function invalidPhase(): StreamerSessionError {
-    return new StreamerSessionError("invalid_phase");
-}
+export const streamerPoolKey = (sessionId: string): string => `streamer:${sessionId}`;
+const invalidPhase = (): StreamerSessionError => new StreamerSessionError("invalid_phase");
 
 export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): StreamerSessionRuntime {
     const clock = deps.now ?? Date.now;
@@ -106,6 +93,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     let onViewKeyRotated: (sessionId: string) => void = () => undefined;
     let onHostNotice: StreamerHostNoticeListener = () => undefined;
     const entries = new Map<string, SessionEntry>();
+    // Sessions whose end is writing its final row: no longer live, still awaited by stop().
+    const closing = new Map<string, Promise<unknown>>();
     const timers = deps.timers ?? realStreamerTimers;
     // How long an outside caller (an end, the shutdown) waits for a session's pending action.
     const turnTimeoutMs = deps.drainTimeoutMs ?? STREAM_PERSIST_DRAIN_TIMEOUT_MS;
@@ -239,12 +228,20 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
 
     // ------------------------------------------------------------ session end
 
-    async function finish(entry: SessionEntry, reason: StreamSessionEndReason, now: number): Promise<StreamSessionSummary> {
+    function finish(entry: SessionEntry, reason: StreamSessionEndReason, now: number): Promise<StreamSessionSummary> {
+        const done = close(entry, reason, now);
+        // From live to closing at once: a stop that runs meanwhile awaits this end, never doubles it.
+        entries.delete(entry.id);
+        closing.set(entry.id, done);
+        const settled = () => closing.get(entry.id) === done && closing.delete(entry.id);
+        done.then(settled, settled);
+        return done;
+    }
+
+    async function close(entry: SessionEntry, reason: StreamSessionEndReason, now: number): Promise<StreamSessionSummary> {
         catchUp(entry, now);
         endSession(entry.state, now);
         entry.closed = true;
-        // Out of the live set at once: a stop that runs meanwhile leaves this end to finish it.
-        entries.delete(entry.id);
         clearTimer(entry);
         watches.forget(entry.id);
         emitState(entry);
@@ -283,7 +280,9 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
 
     return {
         open(row, state, link) {
-            if (entries.has(row.id) || [...entries.values()].some((entry) => entry.userId === row.userId && !entry.closed)) {
+            // A closing session keeps its id until its final write settled; as before, only live
+            // sessions count for the one-session-per-user rule.
+            if (entries.has(row.id) || closing.has(row.id) || [...entries.values()].some((entry) => entry.userId === row.userId && !entry.closed)) {
                 throw new StreamerSessionError("session_active");
             }
             const now = clock();
@@ -420,10 +419,12 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                 entry.closed = true;
                 clearTimer(entry);
             }
-            // Shutdown waits for pending actions at most the bound, then goes on: it must reach io.close.
+            // Shutdown waits for pending actions and for the ends already writing (their rooms hear
+            // `ended`), at most the bound, then goes on: it must reach io.close. A closing end
+            // reports its own write timeout.
             const pending = new Set(open);
             for (const entry of open) void entry.queue.then(() => pending.delete(entry));
-            const waited = Promise.all(open.map((entry) => entry.queue));
+            const waited = Promise.all([...open.map((entry) => entry.queue), ...[...closing.values()].map((done) => done.catch(() => undefined))]);
             await withinTurn(timers, turnTimeoutMs, waited, () => false, () => {
                 for (const entry of pending) onError("streamer_session.stop_queue_timeout", new Error("a pending action outlived the stop bound"), { sessionId: entry.id });
             }).catch(() => undefined);
@@ -431,7 +432,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             await Promise.all(
                 open.map(async (entry) => {
                     clearTimer(entry);
-                    // An end that was already running has removed its entry and written `ended`.
+                    // An end that began during the wait moved the entry to `closing`: it writes `ended` itself.
                     if (entries.get(entry.id) !== entry) return;
                     entries.delete(entry.id);
                     // Both rooms hear it before the rows are written: shutdown closes the sockets next.
