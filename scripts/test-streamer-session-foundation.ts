@@ -534,4 +534,29 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     assert.ok(!docs.includes("does\r\nnot send it yet") && !docs.includes("not send it yet"), "the old interrupted note is gone");
 }
 
+// --- Final fix wave: the proxy keeps view keys out of its access log; the app gets time to stop ----
+
+{
+    // nginx/nginx.conf is mounted as conf.d/default.conf, so its top level is inside `http {}`.
+    const nginx = read("nginx/nginx.conf").replace(/\r\n/g, "\n");
+    assert.ok(
+        nginx.includes("\nmap $request_uri $hushle_loggable {\n    ~^/stream/ 0;\n    default 1;\n}\n"),
+        "nginx: a top-level map marks /stream/<view key> requests as not loggable",
+    );
+    const servers = nginx.split(/^server \{$/m).slice(1);
+    assert.equal(servers.length, 2, "nginx: the redirect server and the TLS server");
+    for (const [index, block] of servers.entries()) {
+        const logs = block.match(/^\s*access_log\b.*$/gm) ?? [];
+        assert.deepEqual(logs.map((line) => line.trim()), ["access_log /var/log/nginx/access.log combined if=$hushle_loggable;"], `nginx server ${index + 1}: one access log, conditional`);
+    }
+    assert.ok(servers[1].includes("listen 443 ssl http2;"), "the second server is the TLS one");
+    assert.equal((nginx.match(/\baccess_log\b/g) ?? []).length, 2, "nginx: no other access log");
+    // The app's stop() can take about 20 s (a queue turn, then the final writes, each 10 s at most):
+    // Docker's default 10 s grace would kill a graceful shutdown halfway.
+    const compose = read("docker-compose.yml").replace(/\r\n/g, "\n");
+    const app = compose.slice(compose.indexOf("\n  app:\n"), compose.indexOf("\n  mysql:\n"));
+    assert.ok(app.length > 0 && app.includes("container_name: hushle-app"), "the app service");
+    assert.match(app, /^ {4}stop_grace_period: 30s$/m, "docker-compose: the app service has stop_grace_period: 30s");
+}
+
 console.log("PASS streamer session foundation contract");
