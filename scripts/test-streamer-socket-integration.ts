@@ -346,12 +346,13 @@ async function main(): Promise<void> {
     const linkAnswers = new Map<number, ConnectionCheck>();
     const runtimeErrors: Array<{ event: string; error: unknown }> = [];
     // The runtime's row writes can be held (a database that stops answering) and watched.
-    const writeGate: { held: Promise<void> | null; onUpdate: ((patch: object) => void) | null } = { held: null, onUpdate: null };
+    const writeGate: { held: Promise<void> | null; onUpdate: ((patch: object) => void) | null; failKey: Error | null } = { held: null, onUpdate: null, failKey: null };
     const runtimeStore: typeof sessions = {
         ...sessions,
         async update(id, patch) {
             writeGate.onUpdate?.(patch);
             if (writeGate.held) await writeGate.held;
+            if (writeGate.failKey && patch.viewKeyHash) throw writeGate.failKey;
             return sessions.update(id, patch);
         },
     };
@@ -1228,6 +1229,26 @@ async function main(): Promise<void> {
             assert.equal(blocked(), 1_001);
             blockFor(first);
             assert.equal(blocked(), 1_002, "past 1000 sessions the oldest entry was dropped, so it reports again");
+        });
+
+        await test("a rotate-key whose write fails is reported sanitized: the error name, the Prisma code and a fixed message", async () => {
+            const planted = "PLANTED-hash-fedcba9876543210";
+            limiter.reset();
+            const errorsBefore = socketErrors.length;
+            writeGate.failKey = Object.assign(new Error(`Invalid \`prisma.streamSession.update()\` invocation: { data: { viewKeyHash: "${planted}" } }`), {
+                name: "PrismaClientKnownRequestError",
+                code: "P2002",
+            });
+            try {
+                assertError(await ask(owner, "streamer:host:rotate-key"), "UNKNOWN_ERROR", "a rotation whose write fails");
+            } finally {
+                writeGate.failKey = null;
+            }
+            const reported = socketErrors.slice(errorsBefore);
+            assert.deepEqual(reported.map((entry) => entry.event), ["streamer_socket.host_rotate-key_failed"]);
+            const error = reported[0].error as Error & { code?: string };
+            assert.deepEqual([error.name, error.message, error.code], ["PrismaClientKnownRequestError", "stream session write failed", "P2002"]);
+            assert.ok(!String(error.stack).includes(planted), "the report carries none of the call");
         });
 
         await test("every event is answered exactly once even when the error reporter throws; nothing is left unhandled", async () => {

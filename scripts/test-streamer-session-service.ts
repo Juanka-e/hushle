@@ -2341,8 +2341,12 @@ async function main(): Promise<void> {
         await hourly("valid");
         await hourly("needs_reconnect");
         assert.equal(notices.length, 2, "told again after the link came back and broke again");
-        await hourly(new Error("store down"));
+        // A Prisma validation message can echo the conditional where (a refresh-token ciphertext).
+        await hourly(Object.assign(new Error("Invalid `prisma.streamerConnection.updateMany()` invocation: where: { refreshTokenEnc: \"v1.PLANTED.CIPHER\" }"), { name: "PrismaClientValidationError" }));
         assert.deepEqual(h.errors.map((error) => [error.event, error.context]), [["streamer_session.connection_check_failed", { sessionId: session.id }]]);
+        const checkFailure = h.errors[0].error as Error;
+        assert.deepEqual([checkFailure.name, checkFailure.message], ["PrismaClientValidationError", "streamer connection check failed"]);
+        assert.ok(!String(checkFailure.stack).includes("PLANTED"), "the report carries none of the query");
         // A check still running when the session ends tells nothing, whatever it finds.
         await hourly("valid");
         let answerLate!: (answer: ConnectionCheck) => void;
@@ -2472,6 +2476,49 @@ async function main(): Promise<void> {
         } finally {
             process.env.STREAMER_FAKE_PLATFORM = "1";
         }
+    });
+
+    await test("a key rotation whose write fails answers a sanitized error, on the runtime and through the HTTP route", async () => {
+        const planted = "PLANTED-hash-0123456789abcdef";
+        const base = createMemoryStreamSessionStore();
+        let failing = false;
+        const sessions: MemoryStreamSessionStore = {
+            ...base,
+            async update(id, patch) {
+                if (failing && patch.viewKeyHash) {
+                    throw Object.assign(new Error(`Invalid \`prisma.streamSession.update()\` invocation: { data: { viewKeyHash: "${planted}" } }`), {
+                        name: "PrismaClientKnownRequestError",
+                        code: "P2002",
+                        meta: { target: planted },
+                    });
+                }
+                return base.update(id, patch);
+            },
+        };
+        const h = harness({ sessions });
+        const { session, viewKey } = await opened(h);
+        failing = true;
+        const failure = await h.runtime.rotateViewKey(session.id).then(
+            () => null,
+            (error: unknown) => error as Error & { code?: string },
+        );
+        assert.ok(failure);
+        assert.deepEqual([failure.name, failure.message, failure.code], ["PrismaClientKnownRequestError", "stream session write failed", "P2002"]);
+        assert.ok(!String(failure.stack).includes(planted) && !JSON.stringify(failure).includes(planted), "nothing of the call");
+        assert.equal(h.runtime.get(session.id)?.viewKeyHash, hashViewKey(viewKey), "the old key stays");
+        // The HTTP route logs what reaches it: the sanitized error.
+        const logged: unknown[][] = [];
+        const realConsoleError = console.error;
+        console.error = (...args: unknown[]) => logged.push(args);
+        try {
+            resetRouteWorld(h);
+            const answer = await answerOf(await routes.viewKey.POST(routeRequest("/current/view-key")));
+            assert.deepEqual([answer.status, answer.body?.code], [500, "UNKNOWN_ERROR"]);
+        } finally {
+            console.error = realConsoleError;
+        }
+        assert.equal(logged.length, 1);
+        assert.ok(!logged.flat().map((value) => (value instanceof Error ? `${value.message} ${value.stack}` : String(value))).join(" ").includes(planted), "the route never logs the call's arguments");
     });
 
     await test("routes: origin, then account, then streamer mode, then rate limit, then the work", async () => {

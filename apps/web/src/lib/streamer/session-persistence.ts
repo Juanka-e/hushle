@@ -83,11 +83,12 @@ const SAFE_ERROR_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const PRISMA_ERROR_CODE = /^P\d{4}$/;
 
 /**
- * What a failed store write is reported as: its class name, its Prisma code and a fixed message.
- * A Prisma error's message (and its meta) can echo the call's arguments: settings, summary names.
+ * What a failed store call is reported (or answered) as: its class name, its Prisma code and a
+ * fixed message. A Prisma error's message (and its meta) can echo the call's arguments: settings,
+ * summary names, a view-key hash, a token ciphertext in a conditional where.
  */
-export function storeFailure(error: unknown): Error {
-    const safe = new Error("stream session write failed");
+export function storeFailure(error: unknown, message = "stream session write failed"): Error {
+    const safe = new Error(message);
     const name: unknown = error instanceof Error ? error.name : undefined;
     if (typeof name === "string" && SAFE_ERROR_NAME.test(name)) safe.name = name;
     const code: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "code") : undefined;
@@ -99,7 +100,7 @@ export interface StreamerSessionPersistence {
     /** Queues a write after the session's earlier ones. Never rejects: false once its failure was reported. */
     write(sessionId: string, event: string, run: () => Promise<unknown>): Promise<boolean>;
     /**
-     * Queues a write in the same order whose failure goes to the caller instead (not reported). The
+     * Queues a write in the same order whose failure goes to the caller instead, sanitized (storeFailure), not reported. The
      * caller waits at most the drain bound, then gets `busy`: a write that has not started by then
      * never runs; one that lands later is followed by `undo`, in its turn (a failing undo is reported
      * under `event`).
@@ -199,7 +200,15 @@ export function createStreamerSessionPersistence(deps: StreamerSessionPersistenc
             let abandoned = false;
             const queued = enqueue(sessionId, async () => {
                 if (abandoned) throw new StreamerSessionError("busy");
-                const result = await run();
+                let result: T;
+                try {
+                    result = await run();
+                } catch (error) {
+                    // The caller gets (and may log) the failure: never the call's arguments.
+                    const safe = storeFailure(error);
+                    if (abandoned) report(event, safe, sessionId);
+                    throw safe;
+                }
                 if (abandoned) {
                     try {
                         await undo();

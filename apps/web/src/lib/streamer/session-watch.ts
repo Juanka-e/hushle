@@ -1,5 +1,5 @@
 import type { StreamerPlatform } from "@hushle/platform-streamer";
-import type { StreamerErrorReporter } from "./session-persistence";
+import { storeFailure, type StreamerErrorReporter } from "./session-persistence";
 import type { StreamerTimers } from "./session-timers";
 
 // The checks that run beside the live sessions, off their action queues: the hourly validation of
@@ -77,7 +77,8 @@ export function createStreamerWatches(deps: StreamerWatchesDeps): StreamerWatche
                 deps.onNeedsReconnect(sessionId, connection.platform);
             }
         } catch (error) {
-            report("streamer_session.connection_check_failed", error, sessionId);
+            // A Prisma message can echo the conditional where (a refresh-token ciphertext).
+            report("streamer_session.connection_check_failed", storeFailure(error, "streamer connection check failed"), sessionId);
         } finally {
             watched.checking = false;
         }
