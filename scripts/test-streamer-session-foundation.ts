@@ -305,12 +305,22 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         "kesildiği andan itibaren 24 saat",
         "| `idle` | 6 saat boyunca etkinlik olmaz. |",
         "turun kabul ettiği tahminlerdir (yanlış ya da doğru)",
-        "sunucu anahtarı 15 saniyede bir okur ve okunan değeri 5 saniye saklar; kapalı okununca bütün canlı oturumlar en geç yaklaşık 20 saniye içinde `stopped` ile biter",
-        "canlı oturumu `stopped` ile biter. Bitiş en çok 10 saniye beklenir (son çare sınırı 21 saniye)",
+        "sunucu anahtarı 15 saniyede bir okur ve okunan değeri 5 saniye saklar; bu yüzden admin kapattıktan sonra en geç yaklaşık 20 saniye içinde bütün canlı oturumlar `stopped` ile biter",
+        "Host odasına katılım da, oturumu bitirme dışındaki bütün host olayları da aynı kodu alır",
+        'soket istekleri (paneldeki "Yeni anahtar üret" dahil) reddedilmez',
+        "HTTP üzerinden yeni oturum açma, anahtar yenileme ve test-guess kapalı kabul edilir",
+        "kanal bağlantıları platformda iptal edilir ve aynı anda canlı oturumu `stopped` ile biter",
+        "Bitiş en çok yaklaşık 20 saniye beklenir (sıra beklemesi en çok 10 saniye, son yazma en çok 10 saniye; son çare sınırı 21 saniye)",
+        "panel yenilemenin cevabını 25 saniye bekler",
+        "Anahtar yenilendi mi bilinmiyor. Yeni anahtar üret ve OBS'deki adresi güncelle.",
+        "`stop_grace_period: 30s`",
+        "nginx erişim kaydı `/stream/` adreslerini hiç yazmaz",
+        "Host olay pencereleri süreç başına en çok 10 000 kayıt tutar",
+        "Seçim host odasına yeniden bağlanınca korunur; sayfa yenilenince kart yeniden görünür",
         "| `interrupted` | Sunucu düzgün kapanır (deploy, `SIGTERM` / `SIGINT`). | `interrupted` |",
         "bekleyen işlemler en çok 10 saniye beklenir",
         "açıldığı kanal bağlantısı saatte bir doğrulanır",
-        "30 sn, 60 sn, 120 sn, sonra her 300 sn'de bir",
+        "30 saniye, 60 saniye, 120 saniye, sonra her 300 saniyede bir",
         "kelime havuzu 9,5 saniyede cevap vermezse",
         "Çıkış cihaz başınadır",
         "Anahtar canlı oturumlara geriye dönük uygulanmaz",
@@ -333,8 +343,33 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     ]) {
         assert.ok(section7.includes(needle), `guide section 7 must say: ${needle}`);
     }
-    for (const outdated of ["sunucu tarafında kullanılmış state kaydı yok", "2. aşamada refresh token üzerinden", "2. aşamada uygulanacak", "10 saniyede 10 ile sınırlıdır. Yayın"]) {
+    for (const outdated of [
+        "sunucu tarafında kullanılmış state kaydı yok",
+        "2. aşamada refresh token üzerinden",
+        "2. aşamada uygulanacak",
+        "10 saniyede 10 ile sınırlıdır. Yayın",
+        "kapalı okununca bütün canlı oturumlar",
+        "host katılımı ve oturumu bitirme dışındaki host olayları",
+        "yeni oturum açma ise kapalı kabul edilir",
+        "önce kanal bağlantıları platformda iptal edilir, sonra",
+        "Bitiş en çok 10 saniye beklenir",
+    ]) {
         assert.ok(!guide.replace(/\s+/g, " ").includes(outdated), `the guide no longer says: ${outdated}`);
+    }
+    // One unit word: "saniye", never the abbreviation.
+    assert.doesNotMatch(guide, /(?<![\p{L}\p{N}])sn(?![\p{L}\p{N}])/u, "the guide says saniye, never sn");
+    assert.ok(guide.replace(/\s+/g, " ").includes("Her platform çağrısı en çok 10 saniye bekler; süre dolarsa ağ hatası sayılır."), "§4 names the platform call bound");
+    // The known limits the ledger ruled to document rather than change.
+    assert.match(guide, /^### 8\.10 Bilinen sınırlar\r?$/m);
+    const limits = guide.slice(guide.search(/^### 8\.10 /m)).replace(/\s+/g, " ");
+    for (const needle of [
+        "`/streamer` sayfası ve `GET /api/streamer/sessions` önbellekli ayarları okur",
+        'yenilenen panel, yayın sürse de "Yayıncı modu yakında" der',
+        "yayın ekranına katılım görüntüleme anahtarını veritabanında arar",
+        "veritabanı dönene kadar yeniden dener",
+        "Host odasına yeniden bağlanınca korunur; sayfa yenilenince kart yeniden görünür",
+    ]) {
+        assert.ok(limits.includes(needle), `guide section 8.10 must say: ${needle}`);
     }
     const readme = read("docs/stream/README.md");
     assert.ok(readme.includes("platform-connections-guide.md#8-yayın-oturumu-ve-obs"), "stream README links the phase-2 guide section");

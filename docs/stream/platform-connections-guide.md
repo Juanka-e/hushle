@@ -79,11 +79,12 @@ Diğer yaşam döngüsü olayları:
 
 - Refresh başarısız (`invalid_grant`): token'lar anında silinir, `needs_reconnect` / `refresh_failed`.
 - Platform token uç noktasından 401 (`invalid_client`, yanlış secret) ya da ağ hatası:
-  satır dokunulmaz, hata çağırana iletilir; önce yapılandırmayı düzelt.
+  satır dokunulmaz, hata çağırana iletilir; önce yapılandırmayı düzelt. Her platform çağrısı
+  en çok 10 saniye bekler; süre dolarsa ağ hatası sayılır.
 - Kullanıcı "Kaldır" der: platformda iptal + `revoked` / `user_disconnected`.
 - Askıya alma: admin "suspend" işlemi `revokeStreamerConnectionsForUser` ile kullanıcının
   bütün bağlantılarını platformda iptal eder ve `revoked` / `account_closed` yapar; canlı yayın
-  oturumu da `stopped` ile biter (§8.5).
+  oturumu da aynı anda `stopped` ile biter (§8.5).
 - Hesap silme: yalnız e-postası doğrulanmamış hesaplar bakım işiyle silinir; bu hesaplar
   kanal bağlayamaz (`account_not_active`). Veritabanı cascade satırı siler. İleride tam
   bir hesap silme akışı eklenirse silmeden önce `revokeStreamerConnectionsForUser`
@@ -169,7 +170,7 @@ Gerçek sohbet okuma henüz yok (3. aşama); tahmin kaynağı yalnız geliştirm
 
 ### 8.2 Oturum açma ve OBS adresleri
 
-1. `/streamer` → bağlı kanalı, kelime dilini, kategorileri, tur süresini (30–120 sn),
+1. `/streamer` → bağlı kanalı, kelime dilini, kategorileri, tur süresini (30–120 saniye),
    toleransı (`strict` / `normal`), temayı, kamera yuvasını ve kart arkasını seç, sonra oturumu başlat.
 2. "OBS" kutusu dört adres gösterir. Her biri OBS'de bir Tarayıcı Kaynağı olarak eklenir.
    Anahtar adresin sonundadır ve yalnız oturumu açtığın (ya da anahtarı yenilediğin)
@@ -191,7 +192,8 @@ Ekranının tamamını yayınlıyorsan panel anahtarı ve kartı yayına çıkar
 - "Yeni sekmede önizle" tam ekran adresini yeni bir sekmede açar. Adres sayfadaki hiçbir
   bağlantının içinde durmaz; üstüne gelince tarayıcının durum çubuğunda görünmez.
 - Kart kutusundaki "Kartı gizle" kelimeyi ve yasaklı kelimeleri sayfadan kaldırır; "Kartı göster"
-  geri getirir.
+  geri getirir. Seçim host odasına yeniden bağlanınca korunur; sayfa yenilenince kart yeniden
+  görünür (§8.10).
 
 ### 8.3 Kamera deliği ölçüleri
 
@@ -235,7 +237,11 @@ bunu kullan. Yenileme host odasını etkilemez: panel açık kalır ve oyun sür
 
 Yenileme kullanıcı başına 15 dakikada 10 ile sınırlıdır; panel ve
 `POST /api/streamer/sessions/current/view-key` aynı kotayı paylaşır. Veritabanı yeni anahtarı
-10 saniyede yazamazsa `SERVER_BUSY` döner ve eski anahtar geçerli kalır.
+10 saniyede yazamazsa `SERVER_BUSY` döner ve eski anahtar geçerli kalır. Sunucu cevabı sıra
+beklemesinden (en çok 10 saniye) ve yazmadan (en çok 10 saniye) sonra verebildiği için panel
+yenilemenin cevabını 25 saniye bekler. Cevap yine gelmezse ya da okunamazsa panel adresleri
+gizler, oturumu yeniden okur ve "Anahtar yenilendi mi bilinmiyor. Yeni anahtar üret ve OBS'deki
+adresi güncelle." der.
 
 ### 8.5 Kesinti, boşta kapanma ve bitiş
 
@@ -257,23 +263,28 @@ yeniden bağlanmaz, çevrimdışı sahnesinde kalır.
   gelen, eski, tekrarlanan ya da geçersiz sohbet mesajları ve saat tıkları oturumu açık tutmaz.
 - **Sunucu düzgün kapanırsa:** bekleyen işlemler en çok 10 saniye beklenir; zaten bitmekte olan
   bir oturum `ended` olarak tamamlanır. Kalan oturumlarda iki oda önce `interrupted` alır, sonra
-  satırlar `interrupted` yazılır ve soketler kapanır.
+  satırlar `interrupted` yazılır ve soketler kapanır. Bu yaklaşık 20 saniye sürebilir; bu yüzden
+  `docker-compose.yml` uygulamaya `stop_grace_period: 30s` verir (Docker'ın varsayılanı 10 saniye).
 - **Süreç çökerse:** oturumlar bellekte tutulur (tek web replikası); sonraki açılışta `active`
   kalmış bütün satırlar `interrupted` olur.
 - Panel kesilen oturumu kesildiği andan itibaren 24 saat "Oturum yarıda kesildi" diye gösterir ve
   yeni oturum açmayı önerir; daha eski bir kesinti gösterilmez.
 - **Yayıncı modu kapatılırsa (acil durdurma):** sunucu anahtarı 15 saniyede bir okur ve okunan
-  değeri 5 saniye saklar; kapalı okununca bütün canlı oturumlar en geç yaklaşık 20 saniye içinde
-  `stopped` ile biter. Mod kapalıyken yeni oturum, anahtar yenileme ve test-guess
-  `STREAMER_MODE_DISABLED` (403) alır; host katılımı ve oturumu bitirme dışındaki host olayları da
-  aynı kodu alır; yayın ekranı katılımı yanlış anahtarla aynı yanıtı (`STREAMER_VIEW_KEY_INVALID`)
-  alır. `/streamer` "Yayıncı modu yakında" der. Veritabanı cevap vermezse anahtar "bilinmiyor"
-  sayılır: hiçbir oturum durdurulmaz ve soket istekleri reddedilmez; yeni oturum açma ise kapalı
-  kabul edilir.
-- **Askıya alma:** admin bir kullanıcıyı askıya alınca önce kanal bağlantıları platformda iptal
-  edilir, sonra canlı oturumu `stopped` ile biter. Bitiş en çok 10 saniye beklenir (son çare
-  sınırı 21 saniye): oturum takılı kalsa da audit kaydı yazılır ve oturum kendi sırasında biter.
-  Panel "Yayın oturumu sistem tarafından durduruldu." der.
+  değeri 5 saniye saklar; bu yüzden admin kapattıktan sonra en geç yaklaşık 20 saniye içinde
+  bütün canlı oturumlar `stopped` ile biter. Mod kapalıyken yeni oturum, anahtar yenileme ve
+  test-guess `STREAMER_MODE_DISABLED` (403) alır. Host odasına katılım da, oturumu bitirme
+  dışındaki bütün host olayları da aynı kodu alır; yayın ekranı katılımı yanlış anahtarla aynı
+  yanıtı (`STREAMER_VIEW_KEY_INVALID`) alır. `/streamer` "Yayıncı modu yakında" der.
+- **Veritabanı cevap vermezse:** soket yolu anahtarı "bilinmiyor" sayar: hiçbir oturum
+  durdurulmaz ve soket istekleri (paneldeki "Yeni anahtar üret" dahil) reddedilmez. HTTP uçları
+  ise önbellekli ayarları okur ve ayarlar yedek değere (mod kapalı) düşer; bu yüzden HTTP
+  üzerinden yeni oturum açma, anahtar yenileme ve test-guess kapalı kabul edilir (§8.10).
+- **Askıya alma:** admin bir kullanıcıyı askıya alınca kanal bağlantıları platformda iptal
+  edilir ve aynı anda canlı oturumu `stopped` ile biter; biri gecikse ya da başarısız olsa da
+  öteki ve audit kaydı yapılır. Bitiş en çok yaklaşık 20 saniye beklenir (sıra beklemesi en çok
+  10 saniye, son yazma en çok 10 saniye; son çare sınırı 21 saniye): oturum takılı kalsa da audit
+  kaydı yazılır ve oturum kendi sırasında biter. Panel "Yayın oturumu sistem tarafından
+  durduruldu." der.
 - **Çıkış cihaz başınadır:** çıkış yalnız o cihazın oturum çerezini siler; başka bir cihazda ya da
   açık kalmış bir panel sekmesinde süren yayını durdurmaz. Yayını bitirmek için panelde "Oturumu
   bitir"i kullan. Parola sıfırlama ve e-posta değişikliği ise kullanıcının bütün soketlerini
@@ -289,8 +300,9 @@ yeniden bağlanmaz, çevrimdışı sahnesinde kalır.
 - **Kelime çekimi:** kelime havuzu 9,5 saniyede cevap vermezse "Turu başlat", "Sonraki kart" ve
   "Pas geç" `SERVER_BUSY` alır; oturum olduğu gibi kalır, tekrar denenebilir.
 - **Sürüm yenilemesi:** deploy sunucunun soket protokolünü değiştirdiyse açık OBS sayfası el
-  değmeden kendini yeniler: 30 sn, 60 sn, 120 sn, sonra her 300 sn'de bir, bir bağlantı kabul
-  edilene kadar. Sayaç tarayıcı oturumunda tutulur (yalnız sayı, anahtar değil). Sunucu yeniden
+  değmeden kendini yeniler: 30 saniye, 60 saniye, 120 saniye, sonra her 300 saniyede bir, bir
+  bağlantı kabul edilene kadar. Sayaç tarayıcı oturumunda tutulur (yalnız sayı, anahtar değil).
+  Sunucu yeniden
   başladıysa oturum zaten `interrupted` olduğundan sayfa çevrimdışı kalır; anahtar hâlâ geçerliyse
   yayın kaldığı yerden sürer.
 - Veritabanında yalnız oturum ve tur sonuçları (kazanan, süre) tutulur; ham sohbet ve
@@ -336,7 +348,8 @@ yalnız test içindir.
   giden her durumu göndermeden önce denetler ve ihlalde düşürür. Public oda
   yayıncı kartını tur bitene kadar hiçbir zaman almaz.
 - Görüntüleme anahtarı 32 bayt rastgeledir; veritabanında yalnız sha256 özeti saklanır.
-  Anahtar log'a ve audit'e yazılmaz. Anahtar adresin yolunda durur, çünkü OBS kaynağı sabit bir
+  Anahtar log'a ve audit'e yazılmaz; nginx erişim kaydı `/stream/` adreslerini hiç yazmaz.
+  Anahtar adresin yolunda durur, çünkü OBS kaynağı sabit bir
   adres ister. Yayın ekranı gizli bir şey göstermez: sızan bir anahtar yalnız herkese açık yayın
   görüntüsünü, yayın gecikmesinden birkaç saniye önce gösterir. Sızdıysa anahtarı yenile (§8.4).
 - Host olayları yalnız oturum sahibindendir. Host odasına katılırken oturum çerezi
@@ -358,6 +371,9 @@ yalnız test içindir.
   bırakılır; izlenenlerin hepsi puanlıysa yeni gelenin tahmini alınmaz. Panelde ve özette görünen
   katılımcı sayısı (`participants`) oturum boyunca tahmini kabul edilen kişi sayısıdır: her yeni
   kişi bir sayılır, bırakılıp geri gelen yeniden sayılır.
+- Host olay pencereleri süreç başına en çok 10 000 kayıt tutar; tablo dolarsa host odasına
+  katılmamış bir soketin yeni olayları `RATE_LIMITED` alır, odaya katılmış sahip soketleri
+  etkilenmez.
 
 ### 8.9 Testler
 
@@ -370,3 +386,15 @@ yalnız test içindir.
   `npm run test:streamer-stream-screen-e2e` ve `npm run test:streamer-session-e2e`.
   Üç yayıncı e2e betiği (`test:streamer-connect-e2e` dahil) genel `features` sistem ayarını
   değiştirir; bu yüzden `--workers=1` ile ve art arda çalışır, paralel koşulmamalıdır.
+
+### 8.10 Bilinen sınırlar
+
+- **Veritabanı kesintisinde panel:** `/streamer` sayfası ve `GET /api/streamer/sessions`
+  önbellekli ayarları okur. Ayarlar yedek değere (mod kapalı) düştüğü için kesinti sırasında
+  yenilenen panel, yayın sürse de "Yayıncı modu yakında" der. Açık kalan panel sekmesi ve süren
+  yayın (soket yolu) etkilenmez; veritabanı dönünce sayfayı yenilemek yeter.
+- **Veritabanı kesintisinde yayın ekranı:** yayın ekranına katılım görüntüleme anahtarını
+  veritabanında arar. Kesinti sırasında yeniden bağlanan bir OBS sayfası çevrimdışı sahnesinde
+  kalır ve veritabanı dönene kadar yeniden dener; bağlı kalan sayfalar etkilenmez.
+- **Kartı gizle:** seçim yalnız bu sayfanın belleğindedir. Host odasına yeniden bağlanınca
+  korunur; sayfa yenilenince kart yeniden görünür.
