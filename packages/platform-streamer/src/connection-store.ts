@@ -49,6 +49,11 @@ export interface UpdateTokensInput {
     tokenKeyVersion: number;
     accessTokenExpiresAt: Date | null;
     now: Date;
+    /**
+     * The refresh-token ciphertext the row held when this refresh started. The write is a
+     * compare-and-set: it lands only while the row still holds exactly this value.
+     */
+    previousRefreshTokenEnc: string | null;
 }
 
 export interface StreamerConnectionStore {
@@ -56,7 +61,10 @@ export interface StreamerConnectionStore {
     findByUserAndPlatform(userId: number, platform: StreamerPlatform): Promise<StreamerConnectionRecord | null>;
     findByPlatformUser(platform: StreamerPlatform, platformUserId: string): Promise<StreamerConnectionRecord | null>;
     upsertLinked(input: UpsertLinkedInput): Promise<{ record: StreamerConnectionRecord; relinked: boolean }>;
-    /** Writes only while the row is still `active`; null means the row was disconnected or relinked meanwhile. */
+    /**
+     * Writes only while the row is still `active` and still holds `previousRefreshTokenEnc`; null
+     * means another write got there first (a concurrent refresh, a relink, a disconnect).
+     */
     updateTokens(id: string, input: UpdateTokensInput): Promise<StreamerConnectionRecord | null>;
     /** No-op on a `revoked` row: a late failure never downgrades an explicit disconnect. */
     markNeedsReconnect(id: string, reason: StatusReason, now: Date): Promise<StreamerConnectionRecord | null>;
@@ -125,7 +133,7 @@ export const prismaStreamerConnectionStore: StreamerConnectionStore = {
     },
     async updateTokens(id, input) {
         const result = await prisma.streamerConnection.updateMany({
-            where: { id, status: StreamerConnectionStatus.active },
+            where: { id, status: StreamerConnectionStatus.active, refreshTokenEnc: input.previousRefreshTokenEnc },
             data: {
                 accessTokenEnc: input.accessTokenEnc,
                 refreshTokenEnc: input.refreshTokenEnc,
@@ -250,7 +258,7 @@ export function createMemoryStreamerConnectionStore(): MemoryStreamerConnectionS
         },
         async updateTokens(id, input) {
             const record = byId(id);
-            if (record.status !== "active") return null;
+            if (record.status !== "active" || record.refreshTokenEnc !== input.previousRefreshTokenEnc) return null;
             Object.assign(record, {
                 accessTokenEnc: input.accessTokenEnc,
                 refreshTokenEnc: input.refreshTokenEnc,

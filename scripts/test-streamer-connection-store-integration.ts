@@ -69,6 +69,28 @@ async function main(): Promise<void> {
         assert.equal(relinked.record.scopes, "user:read:chat");
         console.log("PASS relink reuses the row and clears the reconnect state");
 
+        // A token refresh writes only over the refresh token it replaces (compare-and-set).
+        const before = relinked.record;
+        const refreshInput = {
+            accessTokenEnc: "v1.r.a.1", refreshTokenEnc: "v1.r.r.1", tokenKeyVersion: 1, accessTokenExpiresAt: new Date(NOW.getTime() + 3_600_000), now: NOW,
+        };
+        assert.equal(await store.updateTokens(before.id, { ...refreshInput, previousRefreshTokenEnc: "v1.s.t.ale" }), null, "a stale refresh token writes nothing");
+        assert.equal(await store.updateTokens(before.id, { ...refreshInput, previousRefreshTokenEnc: null }), null, "null is not the stored token");
+        const unchanged = (await store.findByUserAndPlatform(first, "twitch"))!;
+        assert.equal(unchanged.accessTokenEnc, before.accessTokenEnc);
+        assert.equal(unchanged.refreshTokenEnc, before.refreshTokenEnc);
+        const refreshed = await store.updateTokens(before.id, { ...refreshInput, previousRefreshTokenEnc: before.refreshTokenEnc });
+        assert.equal(refreshed?.accessTokenEnc, "v1.r.a.1");
+        assert.equal(refreshed?.refreshTokenEnc, "v1.r.r.1");
+        assert.equal(refreshed?.status, "active");
+        assert.equal(
+            await store.updateTokens(before.id, { ...refreshInput, accessTokenEnc: "v1.r.a.2", previousRefreshTokenEnc: before.refreshTokenEnc }),
+            null,
+            "the second writer of the same race loses",
+        );
+        assert.equal((await store.findByUserAndPlatform(first, "twitch"))?.accessTokenEnc, "v1.r.a.1");
+        console.log("PASS token refresh writes are compare-and-set over the refresh token they replace");
+
         await assert.rejects(
             () => store.upsertLinked({
                 userId: second, platform: "twitch", identity: identity("alpha"), scopes: [],
@@ -106,7 +128,7 @@ async function main(): Promise<void> {
         assert.equal(await store.findByPlatformUser("kick", identity("beta").platformUserId), null);
         userIds.splice(userIds.indexOf(second), 1);
         console.log("PASS deleting the user cascades to the connection");
-        console.log("6 checks passed (integration).");
+        console.log("7 checks passed (integration).");
     } finally {
         if (userIds.length) await prisma.user.deleteMany({ where: { id: { in: userIds } } });
         await prisma.$disconnect();

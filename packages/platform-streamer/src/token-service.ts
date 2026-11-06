@@ -5,7 +5,8 @@ import { connectionAad, decryptToken, encryptToken, TokenDecryptError, type Toke
 // "Bir kez bağla; duran token yaşamaz": refresh near expiry, and on any sign that the
 // platform no longer honours the tokens, delete them at once and ask for a reconnect.
 // A refresh that loses a race against a disconnect never resurrects tokens: the fresh
-// ones are revoked instead.
+// ones are revoked instead. A refresh that loses a race against another refresh never
+// breaks the connection: the tokens the winner stored are used.
 
 export const REFRESH_LEEWAY_MS = 60_000;
 
@@ -15,6 +16,16 @@ export interface TokenServiceDeps {
     keyring: TokenKeyring;
     now?: () => Date;
 }
+
+interface AccessResult {
+    accessToken: string;
+    connection: StreamerConnectionRecord;
+}
+
+// One platform refresh per connection at a time in this process: concurrent callers share it.
+// On globalThis, as the custom server and the Next route bundles each load this module.
+const globalForRefreshes = globalThis as typeof globalThis & { __hushleStreamerTokenRefreshes?: Map<string, Promise<AccessResult>> };
+const refreshes = (globalForRefreshes.__hushleStreamerTokenRefreshes ??= new Map<string, Promise<AccessResult>>());
 
 export class StreamerReconnectRequired extends Error {
     readonly connectionId: string;
@@ -64,12 +75,24 @@ export async function revokeAtPlatform(client: StreamerPlatformClient, tokens: A
     return false;
 }
 
+/**
+ * The tokens another writer stored after `connection` was read: the row is still this active
+ * connection and holds a refresh token other than the one read. Null when there are none.
+ */
+async function newerStoredTokens(deps: TokenServiceDeps, connection: StreamerConnectionRecord): Promise<AccessResult | null> {
+    const current = await deps.store.findByUserAndPlatform(connection.userId, connection.platform);
+    if (!current || current.id !== connection.id || current.status !== "active" || !current.accessTokenEnc) return null;
+    if (current.refreshTokenEnc === connection.refreshTokenEnc) return null;
+    const accessToken = decryptOrNull(deps, current, current.accessTokenEnc);
+    return accessToken === null ? null : { accessToken, connection: current };
+}
+
 async function storeTokens(
     deps: TokenServiceDeps,
     connection: StreamerConnectionRecord,
     tokens: TokenSet,
     previousRefreshToken: string | null
-): Promise<StreamerConnectionRecord> {
+): Promise<AccessResult> {
     const aad = aadFor(connection);
     // The refresh token is always re-encrypted under the current key, even when the
     // platform kept the old one, so a dropped previous key never strands a row.
@@ -80,19 +103,30 @@ async function storeTokens(
         tokenKeyVersion: deps.keyring.current.version,
         accessTokenExpiresAt: tokens.expiresAt,
         now: clock(deps),
+        // Compare-and-set over the refresh token this refresh replaces.
+        previousRefreshTokenEnc: connection.refreshTokenEnc,
     });
-    if (updated) return updated;
-    // Lost the race: the row was disconnected or relinked meanwhile. The tokens we just
-    // obtained must not outlive that decision.
+    if (updated) return { accessToken: tokens.accessToken, connection: updated };
+    // Lost the race to another writer. If it stored newer tokens on the still-active row (a
+    // concurrent refresh elsewhere, a relink), those stand and are used. Ours are dropped, not
+    // revoked: at a platform that revokes the whole grant, that would revoke the winner's too.
+    const winner = await newerStoredTokens(deps, connection);
+    if (winner) return winner;
+    const current = await deps.store.findByUserAndPlatform(connection.userId, connection.platform);
+    if (current && current.id === connection.id && current.status === "active") {
+        // Still active but nothing usable to hand out: refuse this call, never mark the row.
+        throw new StreamerReconnectRequired(connection.id, "refresh_failed");
+    }
+    // The row was disconnected meanwhile. The tokens we just obtained must not outlive that
+    // decision.
     await revokeAtPlatform(deps.client, [
         [tokens.refreshToken, "refresh_token"],
         [tokens.accessToken, "access_token"],
     ]);
-    const current = await deps.store.findByUserAndPlatform(connection.userId, connection.platform);
     throw new StreamerReconnectRequired(connection.id, (current?.statusReason as StatusReason | null) ?? "refresh_failed");
 }
 
-async function refreshOrReconnect(deps: TokenServiceDeps, connection: StreamerConnectionRecord): Promise<{ accessToken: string; connection: StreamerConnectionRecord }> {
+async function refreshOrReconnect(deps: TokenServiceDeps, connection: StreamerConnectionRecord): Promise<AccessResult> {
     const refreshToken = connection.refreshTokenEnc ? decryptOrNull(deps, connection, connection.refreshTokenEnc) : null;
     if (!refreshToken) return reconnect(deps, connection, "refresh_failed");
     let tokens: TokenSet;
@@ -103,12 +137,26 @@ async function refreshOrReconnect(deps: TokenServiceDeps, connection: StreamerCo
         // token endpoint is our client credentials, a network error is transient: both
         // leave the row untouched.
         if (error instanceof StreamerPlatformError && error.kind === "invalid_grant") {
+            // A refresh token the row no longer holds was rotated away by a refresh elsewhere:
+            // a lost race, not a dead grant. The newer tokens are used.
+            const winner = await newerStoredTokens(deps, connection);
+            if (winner) return winner;
             return reconnect(deps, connection, "refresh_failed");
         }
         throw error;
     }
-    const updated = await storeTokens(deps, connection, tokens, refreshToken);
-    return { accessToken: tokens.accessToken, connection: updated };
+    return storeTokens(deps, connection, tokens, refreshToken);
+}
+
+/** Refreshes the connection's tokens, sharing a refresh already running for it in this process. */
+function sharedRefresh(deps: TokenServiceDeps, connection: StreamerConnectionRecord): Promise<AccessResult> {
+    const running = refreshes.get(connection.id);
+    if (running) return running;
+    const flight: Promise<AccessResult> = refreshOrReconnect(deps, connection).finally(() => {
+        if (refreshes.get(connection.id) === flight) refreshes.delete(connection.id);
+    });
+    refreshes.set(connection.id, flight);
+    return flight;
 }
 
 export async function getAccessToken(
@@ -118,12 +166,12 @@ export async function getAccessToken(
     if (connection.status !== "active") {
         throw new StreamerReconnectRequired(connection.id, (connection.statusReason as StatusReason | null) ?? "refresh_failed");
     }
-    if (!connection.accessTokenEnc) return refreshOrReconnect(deps, connection);
+    if (!connection.accessTokenEnc) return sharedRefresh(deps, connection);
     const accessToken = decryptOrNull(deps, connection, connection.accessTokenEnc);
     if (accessToken === null) return reconnect(deps, connection, "refresh_failed");
     const expiresAt = connection.accessTokenExpiresAt?.getTime() ?? null;
     if (expiresAt !== null && expiresAt - clock(deps).getTime() < REFRESH_LEEWAY_MS) {
-        return refreshOrReconnect(deps, connection);
+        return sharedRefresh(deps, connection);
     }
     return { accessToken, connection };
 }
@@ -139,7 +187,7 @@ export async function callWithToken<T>(
         result = await fn(first.accessToken);
     } catch (error) {
         if (!(error instanceof StreamerPlatformError) || error.kind !== "unauthorized") throw error;
-        const second = await refreshOrReconnect(deps, first.connection);
+        const second = await sharedRefresh(deps, first.connection);
         try {
             result = await fn(second.accessToken);
         } catch (retryError) {

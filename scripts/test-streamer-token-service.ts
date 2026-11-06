@@ -62,6 +62,12 @@ function deps(client: StreamerPlatformClient = createFakePlatformClient("twitch"
     return { store, client, keyring, now: () => NOW };
 }
 
+function deferred(): { promise: Promise<void>; resolve(): void } {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => (resolve = done));
+    return { promise, resolve };
+}
+
 async function main(): Promise<void> {
     await test("a fresh token is returned without a refresh", async () => {
         const d = deps();
@@ -240,6 +246,111 @@ async function main(): Promise<void> {
         assert.equal(stored.accessTokenEnc, null);
         assert.equal(stored.refreshTokenEnc, null);
         assert.ok(fake.revoked.some((t) => t.startsWith("fake-refresh-deniz")), "the freshly issued tokens were revoked at the platform");
+    });
+
+    await test("concurrent refreshes of one connection share a single platform refresh; a later stale caller loses the compare-and-set and gets the stored token", async () => {
+        const fake = createFakePlatformClient("twitch", { now: () => NOW.getTime() });
+        let refreshes = 0;
+        const gate = deferred();
+        const slow: StreamerPlatformClient = {
+            ...fake,
+            async refresh(token) {
+                refreshes += 1;
+                await gate.promise;
+                return fake.refresh(token);
+            },
+        };
+        const d = deps(slow);
+        const seeded = d.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        const first = getAccessToken(d, seeded);
+        const second = getAccessToken(d, seeded);
+        const third = callWithToken(d, seeded, async (accessToken) => accessToken);
+        gate.resolve();
+        const [a, b, c] = await Promise.all([first, second, third]);
+        assert.equal(refreshes, 1, "one platform refresh for three concurrent callers");
+        assert.match(a.accessToken, /^fake-access-deniz-\d+$/);
+        assert.equal(b.accessToken, a.accessToken);
+        assert.equal(c, a.accessToken);
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.equal(stored.status, "active");
+        assert.equal(decryptToken(stored.accessTokenEnc!, keyring, aad), a.accessToken);
+        // The flight is over: a caller still holding the old row refreshes again, loses the
+        // conditional write (the row moved on) and gets the stored token; nothing is revoked.
+        const late = await getAccessToken(d, seeded);
+        assert.equal(refreshes, 2);
+        assert.equal(late.accessToken, a.accessToken);
+        assert.equal(late.connection.refreshTokenEnc, stored.refreshTokenEnc);
+        assert.equal((await d.store.findByUserAndPlatform(42, "twitch"))!.status, "active");
+        assert.deepEqual(fake.revoked, []);
+    });
+
+    await test("a refresh that loses the compare-and-set to newer tokens returns the winner's token; the row stays active, nothing is revoked", async () => {
+        const fake = createFakePlatformClient("twitch", { now: () => NOW.getTime() });
+        const d = deps(fake);
+        const seeded = d.store.seed(row({ accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        const winner = { accessTokenEnc: encryptToken("winner-access", keyring, aad), refreshTokenEnc: encryptToken("winner-refresh", keyring, aad) };
+        const racing: StreamerPlatformClient = {
+            ...fake,
+            async refresh(token) {
+                const tokens = await fake.refresh(token);
+                // Another process refreshed the same connection first and stored its tokens.
+                const won = await d.store.updateTokens(seeded.id, {
+                    ...winner,
+                    tokenKeyVersion: 1,
+                    accessTokenExpiresAt: new Date(NOW.getTime() + 3_600_000),
+                    now: NOW,
+                    previousRefreshTokenEnc: seeded.refreshTokenEnc,
+                });
+                assert.ok(won, "the other writer wins the compare-and-set");
+                return tokens;
+            },
+        };
+        const result = await getAccessToken({ ...d, client: racing }, seeded);
+        assert.equal(result.accessToken, "winner-access");
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.equal(stored.status, "active");
+        assert.equal(stored.statusReason, null);
+        assert.equal(stored.accessTokenEnc, winner.accessTokenEnc, "the loser never overwrites the winner");
+        assert.equal(stored.refreshTokenEnc, winner.refreshTokenEnc);
+        assert.deepEqual(result.connection, stored);
+        assert.deepEqual(fake.revoked, [], "revoking the loser's tokens could revoke the grant the winner's share");
+    });
+
+    await test("invalid_grant for a refresh token the row no longer holds is a lost race: the row's newer token is returned, never needs_reconnect", async () => {
+        const d = deps();
+        // The row already holds newer tokens; the caller's snapshot still has a refresh token
+        // that was rotated away (the platform answers invalid_grant for it).
+        const current = d.store.seed(row({ accessTokenEnc: encryptToken("fake-access-deniz-7", keyring, aad) }));
+        const stale: StreamerConnectionRecord = {
+            ...current,
+            accessTokenEnc: encryptToken("fake-access-deniz-6", keyring, aad),
+            refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad),
+            accessTokenExpiresAt: new Date(NOW.getTime() + 10_000),
+        };
+        const result = await getAccessToken(d, stale);
+        assert.equal(result.accessToken, "fake-access-deniz-7");
+        const stored = (await d.store.findByUserAndPlatform(42, "twitch"))!;
+        assert.equal(stored.status, "active");
+        assert.equal(stored.refreshTokenEnc, current.refreshTokenEnc);
+        // The same answer for the refresh token the row still holds is a dead grant.
+        const dead = deps();
+        const held = dead.store.seed(row({ refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad), accessTokenExpiresAt: new Date(NOW.getTime() + 10_000) }));
+        await assert.rejects(() => getAccessToken(dead, held), StreamerReconnectRequired);
+        assert.equal((await dead.store.findByUserAndPlatform(42, "twitch"))!.status, "needs_reconnect");
+    });
+
+    await test("memory store: updateTokens writes only over the refresh token it replaces, and only on an active row", async () => {
+        const store = createMemoryStreamerConnectionStore();
+        const seeded = store.seed(row());
+        const input = { accessTokenEnc: "v1.n.e.w", refreshTokenEnc: "v1.n.e.r", tokenKeyVersion: 1, accessTokenExpiresAt: null, now: NOW };
+        assert.equal(await store.updateTokens(seeded.id, { ...input, previousRefreshTokenEnc: "v1.o.t.h" }), null, "another refresh token: no write");
+        assert.equal(await store.updateTokens(seeded.id, { ...input, previousRefreshTokenEnc: null }), null, "null is not the stored token");
+        assert.equal(store.rows[0].accessTokenEnc, seeded.accessTokenEnc, "the row is unchanged");
+        const written = await store.updateTokens(seeded.id, { ...input, previousRefreshTokenEnc: seeded.refreshTokenEnc });
+        assert.equal(written?.accessTokenEnc, "v1.n.e.w");
+        assert.equal(written?.refreshTokenEnc, "v1.n.e.r");
+        await store.markNeedsReconnect(seeded.id, "refresh_failed", NOW);
+        assert.equal(await store.updateTokens(seeded.id, { ...input, previousRefreshTokenEnc: null }), null, "a row that is not active is never written");
     });
 
     await test("review 2: markNeedsReconnect never downgrades a revoked row", async () => {

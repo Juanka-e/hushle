@@ -392,7 +392,15 @@ async function main(): Promise<void> {
         const row = (await h.store.findByUserAndPlatform(1, "twitch"))!;
         // Simulate a revoked grant: the stored access token is unknown to the platform and the refresh token is dead.
         const aad = connectionAad("twitch", "fake-deniz");
-        await h.store.updateTokens(row.id, { accessTokenEnc: encryptToken("not-a-fake-token", keyring, aad), refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad), tokenKeyVersion: 1, accessTokenExpiresAt: new Date(NOW.getTime() + 3_600_000), now: NOW });
+        const replaced = await h.store.updateTokens(row.id, {
+            accessTokenEnc: encryptToken("not-a-fake-token", keyring, aad),
+            refreshTokenEnc: encryptToken("fake-refresh-expired", keyring, aad),
+            tokenKeyVersion: 1,
+            accessTokenExpiresAt: new Date(NOW.getTime() + 3_600_000),
+            now: NOW,
+            previousRefreshTokenEnc: row.refreshTokenEnc,
+        });
+        assert.ok(replaced, "the simulated grant replaced the stored tokens");
         const view = await verifyActiveConnections(h.deps, user1.id);
         assert.equal(view.platforms[0].connection?.status, "needs_reconnect");
         assert.equal((await h.store.findByUserAndPlatform(1, "twitch"))!.statusReason, "refresh_failed");
