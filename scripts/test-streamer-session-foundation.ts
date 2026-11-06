@@ -238,7 +238,7 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     const lintJob = ci.slice(ci.indexOf("\n  lint-typecheck:\n"), ci.indexOf("\n  build:\n"));
     assert.ok(lintJob.length > 0 && lintJob.includes(lintStep), "the streamer unit step belongs to the lint-typecheck job");
     // Found first: a missing step would make the order check below pass on its own (-1 < anything).
-    const generateAt = lintJob.indexOf("run: npx prisma generate");
+    const generateAt = lintJob.search(/^ +run: npx prisma generate$/m);
     assert.ok(generateAt >= 0, "the lint-typecheck job generates the Prisma client");
     for (const script of ["typecheck:packages", "test:package-boundaries", "test:socket-protocol-version"]) {
         assert.match(lintStep, new RegExp(`^ +npm run ${script}$`, "m"), `CI streamer unit step must run ${script}`);
@@ -594,9 +594,12 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     }
     assert.ok(servers[1].includes("listen 443 ssl http2;"), "the second server is the TLS one");
     assert.equal((nginx.match(/\baccess_log\b/g) ?? []).length, 2, "nginx: no other access log");
-    // An upstream failure (a 502 during a deploy) is an `error` line that quotes the request:
-    // /stream/<view key> has its own location whose error log keeps only `crit`, proxied the same
-    // way as `location /` (which stays as it was). Its access log is the server's (the map above).
+    // An upstream failure (a 502 during a deploy) is an `error` line that quotes the request, and the
+    // rarer request-level failures are `crit`/`alert` lines that quote it too: /stream/<view key> has
+    // its own location whose error log keeps only `emerg`, proxied the same way as `location /`. Its
+    // access log is the server's (the map above). Neither location declares a proxy_set_header: the
+    // headers live at the server level, which a location only inherits while it declares none
+    // (scripts/test-nginx-proxy-headers.ts).
     const locationOf = (prefix: string) => {
         const start = servers[1].indexOf(`    location ${prefix} {\n`);
         assert.ok(start >= 0, `nginx: the TLS server has location ${prefix}`);
@@ -605,14 +608,12 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
     };
     const proxied = [
         "proxy_http_version 1.1;",
-        "proxy_set_header Upgrade $http_upgrade;",
-        "proxy_set_header Connection $connection_upgrade;",
         "proxy_read_timeout 3600s;",
         "proxy_send_timeout 3600s;",
         "proxy_pass http://hushle_app;",
     ];
     assert.deepEqual(locationOf("/"), proxied, "nginx: location / is unchanged");
-    assert.deepEqual(locationOf("^~ /stream/"), ["error_log /var/log/nginx/error.log crit;", ...proxied], "nginx: /stream/ is proxied the same way, its upstream errors unwritten");
+    assert.deepEqual(locationOf("^~ /stream/"), ["error_log /var/log/nginx/error.log emerg;", ...proxied], "nginx: /stream/ is proxied the same way, its upstream errors unwritten");
     assert.ok(!servers[0].includes("location"), "nginx: the redirect server proxies nothing");
     // The app's stop() can take about 20 s (a queue turn, then the final writes, each 10 s at most):
     // Docker's default 10 s grace would kill a graceful shutdown halfway.
