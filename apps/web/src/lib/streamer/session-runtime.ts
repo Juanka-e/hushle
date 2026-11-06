@@ -8,10 +8,6 @@ import {
     resume,
     skipRound,
     tick,
-    type ChatGuess,
-    type GuessResult,
-    type HostStreamSnapshot,
-    type PublicStreamSnapshot,
     type StreamCard,
     type StreamPhase,
     type StreamSessionState,
@@ -26,6 +22,15 @@ import {
     type RoundMark,
     type StreamerErrorReporter,
 } from "./session-persistence";
+import type {
+    LiveStreamSession,
+    StreamerEmitter,
+    StreamerEndedListener,
+    StreamerHostNoticeListener,
+    StreamerSessionRuntime,
+    StreamerSessionRuntimeDeps,
+    StreamSessionEndReason,
+} from "./session-runtime-types";
 import {
     createSessionInputSchema,
     resolvedScreenPatchSchema,
@@ -33,11 +38,10 @@ import {
     screenPatchInput,
     wordFiltersOf,
     type CreateSessionInput,
-    type ResolvedScreenPatch,
-    type WordFilters,
 } from "./session-settings";
-import type { StreamSessionRecord, StreamSessionStore, StreamSessionSummary } from "./session-store";
-import { realStreamerTimers, type StreamerTimers } from "./session-timers";
+import type { StreamSessionSummary } from "./session-store";
+import { realStreamerTimers } from "./session-timers";
+import { createStreamerWatches } from "./session-watch";
 import { createViewKey } from "./view-key";
 
 // Live stream sessions of this process (single realtime replica, ADR-003). The runtime is the
@@ -47,79 +51,14 @@ import { createViewKey } from "./view-key";
 
 export { STREAM_PERSIST_DRAIN_TIMEOUT_MS, SUMMARY_SCORE_LIMIT, type StreamerErrorReporter } from "./session-persistence";
 export { isStreamerSessionError, STREAMER_SESSION_ERROR_CODES, StreamerSessionError, type StreamerSessionErrorCode } from "./session-errors";
+export { STREAM_CONNECTION_CHECK_MS, STREAMER_MODE_CHECK_MS, type ConnectionCheck, type ConnectionChecker, type SessionConnection } from "./session-watch";
+export type * from "./session-runtime-types";
 
 export const STREAM_TICK_MS = 1_000;
 export const STREAM_SESSION_IDLE_TIMEOUT_MS = 6 * 3_600_000;
 // Phase 2 has no chat adapters yet; the stream screen always reads as connected.
 const SNAPSHOT_OPTIONS = { connected: true } as const;
 
-export interface WordSource {
-    /** The next card of the pool (it cycles once every word was drawn); null when no word matches at all. */
-    next(poolKey: string, filters: WordFilters): Promise<StreamCard | null>;
-    clear(poolKey: string): void;
-}
-
-export type StreamSessionEndReason = "ended" | "idle";
-export type StreamerSnapshotKind = "host" | "public";
-export type StreamerEmitter = (
-    sessionId: string,
-    kind: StreamerSnapshotKind,
-    payload: HostStreamSnapshot | PublicStreamSnapshot,
-) => void;
-export type StreamerEndedListener = (sessionId: string, reason: StreamSessionEndReason) => void;
-
-/** A read-only view of one live session; snapshots are taken at call time. */
-export interface LiveStreamSession {
-    id: string;
-    userId: number;
-    platform: StreamerPlatform;
-    viewKeyHash: string;
-    phase: StreamPhase;
-    revision: number;
-    /** Carries the secret card: for the owner's host room only. */
-    hostSnapshot(): HostStreamSnapshot;
-    publicSnapshot(): PublicStreamSnapshot;
-}
-
-export interface StreamerSessionRuntimeDeps {
-    store: StreamSessionStore;
-    wordSource: WordSource;
-    now?: () => number;
-    emit?: StreamerEmitter;
-    onEnded?: StreamerEndedListener;
-    /** Failures that reach no caller; `context` names the session when there is one. */
-    onError?: StreamerErrorReporter;
-    tickMs?: number;
-    idleTimeoutMs?: number;
-    /** How long end, idle, stop and a key rotation wait for a session's pending writes (STREAM_PERSIST_DRAIN_TIMEOUT_MS). */
-    drainTimeoutMs?: number;
-    /** The wall clock and timers of the ticks, the checks and the bounds (real ones when absent). */
-    timers?: StreamerTimers;
-}
-
-export interface StreamerSessionRuntime {
-    open(row: StreamSessionRecord, state: StreamSessionState): LiveStreamSession;
-    get(sessionId: string): LiveStreamSession | null;
-    forUser(userId: number): LiveStreamSession | null;
-    start(sessionId: string): Promise<void>;
-    pause(sessionId: string): Promise<void>;
-    resume(sessionId: string): Promise<void>;
-    pass(sessionId: string): Promise<void>;
-    next(sessionId: string): Promise<void>;
-    end(sessionId: string, reason: StreamSessionEndReason): Promise<StreamSessionSummary>;
-    applySettings(sessionId: string, patch: ResolvedScreenPatch): Promise<void>;
-    guess(sessionId: string, guess: ChatGuess): Promise<GuessResult>;
-    rotateViewKey(sessionId: string): Promise<{ viewKey: string }>;
-    /** Ticks every live session now (the interval does this on its own; tests call it directly). */
-    tickAll(now?: number): Promise<void>;
-    /** Waits until the writes queued so far landed or failed (bounded per session); tests read the store after it. */
-    flush(): Promise<void>;
-    setEmitter(emit: StreamerEmitter): void;
-    setOnEnded(listener: StreamerEndedListener): void;
-    setOnViewKeyRotated(listener: (sessionId: string) => void): void;
-    /** Clears every timer and marks the sessions still open as interrupted. */
-    stop(): Promise<void>;
-}
 
 interface SessionEntry {
     id: string;
@@ -156,9 +95,18 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
     let emit: StreamerEmitter = deps.emit ?? (() => undefined);
     let onEnded: StreamerEndedListener = deps.onEnded ?? (() => undefined);
     let onViewKeyRotated: (sessionId: string) => void = () => undefined;
+    let onHostNotice: StreamerHostNoticeListener = () => undefined;
     const entries = new Map<string, SessionEntry>();
     const timers = deps.timers ?? realStreamerTimers;
     const writes = createStreamerSessionPersistence({ store: deps.store, report: onError, drainTimeoutMs: deps.drainTimeoutMs, timers });
+    const watches = createStreamerWatches({
+        timers,
+        checkConnection: deps.checkConnection,
+        report: onError,
+        onNeedsReconnect: (sessionId, platform) =>
+            guarded("streamer_session.on_host_notice_failed", sessionId, () => onHostNotice(sessionId, { kind: "connection-needs-reconnect", platform })),
+        onModeOff: () => endAll("stopped"),
+    });
 
     // ------------------------------------------------------------ plumbing
 
@@ -281,6 +229,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         endSession(entry.state, now);
         entry.closed = true;
         clearTimer(entry);
+        watches.forget(entry.id);
         emitState(entry);
         // The summary counts the rounds whose results were written: the queued writes land first.
         await writes.finalWrite(entry.id, "streamer_session.end_failed", () => ({
@@ -293,6 +242,15 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         entries.delete(entry.id);
         guarded("streamer_session.on_ended_failed", entry.id, () => onEnded(entry.id, reason));
         return sessionSummary(entry.state, entry.roundCount);
+    }
+
+    const end = (sessionId: string, reason: Exclude<StreamSessionEndReason, "interrupted">) =>
+        run(sessionId, (entry, now) => finish(entry, reason, now));
+
+    async function endAll(reason: "stopped"): Promise<number> {
+        const live = [...entries.values()].filter((entry) => !entry.closed);
+        const ended = await Promise.allSettled(live.map((entry) => end(entry.id, reason)));
+        return ended.filter((result) => result.status === "fulfilled").length;
     }
 
     // ------------------------------------------------------------ API
@@ -320,6 +278,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             };
             entries.set(entry.id, entry);
             align(entry);
+            watches.watchConnection(entry.id, row.connectionId ? { id: row.connectionId, userId: row.userId, platform: row.platform } : null);
             emitState(entry);
             return view(entry);
         },
@@ -360,7 +319,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                 align(entry);
                 settle(entry, before, now, true);
             }),
-        end: (sessionId, reason) => run(sessionId, (entry, now) => finish(entry, reason, now)),
+        end,
+        endAll,
         applySettings: (sessionId, patch) =>
             hostAction(sessionId, async (entry) => {
                 // The runtime is an API of its own: the patch is checked here, not only by the socket.
@@ -420,7 +380,12 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
         setOnViewKeyRotated(listener) {
             onViewKeyRotated = listener;
         },
+        setOnHostNotice(listener) {
+            onHostNotice = listener;
+        },
+        watchMode: (isEnabled, intervalMs) => watches.watchMode(isEnabled, intervalMs),
         async stop() {
+            watches.stopAll();
             const open = [...entries.values()];
             for (const entry of open) {
                 entry.closed = true;
@@ -434,6 +399,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                     // An end that was already running has removed its entry and written `ended`.
                     if (entries.get(entry.id) !== entry) return;
                     entries.delete(entry.id);
+                    // Both rooms hear it before the rows are written: shutdown closes the sockets next.
+                    guarded("streamer_session.on_ended_failed", entry.id, () => onEnded(entry.id, "interrupted"));
                     await writes.finalWrite(entry.id, "streamer_session.stop_failed", () => ({ status: "interrupted", endedAt, roundCount: entry.roundCount }));
                     guarded("streamer_session.pool_clear_failed", entry.id, () => deps.wordSource.clear(entry.poolKey));
                 }),

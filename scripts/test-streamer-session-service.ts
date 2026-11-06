@@ -32,7 +32,11 @@ import {
     createStreamerSessionRuntime,
     isStreamerSessionError,
     StreamerSessionError,
+    STREAM_CONNECTION_CHECK_MS,
     STREAM_SESSION_IDLE_TIMEOUT_MS,
+    STREAMER_MODE_CHECK_MS,
+    type ConnectionCheck,
+    type SessionConnection,
     type StreamerSessionErrorCode,
     type StreamerSessionRuntime,
     type WordSource,
@@ -303,7 +307,14 @@ interface Harness {
 const runtimes: StreamerSessionRuntime[] = [];
 
 function harness(
-    options: { source?: FakeSource; sessions?: MemoryStreamSessionStore; tickMs?: number; drainTimeoutMs?: number; timers?: StreamerTimers } = {},
+    options: {
+        source?: FakeSource;
+        sessions?: MemoryStreamSessionStore;
+        tickMs?: number;
+        drainTimeoutMs?: number;
+        timers?: StreamerTimers;
+        checkConnection?: (connection: SessionConnection) => Promise<ConnectionCheck>;
+    } = {},
 ): Harness {
     const clock = { now: START };
     const sessions = options.sessions ?? createMemoryStreamSessionStore();
@@ -325,6 +336,7 @@ function harness(
         tickMs: options.tickMs ?? 5,
         drainTimeoutMs: options.drainTimeoutMs,
         timers: options.timers,
+        checkConnection: options.checkConnection,
     });
     runtime.setOnViewKeyRotated((sessionId) => rotated.push(sessionId));
     runtimes.push(runtime);
@@ -1973,6 +1985,143 @@ async function main(): Promise<void> {
             globalThis.setInterval = realSetInterval;
             globalThis.clearInterval = realClearInterval;
         }
+    });
+
+    await test("stop: every live session is reported ended with reason interrupted, its row interrupted; no timer is left", async () => {
+        const clock = manualTimers();
+        const h = harness({ timers: clock.timers });
+        const { session } = await opened(h);
+        h.connections.seed(connection(2, "twitch"));
+        const other = await createSession(h.deps, { userId: 2, settings: INPUT });
+        h.connections.seed(connection(3, "twitch"));
+        const done = await createSession(h.deps, { userId: 3, settings: INPUT });
+        await h.runtime.start(session.id);
+        await h.runtime.end(done.session.id, "ended");
+        h.runtime.watchMode(async () => true);
+        assert.ok(clock.intervals.size > 0, "ticks, connection checks and the mode watch run on the injected timers");
+        await h.runtime.stop();
+        const byId = (a: { sessionId: string }, b: { sessionId: string }) => a.sessionId.localeCompare(b.sessionId);
+        assert.deepEqual(
+            [...h.ended].sort(byId),
+            [
+                { sessionId: done.session.id, reason: "ended" },
+                { sessionId: session.id, reason: "interrupted" },
+                { sessionId: other.session.id, reason: "interrupted" },
+            ].sort(byId),
+        );
+        assert.equal((await h.sessions.findById(session.id))?.status, "interrupted");
+        assert.equal((await h.sessions.findById(other.session.id))?.status, "interrupted");
+        assert.equal((await h.sessions.findById(done.session.id))?.status, "ended", "an ended row stays ended");
+        assert.equal(clock.intervals.size, 0, "no interval survives stop()");
+        assert.equal(clock.timeouts.size, 0, "no bound is left pending");
+        assert.equal(h.runtime.get(session.id), null);
+        await h.runtime.stop();
+        assert.equal(h.ended.length, 3, "a second stop reports nothing again");
+    });
+
+    await test("streamer mode switched off: the 15 s check ends every live session with reason stopped; a failed check changes nothing", async () => {
+        assert.equal(STREAMER_MODE_CHECK_MS, 15_000);
+        const clock = manualTimers();
+        const h = harness({ timers: clock.timers });
+        const { session } = await opened(h);
+        h.connections.seed(connection(2, "twitch"));
+        const other = await createSession(h.deps, { userId: 2, settings: INPUT });
+        await h.runtime.start(session.id);
+        assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct");
+        let mode: boolean | Error = true;
+        let checks = 0;
+        const unwatch = h.runtime.watchMode(async () => {
+            checks += 1;
+            if (mode instanceof Error) throw mode;
+            return mode;
+        });
+        clock.fireIntervals(STREAMER_MODE_CHECK_MS);
+        await turn();
+        assert.equal(checks, 1);
+        assert.equal(h.ended.length, 0, "the mode is on: nothing ends");
+        mode = new Error("settings unreadable");
+        clock.fireIntervals(STREAMER_MODE_CHECK_MS);
+        await turn();
+        assert.equal(h.ended.length, 0, "a check that fails ends nothing");
+        assert.deepEqual(h.errors.map((error) => error.event), ["streamer_session.mode_check_failed"]);
+        mode = false;
+        clock.fireIntervals(STREAMER_MODE_CHECK_MS);
+        await turn();
+        await h.runtime.flush();
+        const reasons = new Map(h.ended.map((entry) => [entry.sessionId, entry.reason]));
+        assert.deepEqual([...reasons.entries()].sort(), [[session.id, "stopped"], [other.session.id, "stopped"]].sort());
+        for (const id of [session.id, other.session.id]) {
+            const row = await h.sessions.findById(id);
+            assert.equal(row?.status, "ended", "stopped sessions end, they are not interrupted");
+            assert.ok(row?.endedAt);
+            assert.equal(h.runtime.get(id), null);
+        }
+        assert.deepEqual((await h.sessions.findById(session.id))?.summary, { scores: [{ name: "Luna", points: 1, rank: 1, tied: false }], participants: 1, rounds: 1 });
+        // Unwatched, or stopped with the runtime: the check never runs again.
+        unwatch();
+        assert.ok(![...clock.intervals.values()].some((interval) => interval.ms === STREAMER_MODE_CHECK_MS));
+        const watchAgain = h.runtime.watchMode(async () => false);
+        void watchAgain;
+        await h.runtime.stop();
+        assert.equal(clock.intervals.size, 0, "stop() clears the mode watch");
+        assert.equal(checks, 3);
+    });
+
+    await test("hourly connection check: needs_reconnect tells the host once and the session goes on; nothing is checked after the end", async () => {
+        assert.equal(STREAM_CONNECTION_CHECK_MS, 3_600_000);
+        const clock = manualTimers();
+        const answers: Array<ConnectionCheck | Error | Promise<ConnectionCheck>> = [];
+        const calls: SessionConnection[] = [];
+        const h = harness({
+            timers: clock.timers,
+            checkConnection: async (link) => {
+                calls.push(link);
+                const answer = answers.shift() ?? "valid";
+                if (answer instanceof Error) throw answer;
+                return answer;
+            },
+        });
+        const notices: Array<[string, unknown]> = [];
+        h.runtime.setOnHostNotice((sessionId, notice) => notices.push([sessionId, notice]));
+        const { session } = await opened(h);
+        await h.runtime.start(session.id);
+        const hourly = async (answer?: ConnectionCheck | Error | Promise<ConnectionCheck>) => {
+            if (answer !== undefined) answers.push(answer);
+            clock.fireIntervals(STREAM_CONNECTION_CHECK_MS);
+            await turn();
+        };
+        await hourly("valid");
+        await hourly("unavailable");
+        assert.deepEqual(notices, [], "a valid link and a transient platform error tell nothing");
+        assert.deepEqual(calls[0], { id: connection(1, "twitch").id, userId: 1, platform: "twitch" }, "the link the session was opened on");
+        await hourly("needs_reconnect");
+        assert.deepEqual(notices, [[session.id, { kind: "connection-needs-reconnect", platform: "twitch" }]]);
+        assert.equal(h.runtime.get(session.id)?.phase, "running", "the session keeps running");
+        assert.equal(await h.runtime.guess(session.id, chat(h, "mandalina")), "correct");
+        await hourly("needs_reconnect");
+        assert.equal(notices.length, 1, "told once while the link stays broken");
+        await hourly("valid");
+        await hourly("needs_reconnect");
+        assert.equal(notices.length, 2, "told again after the link came back and broke again");
+        await hourly(new Error("store down"));
+        assert.deepEqual(h.errors.map((error) => [error.event, error.context]), [["streamer_session.connection_check_failed", { sessionId: session.id }]]);
+        // A check still running when the session ends tells nothing, whatever it finds.
+        await hourly("valid");
+        let answerLate!: (answer: ConnectionCheck) => void;
+        await hourly(new Promise<ConnectionCheck>((resolve) => (answerLate = resolve)));
+        await h.runtime.end(session.id, "ended");
+        answerLate("needs_reconnect");
+        await turn();
+        const callsAtEnd = calls.length;
+        await hourly("needs_reconnect");
+        assert.equal(calls.length, callsAtEnd, "no platform call once the session ended");
+        assert.ok(![...clock.intervals.values()].some((interval) => interval.ms === STREAM_CONNECTION_CHECK_MS), "its interval is cleared");
+        assert.equal(notices.length, 2);
+        // A session opened without a link has nothing to check.
+        const row = await h.sessions.create({ userId: 7, connectionId: null, platform: "kick", settings: { ...INPUT, platform: "kick" }, viewKeyHash: "9".repeat(64), startedAt: new Date(START) });
+        h.runtime.open(row, createStreamSession(toScreenSettings({ ...INPUT, platform: "kick" }, null), START));
+        assert.ok(![...clock.intervals.values()].some((interval) => interval.ms === STREAM_CONNECTION_CHECK_MS));
+        await h.runtime.stop();
     });
 
     await test("the runtime's own interval ticks a running round without tickAll", async () => {

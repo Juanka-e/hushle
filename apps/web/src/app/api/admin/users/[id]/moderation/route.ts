@@ -8,6 +8,7 @@ import {
 import { clearExpiredSuspensions } from "@/lib/moderation/service";
 import { writeAuditLog } from "@/lib/security/audit-log";
 import { revokeStreamerConnectionsForUser } from "@/lib/streamer/connections-view";
+import { endStreamerSessionsForUser } from "@/lib/streamer/session-deps";
 import {
     buildRateLimitHeaders,
     consumeRequestRateLimit,
@@ -149,7 +150,8 @@ export async function POST(
         });
 
         if (action.actionType === "suspend") {
-            // A suspended account keeps no live platform grant (streamer spec, karar 4).
+            // A suspended account keeps no live stream (it ends "stopped") and no live platform grant (streamer spec, karar 4).
+            await endStreamerSessionsForUser(targetUserId);
             await revokeStreamerConnectionsForUser(targetUserId, request);
         }
 

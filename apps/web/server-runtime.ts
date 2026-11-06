@@ -360,13 +360,13 @@ app.prepare().then(async () => {
         });
         clearInterval(capacityHeartbeat);
         if (ownershipHeartbeat) clearInterval(ownershipHeartbeat);
+        await streamerSessionRuntime.stop();
         await new Promise<void>((resolve) => {
             io.close(() => resolve());
         });
         await socketRedisAdapter?.close();
         await roomOwnership?.close();
         await removeCapacityHeartbeat();
-        await streamerSessionRuntime.stop();
         await matchSettlementWorker.stop();
         await flushObservabilityExporter();
         await closeRedisClient();

@@ -15,7 +15,14 @@ import {
 import { createHash } from "node:crypto";
 import { createMemoryConnectStateStore, readConnectState, type ConnectStateStore } from "../apps/web/src/lib/streamer/connect-state";
 import { completeConnect, startConnect, type ConnectFlowDeps, type ConnectFlowUser } from "../apps/web/src/lib/streamer/connect-flow";
-import { disconnectPlatform, listConnectionsView, revokeAllForUser, verifyActiveConnections } from "../apps/web/src/lib/streamer/connections-view";
+import {
+    checkSessionConnection,
+    disconnectPlatform,
+    listConnectionsView,
+    revokeAllForUser,
+    validateConnection,
+    verifyActiveConnections,
+} from "../apps/web/src/lib/streamer/connections-view";
 import { StreamerConfigError } from "@hushle/platform-streamer";
 import { publicOriginFor, settingsRedirect, STREAMER_REDIRECT_CODES } from "../apps/web/src/lib/streamer/redirects";
 
@@ -483,6 +490,56 @@ async function main(): Promise<void> {
         const view = await verifyActiveConnections(h.deps, user1.id);
         assert.equal(view.platforms[0].connection?.status, "needs_reconnect");
         assert.equal((await h.store.findByUserAndPlatform(1, "twitch"))!.statusReason, "refresh_failed");
+    });
+
+    await test("hourly check of a live session's link: valid stamps lastValidatedAt; the validate failure hook makes it needs_reconnect", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "twitch");
+        const row = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        const link = { id: row.id, userId: 1, platform: "twitch" as const };
+        let validations = 0;
+        let answer: { ok: boolean; expiresInSeconds: number | null } | Error = { ok: true, expiresInSeconds: 3600 };
+        const client: StreamerPlatformClient = {
+            ...h.fake.twitch,
+            async validate() {
+                validations += 1;
+                if (answer instanceof Error) throw answer;
+                return answer;
+            },
+        };
+        h.deps.clientFor = () => client;
+        const later = new Date(NOW.getTime() + 3_600_000);
+        h.deps.now = () => later;
+        assert.equal(await checkSessionConnection(h.deps, link), "valid");
+        assert.equal((await h.store.findByUserAndPlatform(1, "twitch"))!.lastValidatedAt?.getTime(), later.getTime());
+        // A platform that does not answer changes nothing.
+        answer = new StreamerPlatformError("twitch", "validate", "network", null);
+        assert.equal(await checkSessionConnection(h.deps, link), "unavailable");
+        assert.equal((await h.store.findByUserAndPlatform(1, "twitch"))!.status, "active");
+        // The platform no longer honours the token: needs_reconnect, tokens gone.
+        answer = { ok: false, expiresInSeconds: null };
+        assert.equal(await checkSessionConnection(h.deps, link), "needs_reconnect");
+        const marked = (await h.store.findByUserAndPlatform(1, "twitch"))!;
+        assert.deepEqual([marked.status, marked.statusReason, marked.accessTokenEnc, marked.refreshTokenEnc], ["needs_reconnect", "refresh_failed", null, null]);
+        // Not active any more: answered without a platform call.
+        const calls = validations;
+        assert.equal(await checkSessionConnection(h.deps, link), "needs_reconnect");
+        assert.equal(validations, calls, "no platform call for a link that is not active");
+        assert.equal(await validateConnection(h.deps, marked), "needs_reconnect");
+        assert.equal(validations, calls);
+    });
+
+    await test("hourly check: a link that is gone, replaced or unconfigured here is judged without the platform", async () => {
+        const h = harness();
+        await startAndCallback(h, user1, "kick");
+        const row = (await h.store.findByUserAndPlatform(1, "kick"))!;
+        assert.equal(await checkSessionConnection(h.deps, { id: "00000000-0000-4000-8000-000000009999", userId: 1, platform: "kick" }), "needs_reconnect", "another row than the session's");
+        assert.equal(await checkSessionConnection(h.deps, { id: row.id, userId: 2, platform: "kick" }), "needs_reconnect", "no row");
+        h.deps.clientFor = () => {
+            throw new StreamerConfigError("STREAMER_KICK_CLIENT_ID and STREAMER_KICK_CLIENT_SECRET are required");
+        };
+        assert.equal(await checkSessionConnection(h.deps, { id: row.id, userId: 1, platform: "kick" }), "unavailable", "no client here: nothing to check with");
+        assert.equal((await h.store.findByUserAndPlatform(1, "kick"))!.status, "active");
     });
 
     await test("review 2 minor 1: 'Kaldır' still works when the platform client cannot be built", async () => {

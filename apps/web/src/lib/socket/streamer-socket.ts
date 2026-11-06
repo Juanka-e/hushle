@@ -63,11 +63,16 @@ export interface StreamerSocketUser {
     isSuspended: boolean;
 }
 
+/** The owner switches the socket layer reads: streamer mode itself and the card-back showcase. */
+export interface StreamerSocketFeatures extends CardBackFeatures {
+    streamerModeEnabled: boolean;
+}
+
 /** Seams for tests; production uses the cookie session, the shared limiter and the real catalogue. */
 export interface StreamerSocketOptions {
     resolveUser?: (socket: Socket) => Promise<StreamerSocketUser>;
     rateLimit?: typeof consumeDistributedRequestRateLimit;
-    features?: () => Promise<CardBackFeatures>;
+    features?: () => Promise<StreamerSocketFeatures>;
     resolveCardBack?: (userId: number, itemId: number, features: CardBackFeatures) => Promise<StreamCardBack>;
     /** Clock of the per-socket host burst windows. */
     now?: () => number;
@@ -315,9 +320,9 @@ async function resolveSocketUser(socket: Socket): Promise<StreamerSocketUser> {
     return { userId: state.userId, isSuspended: state.isSuspended };
 }
 
-async function showcaseFeatures(): Promise<CardBackFeatures> {
+async function systemFeatures(): Promise<StreamerSocketFeatures> {
     const { features } = await getSystemSettings();
-    return { streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics === true };
+    return { streamerModeEnabled: features.streamerModeEnabled === true, streamerShowcaseAllCosmetics: features.streamerShowcaseAllCosmetics === true };
 }
 
 function reportStreamerSocketError(event: string, error: unknown): void {
@@ -334,7 +339,7 @@ export function setupStreamerSocket(
 ): void {
     const resolveUser = options.resolveUser ?? resolveSocketUser;
     const rateLimit = options.rateLimit ?? consumeDistributedRequestRateLimit;
-    const features = options.features ?? showcaseFeatures;
+    const features = options.features ?? systemFeatures;
     const resolveCardBack: NonNullable<StreamerSocketOptions["resolveCardBack"]> =
         options.resolveCardBack ?? ((userId, itemId, flags) => resolveCardBackSelection(userId, itemId, flags));
     const reporter = options.onError ?? reportStreamerSocketError;
@@ -399,6 +404,11 @@ export function setupStreamerSocket(
         io.in(rooms).socketsLeave(rooms);
     });
 
+    // Host room only: what the streamer should act on beside the game (a link needing a reconnect).
+    runtime.setOnHostNotice((sessionId, notice) => {
+        io.to(streamerHostRoom(sessionId)).emit(EVENTS.hostNotice, notice);
+    });
+
     // The old stream screens go dark; the host keeps its room and gets the new key in its ack.
     runtime.setOnViewKeyRotated((sessionId) => {
         const room = streamerPublicRoom(sessionId);
@@ -456,6 +466,11 @@ export function setupStreamerSocket(
         return live;
     }
 
+    /** While the admin has streamer mode off, nothing but ending is served (the kill switch ends the rest). */
+    async function streamerModeOn(): Promise<boolean> {
+        return (await features()).streamerModeEnabled === true;
+    }
+
     async function cardBackFor(userId: number, itemId: number): Promise<StreamCardBack> {
         let flags: CardBackFeatures;
         try {
@@ -491,9 +506,11 @@ export function setupStreamerSocket(
             event: string,
             schema: z.ZodType<T>,
             run: (live: LiveStreamSession, payload: T) => Promise<Record<string, unknown> | void>,
+            gate: "mode" | "always" = "mode",
         ): void {
             handle(socket, event, async (raw) => {
                 if (!hostBurstAllowed()) throw new Refusal(PlayerErrorCode.RATE_LIMITED);
+                if (gate === "mode" && !(await streamerModeOn())) throw new Refusal(PlayerErrorCode.STREAMER_MODE_DISABLED);
                 const payload = parse(schema, raw);
                 return run(joinedSession(socket), payload);
             });
@@ -502,6 +519,7 @@ export function setupStreamerSocket(
         handle(socket, EVENTS.hostJoin, async (raw) => {
             if (!burst.consume(`${socket.id}:host-join`, STREAMER_HOST_JOIN_BURST)) throw new Refusal(PlayerErrorCode.RATE_LIMITED);
             const { sessionId } = parse(hostJoinSchema, raw);
+            if (!(await streamerModeOn())) throw new Refusal(PlayerErrorCode.STREAMER_MODE_DISABLED);
             const user = await resolveUser(socket);
             if (!user.userId || user.isSuspended) throw new Refusal(PlayerErrorCode.AUTH_REQUIRED);
             const live = runtime.get(sessionId);
@@ -524,9 +542,15 @@ export function setupStreamerSocket(
         hostAction(EVENTS.hostResume, noPayloadSchema, (live) => runtime.resume(live.id));
         hostAction(EVENTS.hostPass, noPayloadSchema, (live) => runtime.pass(live.id));
         hostAction(EVENTS.hostNext, noPayloadSchema, (live) => runtime.next(live.id));
-        hostAction(EVENTS.hostEnd, endSchema, async (live) => {
-            await runtime.end(live.id, "ended");
-        });
+        // Ending takes the owner's own stream off the air: always allowed, whatever the switch says.
+        hostAction(
+            EVENTS.hostEnd,
+            endSchema,
+            async (live) => {
+                await runtime.end(live.id, "ended");
+            },
+            "always",
+        );
         hostAction(EVENTS.hostSettings, settingsSchema, async (live, { cardBack, ...fields }) => {
             const patch: ResolvedScreenPatch = { ...fields };
             if (cardBack !== undefined) patch.cardBack = cardBack === null ? null : await cardBackFor(live.userId, cardBack.itemId);
@@ -545,6 +569,8 @@ export function setupStreamerSocket(
             const { viewKey } = parse(publicJoinSchema, raw);
             const limit = await rateLimit({ ...STREAMER_PUBLIC_JOIN_LIMIT, key: `ip:${getSocketClientIp(socket)}` });
             if (!limit.allowed) throw new Refusal(PlayerErrorCode.RATE_LIMITED);
+            // Streamer mode off: the same opaque answer as a wrong key, nothing about the switch.
+            if (!(await streamerModeOn())) throw new Refusal(PlayerErrorCode.STREAMER_VIEW_KEY_INVALID);
             const hash = hashViewKey(viewKey);
             const row = await store.findByViewKeyHash(hash);
             // A row still `active` that no live runtime runs was interrupted: its key opens nothing.

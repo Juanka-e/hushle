@@ -45,11 +45,14 @@ export async function listConnectionsView(deps: ConnectFlowDeps, userId: number)
     };
 }
 
-function tokenDeps(deps: ConnectFlowDeps, platform: StreamerPlatform) {
+/** What validating a connection needs: the store, the token key and the platform clients. */
+export type ConnectionCheckDeps = Pick<ConnectFlowDeps, "store" | "keyring" | "clientFor" | "now">;
+
+function tokenDeps(deps: ConnectionCheckDeps, platform: StreamerPlatform) {
     return { store: deps.store, client: deps.clientFor(platform), keyring: deps.keyring, now: deps.now };
 }
 
-function clock(deps: ConnectFlowDeps): Date {
+function clock(deps: Pick<ConnectFlowDeps, "now">): Date {
     return deps.now ? deps.now() : new Date();
 }
 
@@ -68,34 +71,69 @@ async function revokeRecord(deps: ConnectFlowDeps, record: StreamerConnectionRec
     await revokeConnectionTokens(platformDeps, record, reason, status);
 }
 
+/** Whether the row is still the active one: a refusal or a skipped mark leaves it to the next check. */
+async function stillActive(deps: ConnectionCheckDeps, record: StreamerConnectionRecord): Promise<ConnectionValidation> {
+    const current = await deps.store.findByUserAndPlatform(record.userId, record.platform);
+    return current && current.id === record.id && current.status === "active" ? "unavailable" : "needs_reconnect";
+}
+
+/** What validating a connection found: still good, now `needs_reconnect`, or no answer this time. */
+export type ConnectionValidation = "valid" | "needs_reconnect" | "unavailable";
+
+/**
+ * One active connection proves it still works: its token (refreshed when due) passes the
+ * platform's validate. A dead grant becomes `needs_reconnect`; a good one is stamped
+ * `lastValidatedAt`. A platform that does not answer (or is not configured here) changes nothing.
+ */
+export async function validateConnection(deps: ConnectionCheckDeps, record: StreamerConnectionRecord): Promise<ConnectionValidation> {
+    if (record.status !== "active") return "needs_reconnect";
+    let platformDeps;
+    try {
+        platformDeps = tokenDeps(deps, record.platform);
+    } catch (error) {
+        if (error instanceof StreamerConfigError) return "unavailable";
+        throw error;
+    }
+    try {
+        const { accessToken, connection } = await getAccessToken(platformDeps, record);
+        if (platformDeps.client.validate) {
+            const result = await platformDeps.client.validate(accessToken);
+            if (!result.ok) {
+                await deps.store.markNeedsReconnect(connection.id, "refresh_failed", clock(deps));
+                return "needs_reconnect";
+            }
+        }
+        await deps.store.touchValidated(connection.id, clock(deps));
+        return "valid";
+    } catch (error) {
+        // Usually already marked by the token service (a lost race is not); transient platform
+        // errors leave the row alone.
+        if (error instanceof StreamerReconnectRequired) return stillActive(deps, record);
+        if (error instanceof StreamerPlatformError) return "unavailable";
+        throw error;
+    }
+}
+
+/**
+ * The hourly check of the link a live session was opened on: the row must still be that link
+ * (same id) and active, then it is validated as the panel does. Gone, replaced or not active is
+ * `needs_reconnect` without any platform call.
+ */
+export async function checkSessionConnection(
+    deps: ConnectionCheckDeps,
+    link: { id: string; userId: number; platform: StreamerPlatform }
+): Promise<ConnectionValidation> {
+    const record = await deps.store.findByUserAndPlatform(link.userId, link.platform);
+    if (!record || record.id !== link.id || record.status !== "active") return "needs_reconnect";
+    return validateConnection(deps, record);
+}
+
 // Panel open: every active connection proves it still works (spec karar 6). A dead grant
 // turns into `needs_reconnect` here, not when the first stream fails.
 export async function verifyActiveConnections(deps: ConnectFlowDeps, userId: number): Promise<StreamerConnectionsResponse> {
     const records = await deps.store.findByUser(userId);
     for (const record of records) {
-        if (record.status !== "active") continue;
-        let platformDeps;
-        try {
-            platformDeps = tokenDeps(deps, record.platform);
-        } catch (error) {
-            if (error instanceof StreamerConfigError) continue;
-            throw error;
-        }
-        try {
-            const { accessToken, connection } = await getAccessToken(platformDeps, record);
-            if (platformDeps.client.validate) {
-                const result = await platformDeps.client.validate(accessToken);
-                if (!result.ok) {
-                    await deps.store.markNeedsReconnect(connection.id, "refresh_failed", clock(deps));
-                    continue;
-                }
-            }
-            await deps.store.touchValidated(connection.id, clock(deps));
-        } catch (error) {
-            // Already marked by the token service; transient platform errors leave the row alone.
-            if (error instanceof StreamerReconnectRequired || error instanceof StreamerPlatformError) continue;
-            throw error;
-        }
+        if (record.status === "active") await validateConnection(deps, record);
     }
     return listConnectionsView(deps, userId);
 }

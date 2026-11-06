@@ -353,6 +353,32 @@ assert.match(read("package.json"), /"test:streamer-session-foundation": "tsx scr
         assert.ok(socketSource.includes(`: Record<${union}, true> = {`), `the leak guard's ${union} list is an exhaustive Record<${union}, true>`);
     }
     assert.ok(!/readonly string\[\]>\(\[/.test(socketSource), "no hand-written vocabulary list is left in the guard");
+
+    // Comments are dropped: only real calls count.
+    const code = (path: string) =>
+        read(path)
+            .replace(/\/\*[\s\S]*?\*\//g, "")
+            .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+    // Shutdown ends the live sessions (streamer:ended "interrupted" to both rooms) before Socket.IO closes.
+    const server = code("apps/web/server-runtime.ts");
+    const shutdown = server.split("const shutdown = async () => {")[1]?.split("process.on(")[0] ?? "";
+    const stopAt = shutdown.indexOf("await streamerSessionRuntime.stop();");
+    assert.ok(stopAt >= 0, "shutdown stops the stream session runtime");
+    assert.ok(stopAt < shutdown.indexOf("io.close("), "shutdown stops the stream sessions before io.close, so the rooms hear interrupted");
+    assert.equal(shutdown.split("streamerSessionRuntime.stop()").length, 2, "and only once");
+    // The kill switch starts with the runtime; the hourly link check is wired into it.
+    const deps = code("apps/web/src/lib/streamer/session-deps.ts");
+    const boot = deps.split("export async function startStreamerSessionRuntime")[1] ?? "";
+    assert.match(boot, /runtime\.watchMode\(streamerModeEnabled\);/, "boot starts the streamer-mode watch");
+    assert.match(deps, /async function streamerModeEnabled\(\): Promise<boolean> \{\s*return \(await getSystemSettings\(\)\)\.features\.streamerModeEnabled === true;/);
+    assert.match(deps.split("export function getStreamerSessionRuntime")[1] ?? "", /checkConnection: checkLiveConnection,/, "the runtime checks each live link hourly");
+    // An admin suspension takes the owner's stream off the air, then revokes the links.
+    const moderation = code("apps/web/src/app/api/admin/users/[id]/moderation/route.ts");
+    const suspend = moderation.split('if (action.actionType === "suspend") {').slice(1).join("");
+    const endAt = suspend.indexOf("await endStreamerSessionsForUser(targetUserId);");
+    assert.ok(endAt >= 0, "a suspension ends the user's live stream session");
+    assert.ok(endAt < suspend.indexOf("await revokeStreamerConnectionsForUser(targetUserId, request);"), "before the links are revoked");
+    assert.match(moderation, /import \{ endStreamerSessionsForUser \} from "@\/lib\/streamer\/session-deps";/);
 }
 
 console.log("PASS streamer session foundation contract");

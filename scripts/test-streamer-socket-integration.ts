@@ -31,12 +31,16 @@ import type { consumeDistributedRequestRateLimit } from "../apps/web/src/lib/sec
 import { resolveCardBackSelection, type CardBackCatalogItem, type CardBackLoaders } from "../apps/web/src/lib/streamer/card-backs";
 import type { CreateSessionInput } from "../apps/web/src/lib/streamer/session-settings";
 import { createMemoryStreamSessionStore } from "../apps/web/src/lib/streamer/session-store";
+import { endStreamerSessionsForUser } from "../apps/web/src/lib/streamer/session-deps";
 import {
     createStreamerSessionRuntime,
+    STREAM_CONNECTION_CHECK_MS,
+    type ConnectionCheck,
     type StreamerEmitter,
     type StreamerSessionRuntime,
     type WordSource,
 } from "../apps/web/src/lib/streamer/session-runtime";
+import { realStreamerTimers } from "../apps/web/src/lib/streamer/session-timers";
 import { createSession, type StreamerSessionServiceDeps } from "../apps/web/src/lib/streamer/session-service";
 import { hashViewKey } from "../apps/web/src/lib/streamer/view-key";
 import { disconnectUserSockets, registerSocketServer, userSessionRoom } from "../apps/web/src/lib/socket/user-session-control";
@@ -334,7 +338,9 @@ async function main(): Promise<void> {
     connections.seed(connection(1));
     connections.seed(connection(3));
     const source = deckSource();
-    const features = { streamerShowcaseAllCosmetics: false };
+    const features = { streamerShowcaseAllCosmetics: false, streamerModeEnabled: true };
+    // The hourly link check runs every 25 ms here; each user's link answers valid unless set.
+    const linkAnswers = new Map<number, ConnectionCheck>();
     const runtimeErrors: Array<{ event: string; error: unknown }> = [];
     // The runtime's row writes can be held (a database that stops answering) and watched.
     const writeGate: { held: Promise<void> | null; onUpdate: ((patch: object) => void) | null } = { held: null, onUpdate: null };
@@ -352,6 +358,8 @@ async function main(): Promise<void> {
         now: () => clock.now,
         tickMs: 50,
         onError: (event, error) => runtimeErrors.push({ event, error }),
+        checkConnection: async (link) => linkAnswers.get(link.userId) ?? "valid",
+        timers: { ...realStreamerTimers, setInterval: (run, ms) => realStreamerTimers.setInterval(run, ms === STREAM_CONNECTION_CHECK_MS ? 25 : ms) },
     });
     const deps: StreamerSessionServiceDeps = {
         sessions,
@@ -1254,6 +1262,149 @@ async function main(): Promise<void> {
             const [, meta] = await hata;
             assert.equal((meta as { code: string }).code, "ORIGIN_REJECTED");
             assert.equal(await disconnected, "io server disconnect");
+        });
+
+        await test("streamer mode off: host join and host actions are STREAMER_MODE_DISABLED, a public join the opaque STREAMER_VIEW_KEY_INVALID; ending still works", async () => {
+            const fifth = await createSession(deps, { userId: 3, settings: INPUT });
+            const fifthId = fifth.session.id;
+            const host = await connect(url, "second");
+            const screen = await connect(url);
+            assertOk(await ask(host, "streamer:host:join", { sessionId: fifthId }), "joined while the mode is on");
+            assertOk(await ask(screen, "streamer:public:join", { viewKey: fifth.viewKey }), "the stream screen joined while on");
+            features.streamerModeEnabled = false;
+            try {
+                const late = await connect(url, "second");
+                assertError(await ask(late, "streamer:host:join", { sessionId: fifthId }), "STREAMER_MODE_DISABLED", "a host join");
+                assert.ok(!roomOf(io, streamerHostRoom(fifthId)).has(late.socket.id!), "a refused join joins nothing");
+                const limitCalls = limiter.calls.length;
+                const actions: Array<[string, unknown?]> = [
+                    ["streamer:host:start"],
+                    ["streamer:host:pause"],
+                    ["streamer:host:resume"],
+                    ["streamer:host:pass"],
+                    ["streamer:host:next"],
+                    ["streamer:host:settings", { theme: "sade" }],
+                    ["streamer:host:rotate-key"],
+                ];
+                for (const [event, payload] of actions) {
+                    assertError(await (payload === undefined ? ask(host, event) : ask(host, event, payload)), "STREAMER_MODE_DISABLED", event);
+                }
+                assert.equal(limiter.calls.length, limitCalls, "a refused rotation spends nothing of the view-key bucket");
+                assert.equal(runtime.get(fifthId)?.phase, "ready", "no action ran");
+                assert.equal(runtime.get(fifthId)?.viewKeyHash, hashViewKey(fifth.viewKey), "no key was rotated");
+                assertError(await ask(screen, "streamer:public:join", { viewKey: fifth.viewKey }), "STREAMER_VIEW_KEY_INVALID", "a public join is opaque");
+                const reload = await connect(url);
+                assertError(await ask(reload, "streamer:public:join", { viewKey: fifth.viewKey }), "STREAMER_VIEW_KEY_INVALID", "a fresh stream screen");
+                assert.ok(!roomOf(io, streamerPublicRoom(fifthId)).has(reload.socket.id!));
+                // Ending is never gated: the owner can always take the stream off the air.
+                const endedScreen = nextEvent<{ reason: string }>(screen, "streamer:ended");
+                assertOk(await ask(host, "streamer:host:end"), "end while the mode is off");
+                assert.deepEqual((await endedScreen)[0], { reason: "ended" });
+            } finally {
+                features.streamerModeEnabled = true;
+            }
+            assert.equal(runtime.get(fifthId), null);
+        });
+
+        await test("the kill switch: once streamer mode reads off, every live session ends with streamer:ended { reason: stopped } in both rooms", async () => {
+            assert.ok(runtime.forUser(1), "user 1's session from an earlier check is still live");
+            const sixth = await createSession(deps, { userId: 3, settings: INPUT });
+            const sixthId = sixth.session.id;
+            const host = await connect(url, "second");
+            const screen = await connect(url);
+            assertOk(await ask(host, "streamer:host:join", { sessionId: sixthId }), "host join");
+            assertOk(await ask(screen, "streamer:public:join", { viewKey: sixth.viewKey }), "public join");
+            assertOk(await ask(host, "streamer:host:start"), "a round runs");
+            const endedHost = nextEvent<{ reason: string }>(host, "streamer:ended");
+            const endedScreen = nextEvent<{ reason: string }>(screen, "streamer:ended");
+            const unwatch = runtime.watchMode(async () => features.streamerModeEnabled, 20);
+            features.streamerModeEnabled = false;
+            try {
+                assert.deepEqual((await endedHost)[0], { reason: "stopped" });
+                assert.deepEqual((await endedScreen)[0], { reason: "stopped" });
+            } finally {
+                unwatch();
+                features.streamerModeEnabled = true;
+            }
+            await runtime.flush();
+            const row = await sessions.findById(sixthId);
+            assert.equal(row?.status, "ended", "a stopped session is ended, its summary written");
+            assert.deepEqual(row?.summary, { scores: [], participants: 0, rounds: 0 });
+            assert.equal(io.sockets.adapter.rooms.get(streamerHostRoom(sixthId)), undefined, "the host room is empty");
+            assert.equal(io.sockets.adapter.rooms.get(streamerPublicRoom(sixthId)), undefined, "the public room is empty");
+            assert.equal(runtime.forUser(1), null, "every live session was stopped");
+            assertError(await ask(screen, "streamer:public:join", { viewKey: sixth.viewKey }), "STREAMER_VIEW_KEY_INVALID", "its key is dead");
+        });
+
+        const eighth = await createSession(deps, { userId: 1, settings: INPUT });
+        const eighthId = eighth.session.id;
+
+        await test("a suspension ends the owner's live session: endStreamerSessionsForUser closes both rooms with reason stopped; without a runtime it does nothing", async () => {
+            const seventh = await createSession(deps, { userId: 3, settings: INPUT });
+            const seventhId = seventh.session.id;
+            const host = await connect(url, "second");
+            const screen = await connect(url);
+            assertOk(await ask(host, "streamer:host:join", { sessionId: seventhId }), "host join");
+            assertOk(await ask(screen, "streamer:public:join", { viewKey: seventh.viewKey }), "public join");
+            const endedHost = nextEvent<{ reason: string }>(host, "streamer:ended");
+            const endedScreen = nextEvent<{ reason: string }>(screen, "streamer:ended");
+            const slot = globalThis as typeof globalThis & { __hushleStreamerSessionRuntime?: StreamerSessionRuntime };
+            const previous = slot.__hushleStreamerSessionRuntime;
+            slot.__hushleStreamerSessionRuntime = runtime;
+            try {
+                assert.equal(await endStreamerSessionsForUser(2), false, "a user with nothing live");
+                assert.equal(await endStreamerSessionsForUser(3), true);
+                assert.deepEqual((await endedHost)[0], { reason: "stopped" });
+                assert.deepEqual((await endedScreen)[0], { reason: "stopped" });
+                assert.equal(await endStreamerSessionsForUser(3), false, "nothing is left to end");
+            } finally {
+                if (previous) slot.__hushleStreamerSessionRuntime = previous;
+                else delete slot.__hushleStreamerSessionRuntime;
+            }
+            await runtime.flush();
+            assert.equal((await sessions.findById(seventhId))?.status, "ended");
+            assert.equal(io.sockets.adapter.rooms.get(streamerHostRoom(seventhId)), undefined);
+            assert.equal(io.sockets.adapter.rooms.get(streamerPublicRoom(seventhId)), undefined);
+            // No runtime in this process (a route served elsewhere, a job): nothing happens, nothing throws.
+            assert.equal(slot.__hushleStreamerSessionRuntime, undefined);
+            assert.equal(await endStreamerSessionsForUser(1), false);
+            assert.ok(runtime.get(eighthId), "user 1's live session is untouched");
+        });
+
+        await test("the hourly link check: a broken link sends streamer:host:notice to the host room only; the session goes on", async () => {
+            const host = await connect(url, "owner");
+            const screen = await connect(url);
+            assertOk(await ask(host, "streamer:host:join", { sessionId: eighthId }), "host join");
+            assertOk(await ask(screen, "streamer:public:join", { viewKey: eighth.viewKey }), "public join");
+            const screenMark = screen.events.length;
+            const notice = nextEvent<{ kind: string; platform: string }>(host, "streamer:host:notice");
+            linkAnswers.set(1, "needs_reconnect");
+            try {
+                assert.deepEqual((await notice)[0], { kind: "connection-needs-reconnect", platform: "twitch" });
+            } finally {
+                linkAnswers.delete(1);
+            }
+            await barrier(screen);
+            assert.deepEqual(received(screen, "streamer:host:notice", screenMark), [], "the stream screen hears nothing of it");
+            assert.equal(runtime.get(eighthId)?.phase, "ready", "the session keeps going");
+            assertOk(await ask(host, "streamer:host:start"), "and the host plays on");
+        });
+
+        await test("shutdown: stop() closes both rooms of every live session with streamer:ended { reason: interrupted }; rows interrupted", async () => {
+            const host = await connect(url, "owner");
+            const screen = await connect(url);
+            assertOk(await ask(host, "streamer:host:join", { sessionId: eighthId }), "host join");
+            assertOk(await ask(screen, "streamer:public:join", { viewKey: eighth.viewKey }), "public join");
+            const endedHost = nextEvent<{ reason: string }>(host, "streamer:ended");
+            const endedScreen = nextEvent<{ reason: string }>(screen, "streamer:ended");
+            await runtime.stop();
+            assert.deepEqual((await endedHost)[0], { reason: "interrupted" });
+            assert.deepEqual((await endedScreen)[0], { reason: "interrupted" });
+            assert.equal((await sessions.findById(eighthId))?.status, "interrupted");
+            assert.equal(io.sockets.adapter.rooms.get(streamerHostRoom(eighthId)), undefined);
+            assert.equal(io.sockets.adapter.rooms.get(streamerPublicRoom(eighthId)), undefined);
+            assert.equal(runtime.get(eighthId), null);
+            assertError(await ask(screen, "streamer:public:join", { viewKey: eighth.viewKey }), "STREAMER_VIEW_KEY_INVALID", "its key is dead");
         });
 
         assert.deepEqual(runtimeErrors, [], "the runtime reported no errors");
