@@ -66,6 +66,7 @@ interface SessionEntry {
     platform: StreamerPlatform;
     viewKeyHash: string;
     poolKey: string;
+    startedAt: Date;
     input: CreateSessionInput;
     state: StreamSessionState;
     revision: number;
@@ -124,6 +125,8 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
             userId: entry.userId,
             platform: entry.platform,
             viewKeyHash: entry.viewKeyHash,
+            startedAt: new Date(entry.startedAt),
+            settings: structuredClone(entry.input),
             phase: entry.state.phase,
             revision: entry.revision,
             hostSnapshot: () => hostSnapshot(entry.state, entry.revision, undefined, SNAPSHOT_OPTIONS),
@@ -267,6 +270,7 @@ export function createStreamerSessionRuntime(deps: StreamerSessionRuntimeDeps): 
                 platform: row.platform,
                 viewKeyHash: row.viewKeyHash,
                 poolKey: streamerPoolKey(row.id),
+                startedAt: new Date(row.startedAt),
                 input: createSessionInputSchema.parse(row.settings),
                 state,
                 revision: 0,

@@ -239,30 +239,24 @@ export interface EndedStreamSession {
 
 /**
  * Ends the user's live session; `not_found` when nothing is live. The ended view is built from
- * what the end call returns (the summary) and when the end was asked for, over the row's fixed
- * fields (platform, settings, start). The row is read alongside the end, never after it: the end
- * write may still be pending, or may have failed, when the answer leaves. The read never holds up
- * the end itself.
+ * the live session (its platform, settings and start) and the end call (the summary, and when the
+ * end was asked for): no row is read, so a database that is slow, failing or lost the row never
+ * turns a stream that went off the air into an error. The end write may still be pending.
  */
 export async function endCurrent(deps: StreamerSessionServiceDeps, userId: number): Promise<EndedStreamSession> {
     const live = liveSessionOf(deps, userId);
-    const read = deps.sessions.findById(live.id).then(
-        (record) => ({ record }),
-        (error: unknown) => ({ record: null, error }),
-    );
     const endedAt = clock(deps);
     const summary = await deps.runtime.end(live.id, "ended");
-    const row = await read;
-    if ("error" in row) throw row.error;
-    // The row went away with its owner meanwhile: the stream is off the air, nothing is left to show.
-    if (!row.record) throw new StreamerSessionError("not_found");
     return {
         sessionId: live.id,
         summary,
         session: {
-            ...toSessionView(row.record, deps.onError),
+            id: live.id,
             status: "ended",
             interrupted: false,
+            platform: live.platform,
+            settings: live.settings,
+            startedAt: live.startedAt.toISOString(),
             endedAt: new Date(endedAt).toISOString(),
             roundCount: summary.rounds,
             summary,

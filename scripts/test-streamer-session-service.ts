@@ -1162,6 +1162,46 @@ async function main(): Promise<void> {
         assert.deepEqual(h.errors, []);
     });
 
+    await test("end answers from the live session and the end call alone: a row read that fails or finds nothing changes no answer", async () => {
+        for (const how of ["fails", "finds nothing"] as const) {
+            const base = createMemoryStreamSessionStore();
+            let reading = false;
+            const sessions: MemoryStreamSessionStore = {
+                ...base,
+                async findById(id) {
+                    if (!reading) return base.findById(id);
+                    if (how === "fails") throw new Error("db down");
+                    return null;
+                },
+            };
+            const h = harness({ sessions });
+            const { session } = await opened(h);
+            await h.runtime.applySettings(session.id, { theme: "sakura", showCardName: false });
+            await h.runtime.start(session.id);
+            h.advance(2_000);
+            reading = true;
+            const ended = await endCurrent(h.deps, 1);
+            assert.deepEqual(
+                ended.session,
+                {
+                    ...session,
+                    settings: { ...INPUT, theme: "sakura", showCardName: false },
+                    status: "ended",
+                    interrupted: false,
+                    endedAt: new Date(h.clock.now).toISOString(),
+                    roundCount: 0,
+                    summary: { scores: [], participants: 0, rounds: 0 },
+                },
+                `the ended view when the row read ${how}`,
+            );
+            assert.deepEqual(ended.summary, ended.session.summary);
+            assert.equal(h.runtime.get(session.id), null, "the stream is off the air");
+            reading = false;
+            await h.runtime.flush();
+            assert.equal((await h.sessions.findById(session.id))?.status, "ended");
+        }
+    });
+
     await test("end → summary (top 10, participants), pool cleared, status ended", async () => {
         const h = harness();
         const { session } = await opened(h);

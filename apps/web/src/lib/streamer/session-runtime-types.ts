@@ -9,7 +9,7 @@ import type {
 } from "@hushle/domain-streamer";
 import type { StreamerPlatform } from "@hushle/platform-streamer";
 import type { StreamerErrorReporter } from "./session-persistence";
-import type { ResolvedScreenPatch, WordFilters } from "./session-settings";
+import type { CreateSessionInput, ResolvedScreenPatch, WordFilters } from "./session-settings";
 import type { StreamSessionRecord, StreamSessionStore, StreamSessionSummary } from "./session-store";
 import type { StreamerTimers } from "./session-timers";
 import type { ConnectionChecker } from "./session-watch";
@@ -41,6 +41,10 @@ export interface LiveStreamSession {
     userId: number;
     platform: StreamerPlatform;
     viewKeyHash: string;
+    /** When the session row was opened. */
+    startedAt: Date;
+    /** The session's input as it stands now (live setting changes included); a copy. */
+    settings: CreateSessionInput;
     phase: StreamPhase;
     revision: number;
     /** Carries the secret card: for the owner's host room only. */
