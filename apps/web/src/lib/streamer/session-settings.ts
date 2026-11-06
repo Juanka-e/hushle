@@ -99,6 +99,17 @@ const cardBackThemeSchema = z.object({
     overlayOpacity: z.number(),
 }) satisfies z.ZodType<ResolvedCardThemeLike>;
 
+/**
+ * The resolved card back as the stream screen may draw it (boundCardBack). One the validator
+ * refuses is a schema issue, never passed on as it came: the patch fails closed.
+ */
+export function boundResolvedCardBack(cardBack: StreamCardBack, ctx: z.RefinementCtx): StreamCardBack {
+    const bounded = boundCardBack(cardBack);
+    if (bounded) return bounded;
+    ctx.addIssue({ code: "custom", message: "the card back is outside the stream screen's bounds" });
+    return z.NEVER;
+}
+
 const resolvedCardBackSchema = z
     .object({
         itemId: z.number().int().positive(),
@@ -106,8 +117,7 @@ const resolvedCardBackSchema = z
         theme: cardBackThemeSchema,
         imageUrl: z.string().nullable(),
     })
-    // A positive integer item id and a theme object: boundCardBack always answers a card back here.
-    .transform((cardBack) => boundCardBack(cardBack) ?? cardBack) satisfies z.ZodType<StreamCardBack>;
+    .transform(boundResolvedCardBack) satisfies z.ZodType<StreamCardBack>;
 
 /** What the runtime takes as a live patch: `screenSettingsPatchSchema`, with the card back already resolved. */
 export const resolvedScreenPatchSchema = screenSettingsPatchSchema.extend({

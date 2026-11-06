@@ -3,7 +3,7 @@ import Module from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { NextRequest } from "next/server";
-import type { z } from "zod";
+import { z } from "zod";
 import {
     boundCardBack,
     createStreamSession,
@@ -20,7 +20,13 @@ import {
     type StreamerConnectionStatusValue,
     type StreamerPlatform,
 } from "@hushle/platform-streamer";
-import { createSessionInputSchema, resolvedScreenPatchSchema, toScreenSettings, type CreateSessionInput } from "../apps/web/src/lib/streamer/session-settings";
+import {
+    boundResolvedCardBack,
+    createSessionInputSchema,
+    resolvedScreenPatchSchema,
+    toScreenSettings,
+    type CreateSessionInput,
+} from "../apps/web/src/lib/streamer/session-settings";
 import {
     createMemoryStreamSessionStore,
     streamSessionSummarySchema,
@@ -1229,6 +1235,19 @@ async function main(): Promise<void> {
         await h.runtime.applySettings(row.id, { cardBack: owned });
         assert.deepEqual(state.settings.cardBack, owned);
         assert.deepEqual(h.errors, []);
+    });
+
+    await test("a resolved card back the bounds refuse becomes a schema issue, never passed through as it came (fail closed)", async () => {
+        const owned = await resolveCardBackSelection(1, 10, { streamerShowcaseAllCosmetics: false }, CARD_BACK_LOADERS);
+        const issues: unknown[] = [];
+        const ctx = { addIssue: (issue: unknown) => issues.push(issue), issues: [], value: undefined } as unknown as z.RefinementCtx;
+        // boundCardBack refuses a card back without an integer item id: the shape check upstream
+        // already does too, so this is the last line, and it must not open.
+        const refused = boundResolvedCardBack({ ...owned, itemId: 1.5 }, ctx);
+        assert.equal(refused, z.NEVER, "nothing usable comes out");
+        assert.equal(issues.length, 1, "one issue is raised");
+        assert.deepEqual(boundResolvedCardBack(owned, ctx), owned, "a card back within the bounds passes");
+        assert.equal(issues.length, 1);
     });
 
     await test("end answers from the live session and the end call alone: a row read that fails or finds nothing changes no answer", async () => {
